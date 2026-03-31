@@ -8,3 +8,4 @@ coverage/
 backend/.env
 frontend/.env
 AGENTS.md
+TODO.md
