@@ -1,11 +1,16 @@
-import env from "./config/env.js";
+import dotenv from "dotenv";
 import app from "./app.js";
 
-process.env.TZ = process.env.TZ ?? env.app.timezone;
+dotenv.config();
 
-app.listen(env.app.port, () => {
+const APP_NAME = "CoreSys API";
+const APP_PORT = Number(process.env.PORT ?? 4000);
+const APP_TIMEZONE = "America/Mexico_City";
+
+process.env.TZ = process.env.TZ ?? APP_TIMEZONE;
+
+app.listen(APP_PORT, () => {
   console.info(
-    `${env.app.name} listening on http://localhost:${env.app.port} (${env.app.timezone})`,
+    `${APP_NAME} listening on http://localhost:${APP_PORT} (${APP_TIMEZONE})`,
   );
 });
-
