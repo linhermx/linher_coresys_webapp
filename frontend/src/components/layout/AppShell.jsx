@@ -1,4 +1,8 @@
-import { APP_METADATA, NAVIGATION_ITEMS } from "../../utils/app.js";
+import {
+  APP_METADATA,
+  NAVIGATION_ITEMS,
+  SECONDARY_VIEWS,
+} from "../../utils/app.js";
 import { useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "./Sidebar.jsx";
@@ -7,22 +11,14 @@ import Topbar from "./Topbar.jsx";
 const getDefaultSidebarState = () =>
   typeof window !== "undefined" ? window.innerWidth < 1024 : false;
 
-const INTERNAL_VIEWS = [
-  {
-    path: "/system-ui",
-    label: "UI del sistema",
-    description: "Vista interna para revisar tokens, shell y componentes base.",
-  },
-];
-
 const SIDEBAR_USER_FALLBACK = {
   name: "Usuario interno",
-  roleLabel: "Administrador de Systems",
+  roleLabel: "Admin",
 };
 
 const findCurrentModule = (pathname) =>
   NAVIGATION_ITEMS.find((item) => pathname.startsWith(item.path)) ??
-  INTERNAL_VIEWS.find((item) => pathname.startsWith(item.path)) ??
+  SECONDARY_VIEWS.find((item) => pathname.startsWith(item.path)) ??
   NAVIGATION_ITEMS[0];
 
 function AppShell() {

@@ -1,7 +1,13 @@
-import { APP_METADATA, NAVIGATION_ITEMS } from "../../utils/app.js";
+import {
+  APP_METADATA,
+  NAVIGATION_ITEMS,
+  NAVIGATION_SECTIONS,
+} from "../../utils/app.js";
 import {
   Boxes,
+  KeyRound,
   LayoutDashboard,
+  Network,
   PanelLeftClose,
   PanelLeftOpen,
   Phone,
@@ -10,23 +16,13 @@ import {
 } from "lucide-react";
 import { NavLink } from "react-router-dom";
 
-const NAVIGATION_GROUPS = [
-  {
-    title: "Operación",
-    items: ["dashboard", "tickets", "services"],
-  },
-  {
-    title: "Infraestructura",
-    items: ["inventory", "telephony"],
-  },
-];
-
 const NAVIGATION_ICONS = {
-  dashboard: LayoutDashboard,
   tickets: Ticket,
   inventory: Boxes,
   telephony: Phone,
   services: Server,
+  access: KeyRound,
+  infrastructure: Network,
 };
 
 const getUserInitials = (name = "") =>
@@ -40,16 +36,16 @@ const getUserInitials = (name = "") =>
 function Sidebar({ user, isCollapsed, onNavigate, onToggle }) {
   const CollapseIcon = isCollapsed ? PanelLeftOpen : PanelLeftClose;
   const userName = user?.name ?? "Usuario interno";
-  const userRole = user?.roleLabel ?? "Administrador IT";
+  const userRole = user?.roleLabel ?? "Admin";
   const userInitials = getUserInitials(userName);
 
   return (
     <aside className={`sidebar ${isCollapsed ? "is-collapsed" : ""}`}>
       <div className="sidebar__header">
         <NavLink
-          to="/dashboard"
+          to={APP_METADATA.homePath}
           className="sidebar__brand-link"
-          aria-label="Ir al panel principal"
+          aria-label="Ir al módulo principal"
           onClick={onNavigate}
         >
           <div className="sidebar__logo-badge" aria-hidden="true">
@@ -74,15 +70,19 @@ function Sidebar({ user, isCollapsed, onNavigate, onToggle }) {
       </div>
 
       <nav className="sidebar__nav" aria-label="Navegación principal">
-        {NAVIGATION_GROUPS.map((group) => {
-          const items = NAVIGATION_ITEMS.filter((item) =>
-            group.items.includes(item.key),
+        {NAVIGATION_SECTIONS.map((group) => {
+          const items = NAVIGATION_ITEMS.filter(
+            (item) => item.section === group.key,
           );
 
+          if (!items.length) {
+            return null;
+          }
+
           return (
-            <section key={group.title} className="sidebar__section">
+            <section key={group.key} className="sidebar__section">
               {!isCollapsed ? (
-                <p className="sidebar__section-title">{group.title}</p>
+                <p className="sidebar__section-title">{group.label}</p>
               ) : null}
               <div className="sidebar__links">
                 {items.map((item) => {

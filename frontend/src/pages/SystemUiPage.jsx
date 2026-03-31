@@ -118,8 +118,8 @@ function SystemUiPage() {
         title="UI del sistema"
         description="Panel de verificación para revisar tokens, shell y primitives base antes de tocar módulos reales de producto."
         actions={
-          <Link className="button button--secondary button--sm" to="/dashboard">
-            Volver al dashboard
+          <Link className="button button--secondary button--sm" to="/tickets">
+            Volver a tickets
           </Link>
         }
       />

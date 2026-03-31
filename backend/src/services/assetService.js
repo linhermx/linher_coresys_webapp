@@ -1,8 +1,4 @@
-import { assetModel } from "../models/assetModel.js";
+import { getInventoryBlueprint } from "./inventoryService.js";
 
-export const getAssetModuleBlueprint = () => ({
-  model: assetModel,
-  categories: ["hardware", "peripheral", "license", "telephony"],
-  assignmentModes: ["user", "area", "stock"],
-});
-
+// Alias técnico temporal para mantener compatibilidad mientras el dominio visible ya es inventory.
+export const getAssetModuleBlueprint = () => getInventoryBlueprint();

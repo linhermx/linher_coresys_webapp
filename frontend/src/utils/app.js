@@ -3,38 +3,77 @@ export const APP_METADATA = {
   description: "Sistema interno de operaciones IT",
   timezone: "America/Mexico_City",
   productStage: "MAP",
+  homePath: "/tickets",
 };
 
-export const MODULE_CATALOG = [
+export const NAVIGATION_SECTIONS = [
   {
-    key: "dashboard",
-    label: "Dashboard",
-    path: "/dashboard",
-    description: "Visibilidad general de la operación",
+    key: "operation",
+    label: "Operación",
   },
+  {
+    key: "platform",
+    label: "Plataforma",
+  },
+];
+
+export const MODULE_CATALOG = [
   {
     key: "tickets",
     label: "Tickets",
     path: "/tickets",
-    description: "Seguimiento de solicitudes internas",
+    section: "operation",
+    description: "Mesa de servicio, SLA y seguimiento",
   },
   {
     key: "inventory",
     label: "Inventario",
     path: "/inventory",
-    description: "Control de activos y stock técnico",
-  },
-  {
-    key: "telephony",
-    label: "Telefonía",
-    path: "/telephony",
-    description: "Infraestructura y asignaciones de voz",
+    section: "operation",
+    description: "Activos, resguardos y asignaciones",
   },
   {
     key: "services",
     label: "Servicios",
     path: "/services",
-    description: "Catálogo operativo y estados",
+    section: "operation",
+    description: "Servicios, pagos y renovaciones",
+  },
+  {
+    key: "telephony",
+    label: "Telefonía",
+    path: "/telephony",
+    section: "platform",
+    description: "Líneas, SIMs y recargas",
+  },
+  {
+    key: "access",
+    label: "Accesos",
+    path: "/access",
+    section: "platform",
+    description: "Cuentas técnicas y control sensible",
+  },
+  {
+    key: "infrastructure",
+    label: "Infraestructura",
+    path: "/infrastructure",
+    section: "platform",
+    description: "Red e infraestructura básica",
+  },
+];
+
+export const SECONDARY_VIEWS = [
+  {
+    key: "dashboard",
+    label: "Dashboard",
+    path: "/dashboard",
+    description: "Referencia temporal de operación",
+  },
+  {
+    key: "system-ui",
+    label: "UI del sistema",
+    path: "/system-ui",
+    description: "Vista interna para revisar tokens, shell y primitives base.",
   },
 ];
 
