@@ -9,12 +9,13 @@ import { createSuccessResponse } from "../utils/apiResponse.js";
 export const listUsers = (req, res) => {
   res.json(
     createSuccessResponse({
-      message: "Modulo base de usuarios listo para modelado.",
+      message: "Módulo base de usuarios listo para modelado.",
       data: {
         items: [],
         blueprint: getUsersBlueprint(),
         auditDraft: buildAuditLogDraft({
-          action: "users.read",
+          action: "users.view",
+          entityName: "users",
           metadata: { source: "listUsers" },
           requestContext: req.context,
         }),
@@ -35,9 +36,8 @@ export const getUserById = (req, res) => {
 export const getAccessStructure = (_req, res) => {
   res.json(
     createSuccessResponse({
-      message: "Catalogo RBAC disponible.",
+      message: "Catálogo RBAC disponible.",
       data: getRbacBlueprint(),
     }),
   );
 };
-

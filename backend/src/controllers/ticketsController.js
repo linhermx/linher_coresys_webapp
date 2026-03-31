@@ -10,7 +10,8 @@ export const listTickets = (req, res) => {
         items: [],
         blueprint: getTicketModuleBlueprint(),
         auditDraft: buildAuditLogDraft({
-          action: "tickets.read",
+          action: "tickets.view",
+          entityName: "tickets",
           metadata: { source: "listTickets" },
           requestContext: req.context,
         }),
@@ -22,12 +23,14 @@ export const listTickets = (req, res) => {
 export const createTicket = (req, res) => {
   res.status(202).json(
     createSuccessResponse({
-      message: "Creacion de tickets pendiente de logica de negocio.",
+      message: "Creación de tickets pendiente de lógica de negocio.",
       data: {
         payload: req.body ?? {},
         blueprint: getTicketModuleBlueprint(),
         auditDraft: buildAuditLogDraft({
-          action: "tickets.write",
+          action: "tickets.create",
+          entityName: "tickets",
+          afterSnapshot: { stage: "blueprint", status: "draft" },
           metadata: { source: "createTicket", stage: "blueprint" },
           requestContext: req.context,
         }),
@@ -35,4 +38,3 @@ export const createTicket = (req, res) => {
     }),
   );
 };
-

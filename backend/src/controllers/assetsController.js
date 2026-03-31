@@ -10,7 +10,8 @@ export const listAssets = (req, res) => {
         items: [],
         blueprint: getAssetModuleBlueprint(),
         auditDraft: buildAuditLogDraft({
-          action: "assets.read",
+          action: "assets.view",
+          entityName: "assets",
           metadata: { source: "listAssets" },
           requestContext: req.context,
         }),
@@ -22,12 +23,14 @@ export const listAssets = (req, res) => {
 export const createAsset = (req, res) => {
   res.status(202).json(
     createSuccessResponse({
-      message: "Registro de activos pendiente de implementacion.",
+      message: "Registro de activos pendiente de implementación.",
       data: {
         payload: req.body ?? {},
         blueprint: getAssetModuleBlueprint(),
         auditDraft: buildAuditLogDraft({
-          action: "assets.write",
+          action: "assets.create",
+          entityName: "assets",
+          afterSnapshot: { stage: "blueprint", status: "draft" },
           metadata: { source: "createAsset", stage: "blueprint" },
           requestContext: req.context,
         }),
@@ -35,4 +38,3 @@ export const createAsset = (req, res) => {
     }),
   );
 };
-
