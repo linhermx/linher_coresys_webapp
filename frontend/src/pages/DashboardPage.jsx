@@ -2,10 +2,11 @@ import {
   ArrowUpRight,
   Boxes,
   CircleAlert,
+  KeyRound,
+  Network,
   Phone,
   Search,
   Server,
-  ShieldAlert,
   Ticket,
   Wrench,
 } from "lucide-react";
@@ -50,9 +51,14 @@ const moduleAppearance = {
     accent: "var(--warning)",
   },
   access: {
-    icon: ShieldAlert,
+    icon: KeyRound,
     tone: "success",
     accent: "var(--success)",
+  },
+  infrastructure: {
+    icon: Network,
+    tone: "info",
+    accent: "var(--accent-cyan)",
   },
 };
 
@@ -195,7 +201,7 @@ const overviewByWindow = {
       meta: "Cuentas por validar",
       tone: "success",
       accent: "var(--success)",
-      icon: ShieldAlert,
+      icon: KeyRound,
       meter: 55,
     },
   ],
@@ -295,7 +301,7 @@ const agendaItems = [
     title: "Validación de cuenta técnica ERP",
     slot: "Mañana",
     owner: "Infraestructura",
-    moduleKey: "tickets",
+    moduleKey: "access",
   },
   {
     id: "agenda-3",
@@ -400,6 +406,20 @@ const moduleStatusByKey = {
     detail: "Pagos y vencimientos",
     actionLabel: "Ver servicios",
     progress: 46,
+  },
+  access: {
+    metric: "06",
+    note: "Cuentas por revisar",
+    detail: "Trazabilidad sensible",
+    actionLabel: "Abrir accesos",
+    progress: 48,
+  },
+  infrastructure: {
+    metric: "04",
+    note: "Red y contexto",
+    detail: "Base operativa",
+    actionLabel: "Ver infraestructura",
+    progress: 38,
   },
 };
 

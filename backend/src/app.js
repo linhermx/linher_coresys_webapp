@@ -1,17 +1,22 @@
 import express from "express";
 import cors from "cors";
-import env from "./config/env.js";
+import dotenv from "dotenv";
 import requestContext from "./middleware/requestContext.js";
 import errorHandler from "./middleware/errorHandler.js";
 import notFoundHandler from "./middleware/notFoundHandler.js";
 import apiRoutes from "./routes/index.js";
 import { createSuccessResponse } from "./utils/apiResponse.js";
 
+dotenv.config();
+
 const app = express();
+const APP_NAME = "CoreSys API";
+const APP_TIMEZONE = "America/Mexico_City";
+const FRONTEND_URL = process.env.FRONTEND_URL ?? "http://localhost:5173";
 
 app.use(
   cors({
-    origin: env.app.corsOrigin,
+    origin: FRONTEND_URL,
     credentials: true,
   }),
 );
@@ -24,8 +29,8 @@ app.get("/", (_req, res) => {
     createSuccessResponse({
       message: "CoreSys API base disponible.",
       data: {
-        service: env.app.name,
-        timezone: env.app.timezone,
+        service: APP_NAME,
+        timezone: APP_TIMEZONE,
       },
     }),
   );

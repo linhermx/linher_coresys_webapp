@@ -1,3 +1,4 @@
+// Entidad relacional base que respalda el dominio visible de inventory.
 export const assetModel = {
   entity: "assets",
   primaryKey: "id",
@@ -13,4 +14,3 @@ export const assetModel = {
   ],
   relations: ["users", "audit_logs"],
 };
-

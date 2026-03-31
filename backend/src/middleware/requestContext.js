@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
-import env from "../config/env.js";
+
+const APP_TIMEZONE = "America/Mexico_City";
 
 const requestContext = (req, _res, next) => {
   req.context = {
     requestId: randomUUID(),
     receivedAt: new Date().toISOString(),
-    timezone: env.app.timezone,
+    timezone: APP_TIMEZONE,
     ipAddress: req.ip,
     userAgent: req.get("user-agent") ?? null,
   };

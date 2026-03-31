@@ -29,7 +29,7 @@ export const login = (req, res) => {
         auth: getAuthBlueprint(),
         auditDraft: buildAuditLogDraft({
           action: "auth.login",
-          entityName: "auth_sessions",
+          entityName: "refresh_tokens",
           afterSnapshot: { stage: "blueprint", status: "issued" },
           metadata: { stage: "blueprint" },
           requestContext: req.context,
@@ -47,7 +47,7 @@ export const logout = (req, res) => {
       data: {
         auditDraft: buildAuditLogDraft({
           action: "auth.logout",
-          entityName: "auth_sessions",
+          entityName: "refresh_tokens",
           beforeSnapshot: { stage: "blueprint", status: "active" },
           afterSnapshot: { stage: "blueprint", status: "revoked" },
           metadata: { stage: "blueprint" },

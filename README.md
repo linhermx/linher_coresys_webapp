@@ -54,3 +54,11 @@ Healthcheck backend: `http://localhost:4000/api/health`
 - `frontend/src/design-tokens.css`: tokens globales y tema claro/oscuro
 - `frontend/src/index.css`: estilos globales, shell, primitives y vistas base
 - `frontend/src/pages/SystemUiPage.jsx`: referencia interna del sistema visual
+
+## Regla de UI operativa
+
+- una interfaz no debe depender de texto descriptivo para justificar qué hace cada card, bloque o vista
+- si un card necesita explicación larga para entenderse, su estructura, jerarquía o propósito están mal resueltos
+- cada bloque debe comunicar su función por posición, título, dato, estado y acción, no por párrafos de relleno
+- evitar placeholders cargados de texto explicativo o UI que “narra” lo que se implementará después
+- priorizar experiencia de uso, legibilidad operativa y comprensión inmediata sobre texto decorativo
