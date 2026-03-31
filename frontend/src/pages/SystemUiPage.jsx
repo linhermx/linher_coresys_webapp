@@ -1,9 +1,14 @@
+import { Search } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import Badge from "../components/primitives/Badge.jsx";
 import Button from "../components/primitives/Button.jsx";
 import Card from "../components/primitives/Card.jsx";
+import Drawer from "../components/primitives/Drawer.jsx";
+import Input from "../components/primitives/Input.jsx";
 import PageHeader from "../components/primitives/PageHeader.jsx";
 import Table from "../components/primitives/Table.jsx";
+import Tabs from "../components/primitives/Tabs.jsx";
 
 const colorTokens = [
   { key: "Acento morado", value: "var(--primary)" },
@@ -20,6 +25,12 @@ const spacingTokens = [
   "var(--spacing-md)",
   "var(--spacing-lg)",
   "var(--spacing-xl)",
+];
+
+const primitiveTabs = [
+  { value: "inputs", label: "Inputs", meta: "Formularios" },
+  { value: "navigation", label: "Navegación", meta: "Tabs" },
+  { value: "overlays", label: "Overlays", meta: "Drawer" },
 ];
 
 const tableColumns = [
@@ -45,13 +56,31 @@ const tableRows = [
     id: "table",
     component: "Table",
     state: "Listo",
-    notes: "Tabla base sin scroll infinito.",
+    notes: "Tabla base semántica y compacta.",
   },
   {
     id: "badge",
     component: "Badge",
     state: "Listo",
-    notes: "Badges de estado y metadatos.",
+    notes: "Estados y metadatos breves.",
+  },
+  {
+    id: "input",
+    component: "Input",
+    state: "Nuevo",
+    notes: "Label, hint, error y soporte para icono.",
+  },
+  {
+    id: "tabs",
+    component: "Tabs",
+    state: "Nuevo",
+    notes: "Navegación interna compacta para módulos.",
+  },
+  {
+    id: "drawer",
+    component: "Drawer",
+    state: "Nuevo",
+    notes: "Overlay accesible para detalle o formularios.",
   },
 ];
 
@@ -79,14 +108,17 @@ function SpacingSample({ token }) {
 }
 
 function SystemUiPage() {
+  const [activePrimitiveTab, setActivePrimitiveTab] = useState("inputs");
+  const [isDrawerPreviewOpen, setIsDrawerPreviewOpen] = useState(false);
+
   return (
     <div className="page-section">
       <PageHeader
         eyebrow="Vista interna"
         title="UI del sistema"
-        description="Panel de referencia para revisar la base visual compartida de familia LINHER, el modo claro y oscuro, y los ajustes propios de CoreSys antes de tocar producto real."
+        description="Panel de verificación para revisar tokens, shell y primitives base antes de tocar módulos reales de producto."
         actions={
-          <Link className="button button--secondary button--md" to="/dashboard">
+          <Link className="button button--secondary button--sm" to="/dashboard">
             Volver al dashboard
           </Link>
         }
@@ -108,15 +140,15 @@ function SystemUiPage() {
             <div className="system-ui__layer">
               <Badge tone="info">2</Badge>
               <div>
-                <strong>Tema de CoreSys</strong>
-                <p>Superficies, contraste y matices propios del dominio IT.</p>
+                <strong>Tema operativo</strong>
+                <p>Superficies, contraste y densidad propias del dominio IT.</p>
               </div>
             </div>
             <div className="system-ui__layer">
               <Badge tone="info">3</Badge>
               <div>
-                <strong>Shell y primitivas</strong>
-                <p>Sidebar, topbar, cards, botones, badges y tablas reutilizables.</p>
+                <strong>Shell y primitives</strong>
+                <p>Sidebar, topbar, fields, tabs, drawers y tablas reutilizables.</p>
               </div>
             </div>
           </div>
@@ -181,11 +213,99 @@ function SystemUiPage() {
       </div>
 
       <Card
+        title="Primitives nuevas"
+        description="Preview funcional de las piezas que entran en la Fase 0."
+      >
+        <div className="stack">
+          <Tabs
+            ariaLabel="Vista de primitives"
+            items={primitiveTabs}
+            value={activePrimitiveTab}
+            onChange={setActivePrimitiveTab}
+            panelIdPrefix="primitive-preview"
+          />
+
+          {activePrimitiveTab === "inputs" ? (
+            <div
+              id="primitive-preview-inputs"
+              role="tabpanel"
+              aria-labelledby="primitive-preview-tab-inputs"
+              className="system-ui__preview-grid"
+            >
+              <Input
+                label="Buscar activo"
+                placeholder="Serie, usuario o módulo"
+                leadingIcon={Search}
+                hint="Ejemplo de field compacto para búsquedas operativas."
+              />
+              <Input
+                label="Servicio"
+                placeholder="Nombre del servicio"
+                error="Ejemplo de estado con mensaje de error."
+              />
+            </div>
+          ) : null}
+
+          {activePrimitiveTab === "navigation" ? (
+            <div
+              id="primitive-preview-navigation"
+              role="tabpanel"
+              aria-labelledby="primitive-preview-tab-navigation"
+              className="system-ui__preview-stack"
+            >
+              <p className="page-copy">
+                Las tabs deben resolver variaciones internas del mismo dominio antes de
+                abrir nuevos módulos en el sidebar.
+              </p>
+            </div>
+          ) : null}
+
+          {activePrimitiveTab === "overlays" ? (
+            <div
+              id="primitive-preview-overlays"
+              role="tabpanel"
+              aria-labelledby="primitive-preview-tab-overlays"
+              className="system-ui__preview-stack"
+            >
+              <p className="page-copy">
+                El drawer está pensado para detalle, lectura rápida y acciones de contexto.
+              </p>
+              <div className="system-ui__button-row">
+                <Button variant="secondary" onClick={() => setIsDrawerPreviewOpen(true)}>
+                  Abrir preview
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </Card>
+
+      <Card
         title="Inventario de componentes"
-        description="Estado actual de las piezas base disponibles en el shell."
+        description="Estado actual de las piezas base disponibles para producto real."
       >
         <Table columns={tableColumns} rows={tableRows} />
       </Card>
+
+      <Drawer
+        open={isDrawerPreviewOpen}
+        onClose={() => setIsDrawerPreviewOpen(false)}
+        title="Preview de drawer"
+        description="Este overlay sirve como patrón para formularios laterales, detalle de tickets y vistas rápidas de entidad."
+        actions={
+          <Button variant="secondary" onClick={() => setIsDrawerPreviewOpen(false)}>
+            Cerrar
+          </Button>
+        }
+      >
+        <div className="stack">
+          <Badge tone="info">Accesible</Badge>
+          <p className="page-copy">
+            Debe cerrar con `Escape`, soportar teclado y mantener jerarquía visual
+            compacta para no romper la densidad operativa del sistema.
+          </p>
+        </div>
+      </Drawer>
     </div>
   );
 }

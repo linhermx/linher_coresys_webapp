@@ -2,7 +2,6 @@ import { APP_METADATA, NAVIGATION_ITEMS } from "../../utils/app.js";
 import {
   Boxes,
   LayoutDashboard,
-  Menu,
   PanelLeftClose,
   PanelLeftOpen,
   Phone,
@@ -87,8 +86,7 @@ function Sidebar({ user, isCollapsed, onNavigate, onToggle }) {
               ) : null}
               <div className="sidebar__links">
                 {items.map((item) => {
-                  const ItemIcon =
-                    NAVIGATION_ICONS[item.key] ?? Menu;
+                  const ItemIcon = NAVIGATION_ICONS[item.key] ?? LayoutDashboard;
 
                   return (
                     <NavLink

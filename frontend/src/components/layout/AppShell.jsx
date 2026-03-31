@@ -17,7 +17,7 @@ const INTERNAL_VIEWS = [
 
 const SIDEBAR_USER_FALLBACK = {
   name: "Usuario interno",
-  roleLabel: "Administrador IT",
+  roleLabel: "Administrador de Systems",
 };
 
 const findCurrentModule = (pathname) =>
@@ -56,6 +56,7 @@ function AppShell() {
           isSidebarCollapsed={isSidebarCollapsed}
           onSidebarToggle={handleSidebarToggle}
           productName={APP_METADATA.name}
+          productStage={APP_METADATA.productStage}
           timezone={APP_METADATA.timezone}
         />
         <main className="page-container">
