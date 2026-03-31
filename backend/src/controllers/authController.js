@@ -5,7 +5,7 @@ import { createSuccessResponse } from "../utils/apiResponse.js";
 export const getSession = (req, res) => {
   res.json(
     createSuccessResponse({
-      message: "Blueprint de sesion disponible.",
+      message: "Blueprint de sesión disponible.",
       data: {
         session: {
           authenticated: false,
@@ -23,12 +23,14 @@ export const getSession = (req, res) => {
 export const login = (req, res) => {
   res.status(202).json(
     createSuccessResponse({
-      message: "Endpoint base de login creado sin logica real.",
+      message: "Endpoint base de login creado sin lógica real.",
       data: {
         identifier: req.body?.username ?? req.body?.email ?? null,
         auth: getAuthBlueprint(),
         auditDraft: buildAuditLogDraft({
           action: "auth.login",
+          entityName: "auth_sessions",
+          afterSnapshot: { stage: "blueprint", status: "issued" },
           metadata: { stage: "blueprint" },
           requestContext: req.context,
         }),
@@ -41,10 +43,13 @@ export const login = (req, res) => {
 export const logout = (req, res) => {
   res.status(202).json(
     createSuccessResponse({
-      message: "Endpoint base de logout creado sin invalidacion real.",
+      message: "Endpoint base de logout creado sin invalidación real.",
       data: {
         auditDraft: buildAuditLogDraft({
           action: "auth.logout",
+          entityName: "auth_sessions",
+          beforeSnapshot: { stage: "blueprint", status: "active" },
+          afterSnapshot: { stage: "blueprint", status: "revoked" },
           metadata: { stage: "blueprint" },
           requestContext: req.context,
         }),
@@ -52,4 +57,3 @@ export const logout = (req, res) => {
     }),
   );
 };
-
