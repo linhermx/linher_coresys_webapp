@@ -54,8 +54,13 @@ function Sidebar({ user, isCollapsed, onNavigate, onToggle, onLogout }) {
           </div>
           {!isCollapsed ? (
             <div className="sidebar__brand-copy">
-              <span className="sidebar__brand-product">{APP_METADATA.name}</span>
-              <span className="sidebar__brand-signature">por LINHER</span>
+              <div className="sidebar__brand-row">
+                <span className="sidebar__brand-product">{APP_METADATA.name}</span>
+                <span className="sidebar__brand-state">{APP_METADATA.productStage}</span>
+              </div>
+              <span className="sidebar__brand-signature">
+                Operacion, trazabilidad y control
+              </span>
             </div>
           ) : null}
         </NavLink>

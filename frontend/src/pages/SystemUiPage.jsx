@@ -7,303 +7,607 @@ import Card from "../components/primitives/Card.jsx";
 import Drawer from "../components/primitives/Drawer.jsx";
 import Input from "../components/primitives/Input.jsx";
 import PageHeader from "../components/primitives/PageHeader.jsx";
+import Select from "../components/primitives/Select.jsx";
 import Table from "../components/primitives/Table.jsx";
 import Tabs from "../components/primitives/Tabs.jsx";
+import Textarea from "../components/primitives/Textarea.jsx";
 
-const colorTokens = [
-  { key: "Acento morado", value: "var(--primary)" },
-  { key: "Acento cian", value: "var(--accent-cyan)" },
-  { key: "Éxito", value: "var(--success)" },
-  { key: "Advertencia", value: "var(--warning)" },
-  { key: "Error", value: "var(--danger)" },
-  { key: "Superficie", value: "var(--surface)" },
+const previewTabs = [
+  { value: "inputs", label: "Campos", meta: "Captura" },
+  { value: "navigation", label: "Navegación", meta: "Subflujos" },
+  { value: "overlays", label: "Capas", meta: "Detalle" },
 ];
 
-const spacingTokens = [
-  "var(--spacing-xs)",
-  "var(--spacing-sm)",
-  "var(--spacing-md)",
-  "var(--spacing-lg)",
-  "var(--spacing-xl)",
+const paletteTokens = [
+  {
+    key: "Primary",
+    value: "var(--primary)",
+    note: "Acción primaria, foco y prioridad.",
+  },
+  {
+    key: "Primary soft",
+    value: "var(--primary-soft)",
+    note: "Realce sutil para estados y fondos activos.",
+  },
+  {
+    key: "Cian de apoyo",
+    value: "var(--accent-cyan)",
+    note: "Lectura secundaria y contraste funcional.",
+  },
+  {
+    key: "Surface base",
+    value: "var(--panel-bg)",
+    note: "Paneles operativos y contenedores base.",
+  },
+  {
+    key: "Surface mute",
+    value: "var(--panel-bg-muted)",
+    note: "Capas internas y separación de bloques.",
+  },
+  {
+    key: "Borde",
+    value: "var(--panel-border)",
+    note: "Jerarquía sin recargar la pantalla.",
+  },
+  {
+    key: "Texto principal",
+    value: "var(--text-main)",
+    note: "Títulos, datos y lectura de decisión.",
+  },
+  {
+    key: "Texto secundario",
+    value: "var(--text-secondary)",
+    note: "Soporte, metadatos y contexto breve.",
+  },
 ];
 
-const primitiveTabs = [
-  { value: "inputs", label: "Inputs", meta: "Formularios" },
-  { value: "navigation", label: "Navegación", meta: "Tabs" },
-  { value: "overlays", label: "Overlays", meta: "Drawer" },
+const typeScale = [
+  {
+    id: "display",
+    label: "Display",
+    token: "var(--fs-display)",
+    sample: "Sistema visual operativo",
+    className: "design-lab__type-sample design-lab__type-sample--display",
+  },
+  {
+    id: "title",
+    label: "Título",
+    token: "var(--fs-title-xl)",
+    sample: "Panel de tickets",
+    className: "design-lab__type-sample design-lab__type-sample--title",
+  },
+  {
+    id: "body",
+    label: "Cuerpo",
+    token: "var(--fs-body-md)",
+    sample: "Lectura compacta, estable y sin ruido visual innecesario.",
+    className: "design-lab__type-sample design-lab__type-sample--body",
+  },
+  {
+    id: "caption",
+    label: "Caption",
+    token: "var(--fs-caption)",
+    sample: "Meta, etiquetas y soporte de contexto.",
+    className: "design-lab__type-sample design-lab__type-sample--caption",
+  },
 ];
 
-const tableColumns = [
-  { key: "component", label: "Componente" },
-  { key: "state", label: "Estado" },
-  { key: "notes", label: "Notas" },
+const spacingScale = [
+  { key: "XS", token: "var(--spacing-xs)", value: "0.25rem" },
+  { key: "SM", token: "var(--spacing-sm)", value: "0.5rem" },
+  { key: "MD", token: "var(--spacing-md)", value: "1rem" },
+  { key: "LG", token: "var(--spacing-lg)", value: "1.5rem" },
+  { key: "XL", token: "var(--spacing-xl)", value: "2rem" },
 ];
 
-const tableRows = [
+const designPrinciples = [
+  {
+    id: "01",
+    title: "Jerarquía antes que decoración",
+    note: "La estructura debe explicar el uso de la vista sin recurrir a copy largo.",
+  },
+  {
+    id: "02",
+    title: "Densidad precisa",
+    note: "Compacta donde hay trabajo y abierta donde hay toma de decisión.",
+  },
+  {
+    id: "03",
+    title: "Una sola familia visual",
+    note: "Tabla, tablero, línea de tiempo y drawer deben sentirse como la misma herramienta.",
+  },
+  {
+    id: "04",
+    title: "Color con criterio",
+    note: "El morado lidera y el cian acompaña; ninguno se usa como decoración gratuita.",
+  },
+];
+
+const shellZones = [
+  {
+    title: "Sidebar",
+    note: "Navegación por dominio, estado activo claro y cierre visual contenido.",
+  },
+  {
+    title: "Topbar",
+    note: "Contexto actual, fecha y estado global. Nada de navegación duplicada.",
+  },
+  {
+    title: "Page header",
+    note: "Una idea principal, una descripción corta y acciones jerarquizadas.",
+  },
+];
+
+const viewModes = [
+  {
+    title: "Lista",
+    note: "Bandejas, inventario y seguimiento con lectura inmediata.",
+  },
+  {
+    title: "Tablero",
+    note: "Estados o etapas cuando la columna agrega claridad real.",
+  },
+  {
+    title: "Línea de tiempo",
+    note: "Eventos y trazabilidad cuando el orden temporal importa.",
+  },
+  {
+    title: "Detalle lateral",
+    note: "Inspección y acción contextual sin romper el flujo operativo.",
+  },
+];
+
+const extractionChecklist = [
+  "Todo valor repetido se convierte en token o patrón reutilizable.",
+  "Una vista no entra a producto si no pasa primero por este tablero.",
+  "La densidad compacta no puede sacrificar foco visible ni contraste.",
+  "El shell manda la jerarquía; el módulo no inventa su propio lenguaje.",
+];
+
+const componentColumns = [
+  { key: "piece", label: "Pieza" },
+  { key: "role", label: "Rol" },
+  {
+    key: "status",
+    label: "Estado",
+    render: (_value, row) => <Badge tone={row.tone}>{row.status}</Badge>,
+  },
+  { key: "notes", label: "Uso esperado" },
+];
+
+const componentRows = [
   {
     id: "button",
-    component: "Button",
-    state: "Listo",
-    notes: "Variantes primaria, secundaria y ghost.",
+    piece: "Button",
+    role: "Acción primaria o secundaria",
+    status: "Activo",
+    tone: "success",
+    notes: "Jerarquía clara sin volver todo primario.",
   },
   {
-    id: "card",
-    component: "Card",
-    state: "Listo",
-    notes: "Header, acciones y variante accent.",
-  },
-  {
-    id: "table",
-    component: "Table",
-    state: "Listo",
-    notes: "Tabla base semántica y compacta.",
-  },
-  {
-    id: "badge",
-    component: "Badge",
-    state: "Listo",
-    notes: "Estados y metadatos breves.",
-  },
-  {
-    id: "input",
-    component: "Input",
-    state: "Nuevo",
-    notes: "Label, hint, error y soporte para icono.",
+    id: "fields",
+    piece: "Input / Select / Textarea",
+    role: "Captura y filtro",
+    status: "Activo",
+    tone: "success",
+    notes: "Altura compacta, etiquetas legibles y estados visibles.",
   },
   {
     id: "tabs",
-    component: "Tabs",
-    state: "Nuevo",
-    notes: "Navegación interna compacta para módulos.",
+    piece: "Tabs",
+    role: "Subflujo interno",
+    status: "Activo",
+    tone: "success",
+    notes: "Variantes de la misma vista, no nuevos módulos.",
   },
   {
     id: "drawer",
-    component: "Drawer",
-    state: "Nuevo",
-    notes: "Overlay accesible para detalle o formularios.",
+    piece: "Drawer",
+    role: "Detalle o formulario contextual",
+    status: "Activo",
+    tone: "info",
+    notes: "Mantiene el flujo y evita romper la navegación.",
+  },
+  {
+    id: "table",
+    piece: "Table",
+    role: "Lectura operativa",
+    status: "Base",
+    tone: "success",
+    notes: "Semántica real y densidad para trabajo continuo.",
+  },
+  {
+    id: "shell",
+    piece: "Shell",
+    role: "Marco del sistema",
+    status: "Revisión",
+    tone: "warning",
+    notes: "Sidebar, topbar y page header definen la experiencia completa.",
   },
 ];
 
-function ColorSwatch({ label, value }) {
+const previewTableRows = [
+  {
+    id: "ticket-1",
+    piece: "Tickets",
+    role: "Lista + detalle lateral",
+    status: "Base",
+    tone: "info",
+    notes: "La bandeja debe ser rápida de escanear y de actuar.",
+  },
+  {
+    id: "inventory-1",
+    piece: "Inventario",
+    role: "Tabla + filtros + asignación",
+    status: "Objetivo",
+    tone: "neutral",
+    notes: "La trazabilidad pesa más que el decorado.",
+  },
+  {
+    id: "services-1",
+    piece: "Servicios",
+    role: "Lista + vencimientos",
+    status: "Objetivo",
+    tone: "warning",
+    notes: "Los vencimientos deben leerse antes que los adornos.",
+  },
+];
+
+function TokenChip({ label, note, value }) {
   return (
-    <div className="system-ui__swatch">
-      <div className="system-ui__swatch-chip" style={{ background: value }} />
-      <div className="system-ui__swatch-copy">
+    <article className="design-lab__token">
+      <div
+        className="design-lab__token-chip"
+        style={{ "--token-color": value }}
+      />
+      <div className="design-lab__token-copy">
         <strong>{label}</strong>
-        <span>{value}</span>
+        <span>{note}</span>
+        <code>{value}</code>
       </div>
-    </div>
+    </article>
   );
 }
 
-function SpacingSample({ token }) {
+function SpacingRow({ item }) {
   return (
-    <div className="system-ui__spacing-item">
-      <div className="system-ui__spacing-rule">
-        <span style={{ width: token }} />
+    <div className="design-lab__spacing-row">
+      <span className="design-lab__spacing-key">{item.key}</span>
+      <div className="design-lab__spacing-bar">
+        <span style={{ width: item.token }} />
       </div>
-      <code>{token}</code>
+      <code>{item.value}</code>
     </div>
   );
 }
 
 function SystemUiPage() {
-  const [activePrimitiveTab, setActivePrimitiveTab] = useState("inputs");
-  const [isDrawerPreviewOpen, setIsDrawerPreviewOpen] = useState(false);
+  const [activePreviewTab, setActivePreviewTab] = useState("inputs");
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
   return (
-    <div className="page-section">
+    <div className="page-section design-lab">
       <PageHeader
         eyebrow="Vista interna"
-        title="UI del sistema"
-        description="Panel de verificación para revisar tokens, shell y primitives base antes de tocar módulos reales de producto."
+        title="Sistema visual operativo"
+        description="Tablero de extracción para rehacer tokens, shell y primitives antes de entrar a pantallas reales del producto."
         actions={
           <Link className="button button--secondary button--sm" to="/tickets">
-            Volver a tickets
+            Abrir tickets
           </Link>
         }
       />
 
-      <div className="page-grid page-grid--two">
-        <Card
-          title="Capas del sistema visual"
-          description="Esta separación ayuda a que Move, Axis y CoreSys se parezcan sin volverse clones."
-        >
-          <div className="stack">
-            <div className="system-ui__layer">
-              <Badge tone="info">1</Badge>
-              <div>
-                <strong>Base LINHER</strong>
-                <p>Tipografía, espaciado, radios, sombras y color base compartidos.</p>
-              </div>
-            </div>
-            <div className="system-ui__layer">
-              <Badge tone="info">2</Badge>
-              <div>
-                <strong>Tema operativo</strong>
-                <p>Superficies, contraste y densidad propias del dominio IT.</p>
-              </div>
-            </div>
-            <div className="system-ui__layer">
-              <Badge tone="info">3</Badge>
-              <div>
-                <strong>Shell y primitives</strong>
-                <p>Sidebar, topbar, fields, tabs, drawers y tablas reutilizables.</p>
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        <Card
-          title="Acciones de referencia"
-          description="Punto rápido para validar contraste, jerarquía y consistencia de interacción."
-        >
-          <div className="system-ui__button-row">
-            <Button>Primario</Button>
-            <Button variant="secondary">Secundario</Button>
-            <Button variant="ghost">Ghost</Button>
-          </div>
-          <div className="system-ui__button-row">
-            <Badge tone="neutral">Neutral</Badge>
-            <Badge tone="info">Info</Badge>
-            <Badge tone="success">Éxito</Badge>
-            <Badge tone="warning">Advertencia</Badge>
-          </div>
-        </Card>
-      </div>
-
-      <Card
-        title="Paleta activa"
-        description="Los tokens principales visibles en CoreSys ya viven encima de la foundation compartida."
-      >
-        <div className="system-ui__swatch-grid">
-          {colorTokens.map((token) => (
-            <ColorSwatch key={token.key} label={token.key} value={token.value} />
-          ))}
-        </div>
-      </Card>
-
-      <div className="page-grid page-grid--two">
-        <Card
-          title="Escala de spacing"
-          description="Referencia rápida para revisar ritmo vertical y respiración de componentes."
-        >
-          <div className="stack">
-            {spacingTokens.map((token) => (
-              <SpacingSample key={token} token={token} />
-            ))}
-          </div>
-        </Card>
-
-        <Card
-          title="Tipografía y tono"
-          description="La voz visual debe sentirse limpia, operativa y claramente LINHER."
-        >
-          <div className="stack">
-            <div>
-              <p className="eyebrow">Label</p>
-              <h2 className="system-ui__type-display">Panel de control</h2>
-            </div>
-            <p className="page-copy">
-              Esta frase sirve para revisar el cuerpo de texto base, el color
-              secundario y la legibilidad de lectura prolongada.
+      <section className="design-lab__hero">
+        <article className="design-lab__hero-panel">
+          <div className="design-lab__hero-copy">
+            <p className="eyebrow">Nueva base</p>
+            <h2 className="design-lab__headline">
+              Un lenguaje más sobrio, técnico y preciso para trabajo operativo
+              real.
+            </h2>
+            <p className="design-lab__lede">
+              El rediseño no busca hacer una galería bonita. Busca una base
+              reutilizable para dashboards, bandejas, formularios, tablas y detalle
+              lateral que se sienta premium, clara y estable.
             </p>
           </div>
+
+          <div className="design-lab__principles-grid">
+            {designPrinciples.map((item) => (
+              <article key={item.id} className="design-lab__principle">
+                <span className="design-lab__principle-id">{item.id}</span>
+                <div className="design-lab__principle-copy">
+                  <strong>{item.title}</strong>
+                  <p>{item.note}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </article>
+
+        <aside className="design-lab__hero-side">
+          <article className="design-lab__signal">
+            <span className="design-lab__signal-label">Modo base</span>
+            <strong>Light operational</strong>
+            <p>Dark conserva la misma densidad y el mismo orden visual.</p>
+          </article>
+
+          <article className="design-lab__signal">
+            <span className="design-lab__signal-label">Extracción</span>
+            <strong>Tokens + shell + primitives</strong>
+            <p>Todo módulo nuevo debe salir de esta base, no inventarla otra vez.</p>
+          </article>
+
+          <div className="design-lab__chip-strip" aria-label="Modos de vista del sistema">
+            {viewModes.map((mode) => (
+              <span key={mode.title} className="design-lab__chip">
+                {mode.title}
+              </span>
+            ))}
+          </div>
+        </aside>
+      </section>
+
+      <section className="design-lab__board">
+        <article className="design-lab__panel design-lab__panel--wide">
+          <div className="design-lab__panel-header">
+            <div>
+              <p className="eyebrow">Fundación</p>
+              <h3 className="design-lab__panel-title">Shell y lenguaje de producto</h3>
+            </div>
+            <Badge tone="info">Fuente de verdad</Badge>
+          </div>
+
+          <div className="design-lab__shell-grid">
+            {shellZones.map((zone) => (
+              <article key={zone.title} className="design-lab__shell-card">
+                <strong>{zone.title}</strong>
+                <p>{zone.note}</p>
+              </article>
+            ))}
+          </div>
+        </article>
+
+        <article className="design-lab__panel">
+          <div className="design-lab__panel-header">
+            <div>
+              <p className="eyebrow">Uso</p>
+              <h3 className="design-lab__panel-title">Formatos permitidos</h3>
+            </div>
+          </div>
+
+          <div className="design-lab__mode-grid">
+            {viewModes.map((mode) => (
+              <article key={mode.title} className="design-lab__mode-card">
+                <strong>{mode.title}</strong>
+                <p>{mode.note}</p>
+              </article>
+            ))}
+          </div>
+        </article>
+      </section>
+
+      <section className="design-lab__board design-lab__board--tokens">
+        <article className="design-lab__panel design-lab__panel--wide">
+          <div className="design-lab__panel-header">
+            <div>
+              <p className="eyebrow">Color y superficies</p>
+              <h3 className="design-lab__panel-title">Paleta reutilizable del sistema</h3>
+            </div>
+          </div>
+
+          <div className="design-lab__token-grid">
+            {paletteTokens.map((token) => (
+              <TokenChip
+                key={token.key}
+                label={token.key}
+                note={token.note}
+                value={token.value}
+              />
+            ))}
+          </div>
+        </article>
+
+        <article className="design-lab__panel">
+          <div className="design-lab__panel-header">
+            <div>
+              <p className="eyebrow">Tipografía</p>
+              <h3 className="design-lab__panel-title">Escala compacta</h3>
+            </div>
+          </div>
+
+          <div className="design-lab__type-grid">
+            {typeScale.map((item) => (
+              <article key={item.id} className="design-lab__type-card">
+                <span className="design-lab__type-label">{item.label}</span>
+                <code className="design-lab__type-token">{item.token}</code>
+                <div className={item.className}>{item.sample}</div>
+              </article>
+            ))}
+          </div>
+        </article>
+
+        <article className="design-lab__panel">
+          <div className="design-lab__panel-header">
+            <div>
+              <p className="eyebrow">Spacing</p>
+              <h3 className="design-lab__panel-title">Ritmo operativo</h3>
+            </div>
+          </div>
+
+          <div className="design-lab__spacing-list">
+            {spacingScale.map((item) => (
+              <SpacingRow key={item.key} item={item} />
+            ))}
+          </div>
+        </article>
+      </section>
+
+      <section className="design-lab__sandbox">
+        <Card
+          className="design-lab__sandbox-card"
+          title="Sandbox de primitives"
+          description="Toda pieza nueva entra aquí primero para validar tono, densidad, estados y consistencia."
+        >
+          <div className="design-lab__sandbox-body">
+            <Tabs
+              ariaLabel="Vista del sandbox"
+              items={previewTabs}
+              value={activePreviewTab}
+              onChange={setActivePreviewTab}
+              panelIdPrefix="design-lab-preview"
+            />
+
+            {activePreviewTab === "inputs" ? (
+              <div
+                id="design-lab-preview-inputs"
+                role="tabpanel"
+                aria-labelledby="design-lab-preview-tab-inputs"
+                className="design-lab__preview-grid"
+              >
+                <div className="design-lab__preview-column">
+                  <Input
+                    label="Buscar activo"
+                    placeholder="Serie, módulo o solicitante"
+                    leadingIcon={Search}
+                    hint="Búsqueda operacional con contexto rápido."
+                  />
+
+                  <Select
+                    label="Prioridad"
+                    options={[
+                      { value: "alta", label: "Alta" },
+                      { value: "media", label: "Media" },
+                      { value: "baja", label: "Baja" },
+                    ]}
+                    value="alta"
+                    onChange={() => {}}
+                  />
+                </div>
+
+                <div className="design-lab__preview-column">
+                  <Textarea
+                    label="Contexto"
+                    value="Descripción breve, accionable y sin texto sobrante."
+                    onChange={() => {}}
+                  />
+
+                  <div className="design-lab__note">
+                    <strong>Regla base</strong>
+                    <p>
+                      El input no es solo forma. Debe sentirse rápido, claro y
+                      suficientemente compacto para trabajo continuo.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            {activePreviewTab === "navigation" ? (
+              <div
+                id="design-lab-preview-navigation"
+                role="tabpanel"
+                aria-labelledby="design-lab-preview-tab-navigation"
+                className="design-lab__mode-grid"
+              >
+                {viewModes.map((mode) => (
+                  <article key={mode.title} className="design-lab__mode-card">
+                    <strong>{mode.title}</strong>
+                    <p>{mode.note}</p>
+                  </article>
+                ))}
+              </div>
+            ) : null}
+
+            {activePreviewTab === "overlays" ? (
+              <div
+                id="design-lab-preview-overlays"
+                role="tabpanel"
+                aria-labelledby="design-lab-preview-tab-overlays"
+                className="design-lab__preview-column"
+              >
+                <div className="design-lab__note">
+                  <strong>Drawer por defecto</strong>
+                  <p>
+                    Se usa para lectura de detalle, formularios y acciones de
+                    contexto. No debe competir con la navegación principal.
+                  </p>
+                </div>
+
+                <div className="design-lab__actions">
+                  <Button variant="secondary" onClick={() => setIsDrawerOpen(true)}>
+                    Abrir drawer de referencia
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </div>
         </Card>
-      </div>
 
-      <Card
-        title="Primitives nuevas"
-        description="Preview funcional de las piezas que entran en la Fase 0."
-      >
-        <div className="stack">
-          <Tabs
-            ariaLabel="Vista de primitives"
-            items={primitiveTabs}
-            value={activePrimitiveTab}
-            onChange={setActivePrimitiveTab}
-            panelIdPrefix="primitive-preview"
-          />
-
-          {activePrimitiveTab === "inputs" ? (
-            <div
-              id="primitive-preview-inputs"
-              role="tabpanel"
-              aria-labelledby="primitive-preview-tab-inputs"
-              className="system-ui__preview-grid"
-            >
-              <Input
-                label="Buscar activo"
-                placeholder="Serie, usuario o módulo"
-                leadingIcon={Search}
-                hint="Ejemplo de field compacto para búsquedas operativas."
-              />
-              <Input
-                label="Servicio"
-                placeholder="Nombre del servicio"
-                error="Ejemplo de estado con mensaje de error."
-              />
-            </div>
-          ) : null}
-
-          {activePrimitiveTab === "navigation" ? (
-            <div
-              id="primitive-preview-navigation"
-              role="tabpanel"
-              aria-labelledby="primitive-preview-tab-navigation"
-              className="system-ui__preview-stack"
-            >
-              <p className="page-copy">
-                Las tabs deben resolver variaciones internas del mismo dominio antes de
-                abrir nuevos módulos en el sidebar.
-              </p>
-            </div>
-          ) : null}
-
-          {activePrimitiveTab === "overlays" ? (
-            <div
-              id="primitive-preview-overlays"
-              role="tabpanel"
-              aria-labelledby="primitive-preview-tab-overlays"
-              className="system-ui__preview-stack"
-            >
-              <p className="page-copy">
-                El drawer está pensado para detalle, lectura rápida y acciones de contexto.
-              </p>
-              <div className="system-ui__button-row">
-                <Button variant="secondary" onClick={() => setIsDrawerPreviewOpen(true)}>
-                  Abrir preview
-                </Button>
+        <div className="design-lab__stack">
+          <article className="design-lab__panel">
+            <div className="design-lab__panel-header">
+              <div>
+                <p className="eyebrow">Checklist</p>
+                <h3 className="design-lab__panel-title">Extracción del sistema</h3>
               </div>
             </div>
-          ) : null}
+
+            <ul className="design-lab__checklist">
+              {extractionChecklist.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </article>
+
+          <Card
+            className="design-lab__inventory-card"
+            title="Inventario normalizado"
+            description="Resumen de piezas que ya deben obedecer el nuevo lenguaje."
+          >
+            <Table columns={componentColumns} rows={componentRows} />
+          </Card>
         </div>
-      </Card>
+      </section>
 
       <Card
-        title="Inventario de componentes"
-        description="Estado actual de las piezas base disponibles para producto real."
+        className="design-lab__table-card"
+        title="Lectura de producto"
+        description="Este inventario resume cómo debe aterrizarse la base en módulos reales."
       >
-        <Table columns={tableColumns} rows={tableRows} />
+        <Table columns={componentColumns} rows={previewTableRows} />
       </Card>
 
       <Drawer
-        open={isDrawerPreviewOpen}
-        onClose={() => setIsDrawerPreviewOpen(false)}
-        title="Preview de drawer"
-        description="Este overlay sirve como patrón para formularios laterales, detalle de tickets y vistas rápidas de entidad."
+        open={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        title="Drawer de referencia"
+        description="Patrón base para detalle contextual, lectura rápida y formularios laterales."
         actions={
-          <Button variant="secondary" onClick={() => setIsDrawerPreviewOpen(false)}>
-            Cerrar
-          </Button>
+          <>
+            <Button variant="ghost" onClick={() => setIsDrawerOpen(false)}>
+              Cerrar
+            </Button>
+            <Button variant="secondary">Guardar patrón</Button>
+          </>
         }
       >
-        <div className="stack">
-          <Badge tone="info">Accesible</Badge>
-          <p className="page-copy">
-            Debe cerrar con `Escape`, soportar teclado y mantener jerarquía visual
-            compacta para no romper la densidad operativa del sistema.
-          </p>
+        <div className="design-lab__preview-column">
+          <div className="design-lab__note">
+            <strong>Qué debe resolver</strong>
+            <p>
+              Mostrar información relevante, sostener foco y dejar actuar sin
+              sacar al usuario de su vista principal.
+            </p>
+          </div>
+
+          <div className="design-lab__chip-strip">
+            <span className="design-lab__chip">Escape</span>
+            <span className="design-lab__chip">Click fuera</span>
+            <span className="design-lab__chip">role="dialog"</span>
+            <span className="design-lab__chip">Jerarquía compacta</span>
+          </div>
         </div>
       </Drawer>
     </div>
