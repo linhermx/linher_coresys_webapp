@@ -89,6 +89,17 @@ JOIN permissions
     )
   );
 
+INSERT IGNORE INTO users (id, name, email, password, role_id, status)
+VALUES
+  (
+    1,
+    'Administrador LINHER',
+    'programador@linher.com.mx',
+    '$2b$10$Nuw1ogWRbU8DBfOPlSdjReeD6i02n.lP5HwKK.nEpZUO.43NZ2KB2',
+    1,
+    'active'
+  );
+
 INSERT IGNORE INTO access_media_types (name, description)
 VALUES
   ('chip', 'Dispositivo RFID para control de acceso.'),
@@ -99,3 +110,27 @@ VALUES
   ('available', 'Medio listo para nueva asignacion.'),
   ('assigned', 'Medio actualmente entregado a un trabajador.'),
   ('cancelled', 'Medio retirado del flujo operativo.');
+
+INSERT IGNORE INTO ticket_statuses (id, name, description)
+VALUES
+  (1, 'Nuevo', 'Ticket recien registrado y pendiente de atencion.'),
+  (2, 'En curso', 'Ticket ya tomado por Systems.'),
+  (3, 'En espera', 'Ticket pausado por dependencia externa o informacion pendiente.'),
+  (4, 'Resuelto', 'Ticket atendido y pendiente de cierre.'),
+  (5, 'Cerrado', 'Ticket finalizado.'),
+  (6, 'Cancelado', 'Ticket descartado del flujo operativo.');
+
+INSERT IGNORE INTO ticket_priorities (id, name, description)
+VALUES
+  (1, 'Baja', 'Puede resolverse sin urgencia inmediata.'),
+  (2, 'Media', 'Debe atenderse dentro del flujo regular.'),
+  (3, 'Alta', 'Requiere atencion prioritaria.'),
+  (4, 'Critica', 'Afectacion operativa severa o bloqueo total.');
+
+INSERT IGNORE INTO ticket_categories (id, name, description)
+VALUES
+  (1, 'Soporte general', 'Solicitudes operativas generales de Systems.'),
+  (2, 'Equipo de computo', 'Incidencias o solicitudes sobre equipos de computo.'),
+  (3, 'Red e internet', 'Conectividad, red local o salida a internet.'),
+  (4, 'Telefonia', 'Lineas, SIMs, equipos o recargas.'),
+  (5, 'Servicios internos', 'Servicios, pagos, renovaciones o accesos internos.');

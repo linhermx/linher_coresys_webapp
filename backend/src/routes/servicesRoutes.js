@@ -3,10 +3,11 @@ import {
   createServiceRecord,
   listServices,
 } from "../controllers/servicesController.js";
+import { requireAuth, requirePermission } from "../middleware/auth.js";
 
 const servicesRoutes = Router();
 
-servicesRoutes.get("/", listServices);
-servicesRoutes.post("/", createServiceRecord);
+servicesRoutes.get("/", requireAuth, requirePermission("services.view"), listServices);
+servicesRoutes.post("/", requireAuth, requirePermission("services.create"), createServiceRecord);
 
 export default servicesRoutes;

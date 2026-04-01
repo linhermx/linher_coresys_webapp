@@ -1,11 +1,19 @@
 import { Router } from "express";
-import { getSession, login, logout } from "../controllers/authController.js";
+import {
+  getCurrentUser,
+  getSession,
+  login,
+  logout,
+  refresh,
+} from "../controllers/authController.js";
+import { requireAuth } from "../middleware/auth.js";
 
 const authRoutes = Router();
 
-authRoutes.get("/session", getSession);
+authRoutes.get("/session", requireAuth, getSession);
+authRoutes.get("/me", requireAuth, getCurrentUser);
 authRoutes.post("/login", login);
-authRoutes.post("/logout", logout);
+authRoutes.post("/refresh", refresh);
+authRoutes.post("/logout", requireAuth, logout);
 
 export default authRoutes;
-

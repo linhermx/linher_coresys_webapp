@@ -4,12 +4,17 @@ import {
   getUserById,
   listUsers,
 } from "../controllers/usersController.js";
+import { requireAuth, requirePermission } from "../middleware/auth.js";
 
 const usersRoutes = Router();
 
-usersRoutes.get("/", listUsers);
-usersRoutes.get("/meta/rbac", getAccessStructure);
-usersRoutes.get("/:userId", getUserById);
+usersRoutes.get("/", requireAuth, requirePermission("users.view"), listUsers);
+usersRoutes.get(
+  "/meta/rbac",
+  requireAuth,
+  requirePermission("users.view"),
+  getAccessStructure,
+);
+usersRoutes.get("/:userId", requireAuth, requirePermission("users.view"), getUserById);
 
 export default usersRoutes;
-

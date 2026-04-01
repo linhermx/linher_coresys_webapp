@@ -3,10 +3,11 @@ import {
   createAccessRecord,
   listAccess,
 } from "../controllers/accessController.js";
+import { requireAuth, requirePermission } from "../middleware/auth.js";
 
 const accessRoutes = Router();
 
-accessRoutes.get("/", listAccess);
-accessRoutes.post("/", createAccessRecord);
+accessRoutes.get("/", requireAuth, requirePermission("access.view_sensitive"), listAccess);
+accessRoutes.post("/", requireAuth, requirePermission("access.create"), createAccessRecord);
 
 export default accessRoutes;

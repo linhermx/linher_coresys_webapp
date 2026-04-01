@@ -202,6 +202,88 @@ CREATE TABLE IF NOT EXISTS access_media_assignments (
     FOREIGN KEY (assigned_by) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS ticket_statuses (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  name VARCHAR(64) NOT NULL,
+  description VARCHAR(255) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_ticket_statuses_name (name)
+);
+
+CREATE TABLE IF NOT EXISTS ticket_priorities (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  name VARCHAR(64) NOT NULL,
+  description VARCHAR(255) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_ticket_priorities_name (name)
+);
+
+CREATE TABLE IF NOT EXISTS ticket_categories (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  name VARCHAR(64) NOT NULL,
+  description VARCHAR(255) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_ticket_categories_name (name)
+);
+
+CREATE TABLE IF NOT EXISTS tickets (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  folio VARCHAR(24) NULL,
+  title VARCHAR(180) NOT NULL,
+  description TEXT NULL,
+  ticket_status_id BIGINT UNSIGNED NOT NULL,
+  ticket_priority_id BIGINT UNSIGNED NOT NULL,
+  ticket_category_id BIGINT UNSIGNED NULL,
+  requester_name VARCHAR(120) NOT NULL,
+  requester_email VARCHAR(120) NULL,
+  requester_area VARCHAR(120) NULL,
+  assignee_user_id BIGINT UNSIGNED NULL,
+  created_by BIGINT UNSIGNED NULL,
+  due_at DATETIME NULL,
+  resolved_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_tickets_folio (folio),
+  KEY idx_tickets_status_id (ticket_status_id),
+  KEY idx_tickets_priority_id (ticket_priority_id),
+  KEY idx_tickets_category_id (ticket_category_id),
+  KEY idx_tickets_assignee_user_id (assignee_user_id),
+  KEY idx_tickets_created_by (created_by),
+  KEY idx_tickets_due_at (due_at),
+  CONSTRAINT fk_tickets_status
+    FOREIGN KEY (ticket_status_id) REFERENCES ticket_statuses(id),
+  CONSTRAINT fk_tickets_priority
+    FOREIGN KEY (ticket_priority_id) REFERENCES ticket_priorities(id),
+  CONSTRAINT fk_tickets_category
+    FOREIGN KEY (ticket_category_id) REFERENCES ticket_categories(id),
+  CONSTRAINT fk_tickets_assignee
+    FOREIGN KEY (assignee_user_id) REFERENCES users(id),
+  CONSTRAINT fk_tickets_created_by
+    FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS ticket_events (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  ticket_id BIGINT UNSIGNED NOT NULL,
+  actor_user_id BIGINT UNSIGNED NULL,
+  event_type VARCHAR(64) NOT NULL,
+  message VARCHAR(255) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_ticket_events_ticket_id (ticket_id),
+  KEY idx_ticket_events_actor_user_id (actor_user_id),
+  KEY idx_ticket_events_event_type (event_type),
+  CONSTRAINT fk_ticket_events_ticket
+    FOREIGN KEY (ticket_id) REFERENCES tickets(id)
+    ON DELETE CASCADE,
+  CONSTRAINT fk_ticket_events_actor
+    FOREIGN KEY (actor_user_id) REFERENCES users(id)
+);
+
 -- Convenciones para siguientes dominios:
 -- - usar snake_case
 -- - sin prefijos de sistema o branding

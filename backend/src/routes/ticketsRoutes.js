@@ -3,11 +3,11 @@ import {
   createTicket,
   listTickets,
 } from "../controllers/ticketsController.js";
+import { requireAuth, requirePermission } from "../middleware/auth.js";
 
 const ticketsRoutes = Router();
 
-ticketsRoutes.get("/", listTickets);
-ticketsRoutes.post("/", createTicket);
+ticketsRoutes.get("/", requireAuth, requirePermission("tickets.view"), listTickets);
+ticketsRoutes.post("/", requireAuth, requirePermission("tickets.create"), createTicket);
 
 export default ticketsRoutes;
-

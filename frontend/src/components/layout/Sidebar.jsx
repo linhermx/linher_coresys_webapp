@@ -7,6 +7,7 @@ import {
   Boxes,
   KeyRound,
   LayoutDashboard,
+  LogOut,
   Network,
   PanelLeftClose,
   PanelLeftOpen,
@@ -33,10 +34,10 @@ const getUserInitials = (name = "") =>
     .map((chunk) => chunk[0]?.toUpperCase())
     .join("") || "UI";
 
-function Sidebar({ user, isCollapsed, onNavigate, onToggle }) {
+function Sidebar({ user, isCollapsed, onNavigate, onToggle, onLogout }) {
   const CollapseIcon = isCollapsed ? PanelLeftOpen : PanelLeftClose;
   const userName = user?.name ?? "Usuario interno";
-  const userRole = user?.roleLabel ?? "Admin";
+  const userRole = user?.roleLabel ?? user?.role_name ?? "Admin";
   const userInitials = getUserInitials(userName);
 
   return (
@@ -120,11 +121,23 @@ function Sidebar({ user, isCollapsed, onNavigate, onToggle }) {
           </div>
 
           {!isCollapsed ? (
-            <div className="sidebar__user-meta">
-              <span className="sidebar__user-name">{userName}</span>
-              <span className="sidebar__user-role">{userRole}</span>
-            </div>
+            <>
+              <div className="sidebar__user-meta">
+                <span className="sidebar__user-name">{userName}</span>
+                <span className="sidebar__user-role">{userRole}</span>
+              </div>
+            </>
           ) : null}
+
+          <button
+            className="sidebar__logout-button icon-button"
+            type="button"
+            onClick={onLogout}
+            aria-label="Cerrar sesión"
+            title="Cerrar sesión"
+          >
+            <LogOut size={16} strokeWidth={1.9} />
+          </button>
         </div>
       </div>
     </aside>
