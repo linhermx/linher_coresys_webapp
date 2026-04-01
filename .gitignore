@@ -9,3 +9,7 @@ backend/.env
 frontend/.env
 AGENTS.md
 TODO.md
+.agent/
+.agents/
+references/
+.github/copilot-instructions.md
