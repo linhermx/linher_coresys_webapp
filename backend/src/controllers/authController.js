@@ -1,15 +1,19 @@
-import { buildAuditLogDraft, getAuditBlueprint } from "../services/auditService.js";
-import { getAuthBlueprint } from "../services/authService.js";
+import {
+  authenticateUser,
+  getAuthBlueprint,
+  revokeSession,
+  rotateSession,
+} from "../services/authService.js";
 import { createSuccessResponse } from "../utils/apiResponse.js";
 
 export const getSession = (req, res) => {
   res.json(
     createSuccessResponse({
-      message: "Blueprint de sesión disponible.",
+      message: "Sesión actual disponible.",
       data: {
         session: {
-          authenticated: false,
-          user: null,
+          authenticated: true,
+          user: req.authUser,
         },
         auth: getAuthBlueprint(),
       },
@@ -20,40 +24,94 @@ export const getSession = (req, res) => {
   );
 };
 
-export const login = (req, res) => {
-  res.status(202).json(
+export const getCurrentUser = (req, res) => {
+  res.json(
     createSuccessResponse({
-      message: "Endpoint base de login creado sin lógica real.",
+      message: "Usuario actual disponible.",
       data: {
-        identifier: req.body?.username ?? req.body?.email ?? null,
-        auth: getAuthBlueprint(),
-        auditDraft: buildAuditLogDraft({
-          action: "auth.login",
-          entityName: "refresh_tokens",
-          afterSnapshot: { stage: "blueprint", status: "issued" },
-          metadata: { stage: "blueprint" },
-          requestContext: req.context,
-        }),
+        user: req.authUser,
       },
-      meta: getAuditBlueprint(),
+      meta: {
+        requestId: req.context.requestId,
+      },
     }),
   );
 };
 
-export const logout = (req, res) => {
-  res.status(202).json(
-    createSuccessResponse({
-      message: "Endpoint base de logout creado sin invalidación real.",
-      data: {
-        auditDraft: buildAuditLogDraft({
-          action: "auth.logout",
-          entityName: "refresh_tokens",
-          beforeSnapshot: { stage: "blueprint", status: "active" },
-          afterSnapshot: { stage: "blueprint", status: "revoked" },
-          metadata: { stage: "blueprint" },
-          requestContext: req.context,
-        }),
-      },
-    }),
-  );
+export const login = async (req, res, next) => {
+  try {
+    const { email, password, remember_me: rememberMe = false } = req.body ?? {};
+    const session = await authenticateUser({
+      email,
+      password,
+      rememberMe,
+      requestContext: req.context,
+    });
+
+    res.json(
+      createSuccessResponse({
+        message: "Sesión iniciada correctamente.",
+        data: {
+          accessToken: session.accessToken,
+          refreshToken: session.refreshToken,
+          accessExpiresAt: session.access_expires_at,
+          refreshExpiresAt: session.refresh_expires_at,
+          user: session.user,
+        },
+        meta: {
+          requestId: req.context.requestId,
+        },
+      }),
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const refresh = async (req, res, next) => {
+  try {
+    const session = await rotateSession({
+      refreshToken: req.body?.refreshToken,
+      requestContext: req.context,
+    });
+
+    res.json(
+      createSuccessResponse({
+        message: "Sesión actualizada correctamente.",
+        data: {
+          accessToken: session.accessToken,
+          refreshToken: session.refreshToken,
+          accessExpiresAt: session.access_expires_at,
+          refreshExpiresAt: session.refresh_expires_at,
+          user: session.user,
+        },
+        meta: {
+          requestId: req.context.requestId,
+        },
+      }),
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const logout = async (req, res, next) => {
+  try {
+    await revokeSession({
+      refreshToken: req.body?.refreshToken,
+      authUser: req.authUser ?? null,
+      requestContext: req.context,
+    });
+
+    res.json(
+      createSuccessResponse({
+        message: "Sesión cerrada correctamente.",
+        meta: {
+          requestId: req.context.requestId,
+        },
+      }),
+    );
+  } catch (error) {
+    next(error);
+  }
 };

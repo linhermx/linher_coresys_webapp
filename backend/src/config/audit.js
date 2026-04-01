@@ -20,6 +20,7 @@ export const AUDIT_LOG_BLUEPRINT = {
 
 export const AUDIT_ACTIONS = [
   "auth.login",
+  "auth.refresh",
   "auth.logout",
   "users.view",
   "users.update",
