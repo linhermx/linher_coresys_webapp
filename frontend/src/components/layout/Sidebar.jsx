@@ -94,7 +94,7 @@ function Sidebar({ user, isCollapsed, onNavigate, onToggle, onLogout }) {
         </NavLink>
 
         <button
-          className="sidebar__collapse"
+          className="sidebar__collapse icon-button"
           type="button"
           onClick={onToggle}
           aria-label={
