@@ -619,7 +619,7 @@ img {
   letter-spacing: 0.01em;
 }
 
-.sidebar__collapse,
+.sidebar__collapse.icon-button,
 .sidebar__logout-button.icon-button {
   display: inline-grid;
   place-items: center;
@@ -640,12 +640,16 @@ img {
     box-shadow 0.22s ease;
 }
 
-.sidebar__collapse svg,
+.sidebar__collapse.icon-button svg,
 .sidebar__logout-button.icon-button svg {
   transition: transform 0.18s ease;
 }
 
-.sidebar__collapse:hover,
+.sidebar__logout-button.icon-button {
+  margin-left: auto;
+}
+
+.sidebar__collapse.icon-button:hover,
 .sidebar__logout-button.icon-button:hover {
   background: color-mix(in srgb, var(--primary) 8%, var(--panel-bg-strong));
   border-color: color-mix(in srgb, var(--primary) 18%, transparent);
@@ -653,7 +657,7 @@ img {
   box-shadow: var(--shadow-xs);
 }
 
-.sidebar__collapse:active,
+.sidebar__collapse.icon-button:active,
 .sidebar__logout-button.icon-button:active {
   transform: translateY(1px);
   box-shadow: none;
@@ -860,10 +864,6 @@ img {
   white-space: nowrap;
 }
 
-.sidebar__logout-button.icon-button {
-  margin-left: auto;
-}
-
 .sidebar.is-collapsed .sidebar__footer {
   padding-inline: 0.1rem;
 }
@@ -885,29 +885,9 @@ img {
   padding: 0.25rem 0.1rem;
 }
 
-.sidebar.is-collapsed .sidebar__collapse,
-.sidebar.is-collapsed .sidebar__logout-button.icon-button {
-  width: 2.75rem;
-  height: 2.75rem;
-}
-
 .sidebar.is-collapsed .sidebar__link-icon {
   min-width: auto;
   min-height: auto;
-}
-
-.sidebar.is-collapsed .sidebar__collapse,
-.sidebar.is-collapsed .sidebar__logout-button.icon-button {
-  border-radius: 0.95rem;
-  background: color-mix(in srgb, var(--primary) 5%, transparent);
-  border-color: color-mix(in srgb, var(--panel-border) 60%, transparent);
-}
-
-.sidebar.is-collapsed .sidebar__collapse:hover,
-.sidebar.is-collapsed .sidebar__logout-button.icon-button:hover {
-  background: color-mix(in srgb, var(--primary) 10%, var(--panel-bg-muted));
-  border-color: color-mix(in srgb, var(--primary) 18%, transparent);
-  box-shadow: none;
 }
 
 .sidebar.is-collapsed .sidebar__link.is-active {
