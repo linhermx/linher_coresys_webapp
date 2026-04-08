@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 
+import { validateAuthConfig } from './config/auth.js';
 import { env } from './config/env.js';
 import { corsOptions } from './config/cors.js';
 import apiRoutes from './routes/index.js';
@@ -21,6 +22,8 @@ app.use(env.apiPrefix, apiRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
+
+validateAuthConfig();
 
 app.listen(env.port, () => {
   console.log(`Server running on port ${env.port}`);
