@@ -40,6 +40,13 @@ export const env = Object.freeze({
   apiPrefix: process.env.API_PREFIX || '/api/v1',
   timezone,
   frontendOrigin,
+  auth: {
+    accessSecret: String(process.env.JWT_SECRET || '').trim(),
+    refreshSecret: String(process.env.JWT_REFRESH_SECRET || '').trim(),
+    accessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '15m',
+    refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '8h',
+    refreshRememberExpiresIn: process.env.JWT_REFRESH_REMEMBER_EXPIRES_IN || '7d'
+  },
   corsAllowedOrigins: [
     frontendOrigin,
     'http://localhost:5173',
