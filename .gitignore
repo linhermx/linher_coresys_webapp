@@ -31,6 +31,7 @@ temp/
 # Local agent and workspace guidance
 .agent/
 .codex/
+TODO.md
 
 # Local reference material not required in runtime
 frontend/references/
