@@ -160,6 +160,9 @@ Cuando el usuario indique inicializar Git, el flujo oficial será:
 - usar nombres de rama en minúsculas y kebab-case con prefijo por intención: `feature/`, `fix/`, `design/`, `refactor/`, `docs/`, `chore/`
 - una rama debe agrupar un cambio coherente; no mezclar features no relacionadas
 - una vez validado el cambio, la reintegración ocurre hacia `main`
+- integrar ramas a `main` con merge commit usando `git merge --no-ff <branch>` para preservar el grafo visual del flujo de desarrollo
+- no usar squash merge salvo instrucción explícita del usuario
+- no usar fast-forward merge salvo instrucción explícita del usuario
 
 Mientras Git no exista todavía:
 - mantener estas reglas como contrato de trabajo
