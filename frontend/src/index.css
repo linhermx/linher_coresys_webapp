@@ -1,0 +1,72 @@
+@import './design-tokens.css';
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  min-width: 320px;
+  font-family: var(--font-family);
+  background: var(--color-bg);
+  color: var(--color-text-main);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--spacing-xl);
+}
+
+.startup-panel {
+  width: min(100%, 720px);
+  display: grid;
+  gap: var(--spacing-md);
+  padding: var(--spacing-xl);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.startup-panel__title {
+  font-size: 1.75rem;
+  line-height: 1.15;
+}
+
+.startup-panel__description {
+  max-width: 42rem;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    padding: var(--spacing-md);
+  }
+
+  .startup-panel {
+    padding: var(--spacing-lg);
+  }
+}
