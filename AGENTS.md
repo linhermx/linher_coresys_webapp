@@ -146,6 +146,9 @@ Scripts raíz oficiales:
 Reglas:
 - no hacer commit sin petición explícita del usuario
 - si se hace commit, usar prefijos en inglés: `Feat:`, `Fix:`, `Refactor:`, `Style:`, `Docs:`, `Chore:`, `Audit:`
+- los commits deben ser pequeños y trazables; no agrupar demasiados archivos ni cambios de naturaleza distinta si pueden separarse con claridad
+- cada commit debe representar un estado coherente al que se pueda regresar sin arrastrar trabajo no relacionado
+- preferir varios commits por fase cuando mejoren la trazabilidad: por ejemplo scaffold raíz, backend base, frontend base, database base o documentación
 - `AGENTS.md` debe mantenerse versionado porque define el contrato técnico y operativo del proyecto
 
 ### 4.1 Flujo Git (one-dev)
