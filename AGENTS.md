@@ -17,7 +17,7 @@ Prioridades permanentes:
 - escalabilidad real
 
 Este archivo es una guía local de trabajo:
-- debe mantenerse fuera del versionado de Git
+- debe mantenerse versionado en Git como contrato vivo del proyecto
 - no debe contradecir decisiones ya aprobadas por el usuario
 
 ---
@@ -146,7 +146,7 @@ Scripts raíz oficiales:
 Reglas:
 - no hacer commit sin petición explícita del usuario
 - si se hace commit, usar prefijos en inglés: `Feat:`, `Fix:`, `Refactor:`, `Style:`, `Docs:`, `Chore:`, `Audit:`
-- no agregar `AGENTS.md` al versionado
+- `AGENTS.md` debe mantenerse versionado porque define el contrato técnico y operativo del proyecto
 
 ### 4.1 Flujo Git (one-dev)
 
