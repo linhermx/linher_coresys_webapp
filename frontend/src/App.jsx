@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { AppShell } from './components/layout/AppShell.jsx';
 import { ThemeProvider } from './context/ThemeContext.jsx';
 import { ShellCanvasPage } from './pages/ShellCanvasPage.jsx';
+import TicketsPage from './pages/TicketsPage.jsx';
 import { flatNavigation } from './utils/appNavigation.js';
 
 const App = () => (
@@ -14,7 +15,7 @@ const App = () => (
           <Route
             key={item.path}
             path={item.path}
-            element={<ShellCanvasPage item={item} />}
+            element={item.path === '/tickets' ? <TicketsPage /> : <ShellCanvasPage item={item} />}
           />
         ))}
         <Route path="*" element={<Navigate to="/tickets" replace />} />

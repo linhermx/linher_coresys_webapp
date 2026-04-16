@@ -20,12 +20,13 @@ export const Topbar = ({ isSidebarOpen, onOpenSidebar, sidebarId }) => (
 
     <label className="topbar__search topbar__search--mock" htmlFor="global-search">
       <Search className="topbar__search-icon" size={16} aria-hidden="true" />
-      <span className="sr-only">Buscar en el sistema</span>
+      <span className="sr-only">Búsqueda global</span>
       <input
+        className="topbar__search-input"
         id="global-search"
         name="global_search"
         type="search"
-        placeholder="Buscar tickets, activos o servicios"
+        placeholder="Búsqueda global"
         autoComplete="off"
         disabled
         spellCheck="false"

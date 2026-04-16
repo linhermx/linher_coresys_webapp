@@ -8,6 +8,7 @@ import apiRoutes from './routes/index.js';
 import { requestContextMiddleware } from './middleware/requestContextMiddleware.js';
 import { responseMiddleware } from './middleware/responseMiddleware.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
+import { uploadsStaticDir } from './middleware/uploadMiddleware.js';
 
 const app = express();
 
@@ -17,6 +18,7 @@ app.use(requestContextMiddleware);
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '1mb' }));
 app.use(responseMiddleware);
+app.use('/uploads', express.static(uploadsStaticDir));
 
 app.use(env.apiPrefix, apiRoutes);
 

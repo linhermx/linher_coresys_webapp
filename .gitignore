@@ -27,6 +27,7 @@ tmp/
 temp/
 *.tmp
 *.bak
+backend/storage/uploads/
 
 # Local agent and workspace guidance
 .agent/
