@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   ArrowRightLeft,
@@ -19,13 +20,13 @@ import {
   addTicketComment,
   createTicket,
   getTicketsCatalog,
+  isAuthError as isTicketsAuthError,
   listTickets,
   uploadTicketAttachment,
   updateTicket,
   updateTicketStatus
 } from '../services/ticketsService.js';
-
-const currentOperator = 'Programador';
+import { useAuth } from '../hooks/useAuth.js';
 
 const statusMeta = {
   nuevo: { label: 'Nuevo', tone: 'info' },
@@ -1192,11 +1193,15 @@ const TicketDetailContextState = ({
 );
 
 const TicketsPage = () => {
+  const navigate = useNavigate();
+  const { authUser, accessToken, clearSession } = useAuth();
+  const currentOperator = String(authUser?.name || '').trim();
   const [tickets, setTickets] = useState([]);
   const [catalogRequesterUsers, setCatalogRequesterUsers] = useState([]);
   const [catalogAssigneeUsers, setCatalogAssigneeUsers] = useState([]);
   const [isTicketsLoading, setIsTicketsLoading] = useState(true);
   const [ticketsError, setTicketsError] = useState('');
+  const [isAuthRequiredError, setIsAuthRequiredError] = useState(false);
   const [activeView, setActiveView] = useState('list');
   const [scopeFilter, setScopeFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -1345,6 +1350,18 @@ const TicketsPage = () => {
   const loadWorkspaceData = async () => {
     setIsTicketsLoading(true);
     setTicketsError('');
+    setIsAuthRequiredError(false);
+
+    if (!accessToken) {
+      setTickets([]);
+      setCatalogRequesterUsers([]);
+      setCatalogAssigneeUsers([]);
+      setTicketsError('Debes iniciar sesión para continuar.');
+      setIsAuthRequiredError(true);
+      setIsTicketsLoading(false);
+      navigate('/login', { replace: true, state: { from: '/tickets' } });
+      return;
+    }
 
     try {
       const [ticketsData, catalogData] = await Promise.all([
@@ -1359,9 +1376,16 @@ const TicketsPage = () => {
       const assignableUsers = Array.isArray(catalogData?.assignee_users)
         ? catalogData.assignee_users
         : fallbackUsers;
+      const fallbackAssigneeUsers = authUser?.id
+        ? [{
+          id: authUser.id,
+          name: authUser.name,
+          email: authUser.email || ''
+        }]
+        : requesterUsers.filter((user) => isPrimaryOperatorUser(user));
       const assigneeUsers = assignableUsers.length > 0
         ? assignableUsers
-        : requesterUsers.filter((user) => isPrimaryOperatorUser(user));
+        : fallbackAssigneeUsers;
 
       setTickets(Array.isArray(ticketsData) ? ticketsData : []);
       setCatalogRequesterUsers(requesterUsers);
@@ -1369,12 +1393,20 @@ const TicketsPage = () => {
       setTicketForm(buildTicketFormDefaults({
         requesters: requesterUsers
       }));
+      setIsAuthRequiredError(false);
     } catch (error) {
       setTickets([]);
       setCatalogRequesterUsers([]);
       setCatalogAssigneeUsers([]);
       const errorMessage = error?.message || 'No fue posible cargar la bandeja de tickets.';
       setTicketsError(errorMessage);
+      const authError = isTicketsAuthError(error);
+      setIsAuthRequiredError(authError);
+      if (authError) {
+        clearSession();
+        navigate('/login', { replace: true, state: { from: '/tickets' } });
+        return;
+      }
       showToast(errorMessage, 'error', 5000);
     } finally {
       setIsTicketsLoading(false);
@@ -1383,13 +1415,13 @@ const TicketsPage = () => {
 
   useEffect(() => {
     void loadWorkspaceData();
-  }, []);
+  }, [accessToken]);
 
   const ticketsByScopeAndType = useMemo(() => {
     return tickets.filter((ticket) => {
       const matchesScope = (
         scopeFilter === 'all' ||
-        (scopeFilter === 'mine' && ticket.assignee === currentOperator) ||
+        (scopeFilter === 'mine' && currentOperator && ticket.assignee === currentOperator) ||
         (scopeFilter === 'due_soon' && ticket.dueLabel.startsWith('Hoy'))
       );
 
@@ -1969,9 +2001,23 @@ const TicketsPage = () => {
               <div className="tickets-empty-state">
                 <p className="tickets-empty-state__title">No fue posible cargar los tickets</p>
                 <p className="tickets-empty-state__copy">{ticketsError}</p>
-                <button type="button" className="tickets-empty-state__action" onClick={loadWorkspaceData}>
-                  Reintentar carga
-                </button>
+                <div className="tickets-empty-state__actions">
+                  {isAuthRequiredError ? (
+                    <button
+                      type="button"
+                      className="tickets-page__primary-action"
+                      onClick={() => {
+                        clearSession();
+                        navigate('/login', { replace: true, state: { from: '/tickets' } });
+                      }}
+                    >
+                      Iniciar sesión
+                    </button>
+                  ) : null}
+                  <button type="button" className="tickets-empty-state__action" onClick={loadWorkspaceData}>
+                    Reintentar carga
+                  </button>
+                </div>
               </div>
             ) : activeView === 'list' ? (
               hasResults ? (

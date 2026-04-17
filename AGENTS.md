@@ -869,6 +869,25 @@ Reglas de idioma:
 - mantener ortografía correcta
 - todos los archivos editados deben quedar legibles en UTF-8
 
+### 13.1 Regla de comunicación compacta (Caveman)
+
+Cuando el usuario active la skill `caveman`, esta sección tiene prioridad para toda respuesta del agente.
+
+Reglas obligatorias:
+- antes de responder, leer primero esta sección y respetarla en todo el turno
+- usar respuestas cortas, directas y sin relleno
+- no exponer protocolos internos, razonamiento interno ni contexto largo que no se pidió
+- en actualizaciones de trabajo, usar máximo 1 o 2 frases
+- en cierre de tareas, reportar solo:
+  1. resultado
+  2. archivos tocados
+  3. validación breve
+- si el usuario invoca skills de diseño (`adapt`, `clarify`, `normalize`, `polish`, `audit`, `critique`, etc.), entregar versión compacta:
+  - `audit`/`critique`: top 3 hallazgos + acciones sugeridas
+  - skills de ejecución: cambios aplicados + validación en una línea
+- mantener precisión técnica; reducir texto no significa omitir riesgos importantes
+- si existe conflicto entre brevedad y seguridad, priorizar seguridad con el mínimo texto necesario
+
 Una tarea UI se considera cerrada solo si:
 - respeta el esqueleto organizacional de Move
 - respeta BEM en clases nuevas
