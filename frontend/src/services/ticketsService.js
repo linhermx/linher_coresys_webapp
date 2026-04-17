@@ -5,11 +5,6 @@ const API_BASE_URL = normalizeBaseUrl(
   import.meta.env.VITE_API_BASE_URL ||
   'http://localhost:3000/api/v1'
 );
-const ACCESS_TOKEN_ENV = String(
-  import.meta.env.VITE_TICKETS_ACCESS_TOKEN ||
-  import.meta.env.VITE_AUTH_ACCESS_TOKEN ||
-  ''
-).trim();
 const ACCESS_TOKEN_STORAGE_KEYS = [
   'coresys_access_token',
   'access_token',
@@ -94,10 +89,6 @@ const readTokenFromStorage = (storage) => {
 };
 
 const getAccessToken = () => {
-  if (ACCESS_TOKEN_ENV) {
-    return ACCESS_TOKEN_ENV;
-  }
-
   if (typeof window === 'undefined') {
     return null;
   }
@@ -123,6 +114,27 @@ const buildHeaders = ({ isJson = false } = {}) => {
   return headers;
 };
 
+const buildApiError = (response, payload, fallbackMessage) => {
+  const error = new Error(payload?.message || fallbackMessage);
+  error.status = Number(response?.status || 0);
+  error.code = payload?.error?.code || null;
+  error.details = payload?.error?.details || null;
+  error.isAuthError = (
+    error.status === 401 ||
+    error.code === 'AUTH_REQUIRED' ||
+    error.code === 'INVALID_ACCESS_TOKEN'
+  );
+  return error;
+};
+
+export const isAuthError = (error) => (
+  Boolean(
+    error?.isAuthError ||
+    error?.status === 401 ||
+    error?.code === 'AUTH_REQUIRED'
+  )
+);
+
 const requestJson = async (path, { method = 'GET', body } = {}) => {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method,
@@ -133,7 +145,7 @@ const requestJson = async (path, { method = 'GET', body } = {}) => {
   const payload = await response.json().catch(() => null);
 
   if (!response.ok || !payload?.ok) {
-    throw new Error(payload?.message || 'No fue posible completar la solicitud de tickets.');
+    throw buildApiError(response, payload, 'No fue posible completar la solicitud de tickets.');
   }
 
   return payload.data;
@@ -149,7 +161,7 @@ const requestFormData = async (path, { method = 'POST', formData } = {}) => {
   const payload = await response.json().catch(() => null);
 
   if (!response.ok || !payload?.ok) {
-    throw new Error(payload?.message || 'No fue posible completar la solicitud de adjuntos.');
+    throw buildApiError(response, payload, 'No fue posible completar la solicitud de adjuntos.');
   }
 
   return payload.data;
