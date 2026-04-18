@@ -680,9 +680,29 @@ Las interfaces se trabajarán solo cuando el usuario lo indique explícitamente.
 
 Reglas:
 - no adelantarse a construir pantallas durante la definición MAP, modelado de datos o backend
-- cuando toque trabajo de interfaces, usar la skill `frontend-design` como flujo base y luego pulir con los comandos y herramientas necesarios
+- cuando toque trabajo de interfaces, usar flujo Impeccable vigente:
+  - discovery standalone: `shape <feature>`
+  - discovery + implementación en un solo flujo: `impeccable craft`
+  - setup de contexto del proyecto (una sola vez): `impeccable teach`
+  - extracción de componentes/tokens reutilizables: `impeccable extract`
 - todo trabajo de UI debe seguir sujeto a Move como estándar, al sistema de diseño vigente y a las reglas de accesibilidad
-- si la skill `frontend-design` no está disponible en el entorno, se debe informar antes de avanzar con una alternativa
+- si `shape` o `impeccable` no están disponibles en el entorno, se debe informar antes de avanzar con una alternativa
+
+### 7.2 Política de comandos Impeccable (v2.1+)
+
+Regla de compatibilidad:
+- usar comandos vigentes; evitar comandos deprecados
+
+Migraciones oficiales:
+- `arrange` -> `layout`
+- `normalize` -> `polish`
+- `onboard` -> `harden`
+- `extract` -> `impeccable extract`
+
+Aplicación práctica:
+- para pantalla nueva: preferir `shape` o `impeccable craft`
+- para evaluación: `audit` y `critique`
+- para refinamiento: `layout`, `typeset`, `clarify`, `adapt`, `harden`, `polish`
 
 ---
 
@@ -882,7 +902,7 @@ Reglas obligatorias:
   1. resultado
   2. archivos tocados
   3. validación breve
-- si el usuario invoca skills de diseño (`adapt`, `clarify`, `normalize`, `polish`, `audit`, `critique`, etc.), entregar versión compacta:
+- si el usuario invoca skills de diseño (`shape`, `impeccable`, `layout`, `adapt`, `clarify`, `polish`, `harden`, `audit`, `critique`, etc.), entregar versión compacta:
   - `audit`/`critique`: top 3 hallazgos + acciones sugeridas
   - skills de ejecución: cambios aplicados + validación en una línea
 - mantener precisión técnica; reducir texto no significa omitir riesgos importantes
