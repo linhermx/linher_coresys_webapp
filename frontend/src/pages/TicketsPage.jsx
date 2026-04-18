@@ -16,6 +16,9 @@ import {
   X
 } from 'lucide-react';
 
+import { EmptyState } from '../components/primitives/EmptyState.jsx';
+import { FilterChipGroup } from '../components/primitives/FilterChipGroup.jsx';
+import { SegmentedControl } from '../components/primitives/SegmentedControl.jsx';
 import {
   addTicketComment,
   createTicket,
@@ -1841,10 +1844,13 @@ const TicketsPage = () => {
             />
           </label>
 
-          <div
-            className="tickets-page__segmented"
-            role="tablist"
-            aria-label="Vistas de tickets"
+          <SegmentedControl
+            label="Vistas de tickets"
+            options={viewOptions}
+            activeKey={activeView}
+            onActivate={activateView}
+            idPrefix="tickets-view-tab"
+            panelIdByKey={(key) => (key === 'list' ? 'tickets-list-panel' : 'tickets-pipeline-panel')}
             onKeyDown={(event) => {
               if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) {
                 return;
@@ -1877,29 +1883,7 @@ const TicketsPage = () => {
                 document.getElementById(`tickets-view-tab-${nextView.key}`)?.focus();
               });
             }}
-          >
-            {viewOptions.map((option) => {
-              const Icon = option.icon;
-              const isActive = activeView === option.key;
-
-              return (
-                <button
-                  key={option.key}
-                  type="button"
-                  className={`tickets-page__segmented-button${isActive ? ' tickets-page__segmented-button--active' : ''}`}
-                  onClick={() => activateView(option.key)}
-                  id={`tickets-view-tab-${option.key}`}
-                  role="tab"
-                  aria-selected={isActive}
-                  aria-controls={option.key === 'list' ? 'tickets-list-panel' : 'tickets-pipeline-panel'}
-                  tabIndex={isActive ? 0 : -1}
-                >
-                  <Icon size={16} aria-hidden="true" />
-                  <span>{option.label}</span>
-                </button>
-              );
-            })}
-          </div>
+          />
         </div>
 
         <div className="tickets-page__control-row">
@@ -1946,41 +1930,27 @@ const TicketsPage = () => {
           </div>
 
           <div className="tickets-page__filters" aria-label="Filtros de tickets">
-            <div className="tickets-page__chip-group" role="group" aria-label="Alcance de tickets">
-              {scopeOptions.map((option) => (
-                <button
-                  key={option.key}
-                  type="button"
-                  className={`tickets-page__chip${scopeFilter === option.key ? ' tickets-page__chip--active' : ''}`}
-                  onClick={() => {
-                    closeTicketDetail(false);
-                    setScopeFilter(option.key);
-                    resetVolumeViews();
-                  }}
-                  aria-pressed={scopeFilter === option.key}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
+            <FilterChipGroup
+              label="Alcance de tickets"
+              options={scopeOptions}
+              activeKey={scopeFilter}
+              onSelect={(optionKey) => {
+                closeTicketDetail(false);
+                setScopeFilter(optionKey);
+                resetVolumeViews();
+              }}
+            />
 
-            <div className="tickets-page__chip-group" role="group" aria-label="Tipo de ticket">
-              {typeOptions.map((option) => (
-                <button
-                  key={option.key}
-                  type="button"
-                  className={`tickets-page__chip${typeFilter === option.key ? ' tickets-page__chip--active' : ''}`}
-                  onClick={() => {
-                    closeTicketDetail(false);
-                    setTypeFilter(option.key);
-                    resetVolumeViews();
-                  }}
-                  aria-pressed={typeFilter === option.key}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
+            <FilterChipGroup
+              label="Tipo de ticket"
+              options={typeOptions}
+              activeKey={typeFilter}
+              onSelect={(optionKey) => {
+                closeTicketDetail(false);
+                setTypeFilter(optionKey);
+                resetVolumeViews();
+              }}
+            />
           </div>
         </div>
 
@@ -1991,16 +1961,15 @@ const TicketsPage = () => {
         <div className={`tickets-layout tickets-layout--${activeView}${hasDetailPanel ? ' tickets-layout--detail-open' : ''}`}>
           <div className="tickets-layout__main">
             {isTicketsLoading ? (
-              <div className="tickets-empty-state">
-                <p className="tickets-empty-state__title">Cargando tickets</p>
-                <p className="tickets-empty-state__copy">
-                  Estamos obteniendo la bandeja operativa desde base de datos.
-                </p>
-              </div>
+              <EmptyState
+                title="Cargando tickets"
+                copy="Estamos obteniendo la bandeja operativa desde base de datos."
+              />
             ) : ticketsError ? (
-              <div className="tickets-empty-state">
-                <p className="tickets-empty-state__title">No fue posible cargar los tickets</p>
-                <p className="tickets-empty-state__copy">{ticketsError}</p>
+              <EmptyState
+                title="No fue posible cargar los tickets"
+                copy={ticketsError}
+              >
                 <div className="tickets-empty-state__actions">
                   {isAuthRequiredError ? (
                     <button
@@ -2018,7 +1987,7 @@ const TicketsPage = () => {
                     Reintentar carga
                   </button>
                 </div>
-              </div>
+              </EmptyState>
             ) : activeView === 'list' ? (
               hasResults ? (
                 <div
@@ -2172,21 +2141,18 @@ const TicketsPage = () => {
                   </div>
                 </div>
               ) : (
-                <div
-                  className="tickets-empty-state"
+                <EmptyState
+                  title="No encontramos tickets con estos filtros"
+                  copy="Ajusta la búsqueda, el alcance o el tipo para recuperar resultados."
                   id="tickets-list-panel"
                   role="tabpanel"
-                  aria-labelledby="tickets-view-tab-list"
+                  ariaLabelledBy="tickets-view-tab-list"
                   hidden={activeView !== 'list'}
                 >
-                  <p className="tickets-empty-state__title">No encontramos tickets con estos filtros</p>
-                  <p className="tickets-empty-state__copy">
-                    Ajusta la búsqueda, el alcance o el tipo para recuperar resultados.
-                  </p>
                   <button type="button" className="tickets-empty-state__action" onClick={clearFilters}>
                     Limpiar filtros
                   </button>
-                </div>
+                </EmptyState>
               )
             ) : (
               hasResults ? (
@@ -2300,21 +2266,18 @@ const TicketsPage = () => {
                   </div>
                 </div>
               ) : (
-                <div
-                  className="tickets-empty-state"
+                <EmptyState
+                  title="No encontramos tickets en este pipeline"
+                  copy="Ajusta los filtros o cambia a vista lista para revisar más resultados."
                   id="tickets-pipeline-panel"
                   role="tabpanel"
-                  aria-labelledby="tickets-view-tab-pipeline"
+                  ariaLabelledBy="tickets-view-tab-pipeline"
                   hidden={activeView !== 'pipeline'}
                 >
-                  <p className="tickets-empty-state__title">No encontramos tickets en este pipeline</p>
-                  <p className="tickets-empty-state__copy">
-                    Ajusta los filtros o cambia a vista lista para revisar más resultados.
-                  </p>
                   <button type="button" className="tickets-empty-state__action" onClick={clearFilters}>
                     Limpiar filtros
                   </button>
-                </div>
+                </EmptyState>
               )
             )}
           </div>
