@@ -812,7 +812,10 @@ const TicketDetailPanel = ({
   };
 
   return (
-    <aside className="ticket-detail" aria-label={`Detalle de ${ticket.id}`}>
+    <aside
+      className={`ticket-detail ticket-detail--tone-${statusMeta[ticket.status]?.tone || 'neutral'}`}
+      aria-label={`Detalle de ${ticket.id}`}
+    >
       <div className="ticket-detail__header">
         <div className="ticket-detail__header-top">
           <div className="ticket-detail__header-id">
@@ -1895,7 +1898,7 @@ const TicketsPage = () => {
               <div className="tickets-page__summary" role="group" aria-label="Resumen por estado">
                 <button
                   type="button"
-                  className={`tickets-page__summary-card${statusFilter === 'all' ? ' tickets-page__summary-card--active' : ''}`}
+                  className={`tickets-page__summary-card tickets-page__summary-card--all${statusFilter === 'all' ? ' tickets-page__summary-card--active' : ''}`}
                   onClick={() => {
                     closeTicketDetail(false);
                     setStatusFilter('all');
@@ -1912,7 +1915,7 @@ const TicketsPage = () => {
                   <button
                     key={itemSummary.key}
                     type="button"
-                    className={`tickets-page__summary-card${statusFilter === itemSummary.key ? ' tickets-page__summary-card--active' : ''}`}
+                    className={`tickets-page__summary-card tickets-page__summary-card--${itemSummary.tone}${statusFilter === itemSummary.key ? ' tickets-page__summary-card--active' : ''}`}
                     onClick={() => {
                       closeTicketDetail(false);
                       setStatusFilter(itemSummary.key);
@@ -1991,7 +1994,7 @@ const TicketsPage = () => {
             ) : activeView === 'list' ? (
               hasResults ? (
                 <div
-                  className="ticket-list"
+                  className={`ticket-list${statusFilter !== 'all' ? ` ticket-list--${statusMeta[statusFilter].tone}` : ''}`}
                   id="tickets-list-panel"
                   role="tabpanel"
                   aria-labelledby="tickets-view-tab-list"
@@ -2178,7 +2181,7 @@ const TicketsPage = () => {
                       return (
                         <section
                           key={lane.key}
-                          className="ticket-board__lane"
+                          className={`ticket-board__lane ticket-board__lane--${lane.tone}`}
                           aria-labelledby={`lane-${lane.key}`}
                         >
                           <header className="ticket-board__lane-header">
@@ -2247,7 +2250,7 @@ const TicketsPage = () => {
                             {remainingCount > 0 ? (
                               <button
                                 type="button"
-                                className="ticket-board__more"
+                                className={`ticket-board__more ticket-board__more--${lane.tone}`}
                                 aria-label={`Ver más tickets en ${lane.label}. Quedan ${remainingCount} por mostrar`}
                                 onClick={() => {
                                   setPipelineVisibleCounts((currentCounts) => ({
