@@ -1,3 +1,6 @@
+SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
+SET collation_connection = 'utf8mb4_unicode_ci';
+
 INSERT IGNORE INTO users (name, email, password_hash, status)
 VALUES
   ('Iván Mendoza', 'ivan.mendoza@linher.com.mx', NULL, 'active'),
@@ -85,13 +88,13 @@ SET @programador_user_id := (
 );
 
 SET @ticket_seed_period := DATE_FORMAT(NOW(), '%m%y');
-SET @ticket_seed_base := (
+SET @ticket_seed_base := CAST((
   SELECT COALESCE(MAX(CAST(SUBSTRING(folio, 8, 3) AS UNSIGNED)), 0)
   FROM tickets
   WHERE deleted_at IS NULL
     AND folio REGEXP '^TK-[0-9]{7}$'
     AND SUBSTRING(folio, 4, 4) = @ticket_seed_period
-);
+) AS UNSIGNED);
 
 DELETE FROM tickets
 WHERE summary LIKE 'Caso operativo generado para pruebas de paginaci% y pipeline.%';
@@ -153,7 +156,7 @@ base_data AS (
   FROM seq
 )
 SELECT
-  CONCAT('TK-', @ticket_seed_period, LPAD(@ticket_seed_base + b.n, 3, '0')) AS folio,
+  CONCAT('TK-', @ticket_seed_period, LPAD(CAST(@ticket_seed_base + b.n AS UNSIGNED), 3, '0')) AS folio,
   CONCAT(
     CASE b.category_key
       WHEN 'hardware_equipo' THEN 'Revisión de equipo en área'
