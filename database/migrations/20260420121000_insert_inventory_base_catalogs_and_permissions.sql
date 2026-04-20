@@ -1,4 +1,4 @@
-﻿INSERT INTO asset_tracking_modes (
+INSERT INTO asset_tracking_modes (
   mode_key,
   name,
   description

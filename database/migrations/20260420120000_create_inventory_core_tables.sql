@@ -1,4 +1,4 @@
-﻿CREATE TABLE IF NOT EXISTS asset_tracking_modes (
+CREATE TABLE IF NOT EXISTS asset_tracking_modes (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   mode_key VARCHAR(40) NOT NULL,
   name VARCHAR(80) NOT NULL,
