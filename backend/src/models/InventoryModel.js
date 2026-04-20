@@ -16,6 +16,96 @@ export class InventoryModel extends BaseModel {
     super('assets', db);
   }
 
+  async getTrackingModeByKey(modeKey) {
+    const [rows] = await this.db.query(`
+      SELECT
+        id,
+        mode_key,
+        name
+      FROM asset_tracking_modes
+      WHERE mode_key = ?
+        AND deleted_at IS NULL
+      LIMIT 1
+    `, [modeKey]);
+
+    return rows[0] || null;
+  }
+
+  async getAssetTypeById(assetTypeId) {
+    const [rows] = await this.db.query(`
+      SELECT
+        at.id,
+        at.asset_category_id,
+        at.type_key,
+        at.name,
+        at.default_tracking_mode_id,
+        atm.mode_key AS default_tracking_mode_key
+      FROM asset_types at
+      LEFT JOIN asset_tracking_modes atm
+        ON atm.id = at.default_tracking_mode_id
+      WHERE at.id = ?
+        AND at.deleted_at IS NULL
+      LIMIT 1
+    `, [assetTypeId]);
+
+    return rows[0] || null;
+  }
+
+  async getMovementTypeByKey(movementTypeKey) {
+    const [rows] = await this.db.query(`
+      SELECT
+        id,
+        movement_type_key,
+        name,
+        direction
+      FROM inventory_movement_types
+      WHERE movement_type_key = ?
+        AND deleted_at IS NULL
+      LIMIT 1
+    `, [movementTypeKey]);
+
+    return rows[0] || null;
+  }
+
+  async getLocationById(locationId) {
+    const [rows] = await this.db.query(`
+      SELECT
+        id,
+        location_type_id,
+        name,
+        code,
+        parent_location_id,
+        status
+      FROM locations
+      WHERE id = ?
+        AND deleted_at IS NULL
+      LIMIT 1
+    `, [locationId]);
+
+    return rows[0] || null;
+  }
+
+  async getAssetUnitById(assetUnitId) {
+    const [rows] = await this.db.query(`
+      SELECT
+        au.id,
+        au.asset_id,
+        au.asset_tag,
+        au.serial_number,
+        au.asset_unit_status_id,
+        aus.status_key,
+        au.current_location_id
+      FROM asset_units au
+      INNER JOIN asset_unit_statuses aus
+        ON aus.id = au.asset_unit_status_id
+      WHERE au.id = ?
+        AND au.deleted_at IS NULL
+      LIMIT 1
+    `, [assetUnitId]);
+
+    return rows[0] || null;
+  }
+
   async listTrackingModes() {
     const [rows] = await this.db.query(`
       SELECT
