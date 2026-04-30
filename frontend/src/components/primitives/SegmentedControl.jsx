@@ -1,5 +1,7 @@
 import PropTypes from 'prop-types';
 
+import { focusElementById, getNextHorizontalTabIndex } from '../../utils/tabNavigation.js';
+
 export const SegmentedControl = ({
   label,
   options,
@@ -11,31 +13,58 @@ export const SegmentedControl = ({
   activeButtonClassName = 'tickets-page__segmented-button--active',
   idPrefix = 'segmented-tab',
   panelIdByKey = () => undefined
-}) => (
-  <div className={className} role="tablist" aria-label={label} onKeyDown={onKeyDown}>
-    {options.map((option) => {
-      const Icon = option.icon;
-      const isActive = activeKey === option.key;
+}) => {
+  const handleKeyDown = (event) => {
+    const currentIndex = options.findIndex((option) => option.key === activeKey);
+    const nextIndex = getNextHorizontalTabIndex(options.length, currentIndex, event.key);
 
-      return (
-        <button
-          key={option.key}
-          type="button"
-          className={`${buttonClassName}${isActive ? ` ${activeButtonClassName}` : ''}`}
-          onClick={() => onActivate(option.key)}
-          id={`${idPrefix}-${option.key}`}
-          role="tab"
-          aria-selected={isActive}
-          aria-controls={panelIdByKey(option.key)}
-          tabIndex={isActive ? 0 : -1}
-        >
-          {Icon ? <Icon size={16} aria-hidden="true" /> : null}
-          <span>{option.label}</span>
-        </button>
-      );
-    })}
-  </div>
-);
+    if (nextIndex === null) {
+      onKeyDown?.(event);
+      return;
+    }
+
+    event.preventDefault();
+    const nextOption = options[nextIndex];
+    if (!nextOption) {
+      return;
+    }
+
+    onActivate(nextOption.key);
+    focusElementById(`${idPrefix}-${nextOption.key}`);
+  };
+
+  return (
+    <div
+      className={className}
+      role="tablist"
+      aria-label={label}
+      aria-orientation="horizontal"
+      onKeyDown={handleKeyDown}
+    >
+      {options.map((option) => {
+        const Icon = option.icon;
+        const isActive = activeKey === option.key;
+
+        return (
+          <button
+            key={option.key}
+            type="button"
+            className={`${buttonClassName}${isActive ? ` ${activeButtonClassName}` : ''}`}
+            onClick={() => onActivate(option.key)}
+            id={`${idPrefix}-${option.key}`}
+            role="tab"
+            aria-selected={isActive}
+            aria-controls={panelIdByKey(option.key)}
+            tabIndex={isActive ? 0 : -1}
+          >
+            {Icon ? <Icon size={16} aria-hidden="true" /> : null}
+            <span>{option.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+};
 
 SegmentedControl.propTypes = {
   label: PropTypes.string.isRequired,
