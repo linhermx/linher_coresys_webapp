@@ -1,15 +1,5 @@
-const normalizeBaseUrl = (value) => String(value || '').trim().replace(/\/+$/, '');
-
-const API_BASE_URL = normalizeBaseUrl(
-  import.meta.env.VITE_API_URL ||
-  import.meta.env.VITE_API_BASE_URL ||
-  'http://localhost:3000/api/v1'
-);
-const ACCESS_TOKEN_STORAGE_KEYS = [
-  'coresys_access_token',
-  'access_token',
-  'auth_access_token'
-];
+import { API_BASE_URL, isApiAuthError, requestJson } from './apiClient.js';
+import { getAccessToken } from './sessionStore.js';
 
 const API_ORIGIN = (() => {
   try {
@@ -62,131 +52,62 @@ const normalizeTicketCollection = (data) => (
     : data
 );
 
-const readTokenFromStorage = (storage) => {
-  if (!storage) {
-    return null;
-  }
-
-  for (const storageKey of ACCESS_TOKEN_STORAGE_KEYS) {
-    const candidate = String(storage.getItem(storageKey) || '').trim();
-    if (candidate) {
-      return candidate;
-    }
-  }
-
-  const sessionSnapshot = String(storage.getItem('coresys_auth_session') || '').trim();
-  if (!sessionSnapshot) {
-    return null;
-  }
-
-  try {
-    const parsedSession = JSON.parse(sessionSnapshot);
-    const candidate = String(parsedSession?.access_token || '').trim();
-    return candidate || null;
-  } catch {
-    return null;
-  }
-};
-
-const getAccessToken = () => {
-  if (typeof window === 'undefined') {
-    return null;
-  }
-
-  return (
-    readTokenFromStorage(window.localStorage)
-    || readTokenFromStorage(window.sessionStorage)
-    || null
-  );
-};
-
-const buildHeaders = ({ isJson = false } = {}) => {
-  const headers = {
-    Accept: 'application/json',
-    ...(isJson ? { 'Content-Type': 'application/json' } : {})
-  };
-
-  const accessToken = getAccessToken();
-  if (accessToken) {
-    headers.Authorization = `Bearer ${accessToken}`;
-  }
-
-  return headers;
-};
-
-const buildApiError = (response, payload, fallbackMessage) => {
-  const error = new Error(payload?.message || fallbackMessage);
-  error.status = Number(response?.status || 0);
-  error.code = payload?.error?.code || null;
-  error.details = payload?.error?.details || null;
-  error.isAuthError = (
-    error.status === 401 ||
-    error.code === 'AUTH_REQUIRED' ||
-    error.code === 'INVALID_ACCESS_TOKEN'
-  );
-  return error;
-};
-
 export const isAuthError = (error) => (
   Boolean(
-    error?.isAuthError ||
-    error?.status === 401 ||
+    isApiAuthError(error) ||
     error?.code === 'AUTH_REQUIRED'
   )
 );
 
-const requestJson = async (path, { method = 'GET', body } = {}) => {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method,
-    headers: buildHeaders({ isJson: Boolean(body) }),
-    ...(body ? { body: JSON.stringify(body) } : {})
-  });
-
-  const payload = await response.json().catch(() => null);
-
-  if (!response.ok || !payload?.ok) {
-    throw buildApiError(response, payload, 'No fue posible completar la solicitud de tickets.');
-  }
-
-  return payload.data;
-};
+const requestTicketJson = (path, options = {}) => requestJson(path, {
+  fallbackMessage: 'No fue posible completar la solicitud de tickets.',
+  ...options
+});
 
 const requestFormData = async (path, { method = 'POST', formData } = {}) => {
+  const accessToken = getAccessToken();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method,
-    headers: buildHeaders(),
+    headers: {
+      Accept: 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
+    },
     body: formData
   });
 
   const payload = await response.json().catch(() => null);
-
   if (!response.ok || !payload?.ok) {
-    throw buildApiError(response, payload, 'No fue posible completar la solicitud de adjuntos.');
+    const error = new Error(payload?.message || 'No fue posible completar la solicitud de adjuntos.');
+    error.status = Number(response?.status || 0);
+    error.code = payload?.error?.code || null;
+    error.details = payload?.error?.details || null;
+    error.isAuthError = isAuthError(error);
+    throw error;
   }
 
   return payload.data;
 };
 
-export const listTickets = async () => normalizeTicketCollection(await requestJson('/tickets'));
+export const listTickets = async () => normalizeTicketCollection(await requestTicketJson('/tickets'));
 
-export const getTicketsCatalog = () => requestJson('/tickets/catalog');
+export const getTicketsCatalog = () => requestTicketJson('/tickets/catalog');
 
-export const createTicket = (payload) => requestJson('/tickets', {
+export const createTicket = (payload) => requestTicketJson('/tickets', {
   method: 'POST',
   body: payload
 }).then(normalizeTicketPayload);
 
-export const updateTicket = (ticketId, payload) => requestJson(`/tickets/${ticketId}`, {
+export const updateTicket = (ticketId, payload) => requestTicketJson(`/tickets/${ticketId}`, {
   method: 'PATCH',
   body: payload
 }).then(normalizeTicketPayload);
 
-export const updateTicketStatus = (ticketId, status) => requestJson(`/tickets/${ticketId}/status`, {
+export const updateTicketStatus = (ticketId, status) => requestTicketJson(`/tickets/${ticketId}/status`, {
   method: 'PATCH',
   body: { status }
 }).then(normalizeTicketPayload);
 
-export const addTicketComment = (ticketId, commentText) => requestJson(`/tickets/${ticketId}/comments`, {
+export const addTicketComment = (ticketId, commentText) => requestTicketJson(`/tickets/${ticketId}/comments`, {
   method: 'POST',
   body: { comment_text: commentText }
 }).then(normalizeTicketPayload);
