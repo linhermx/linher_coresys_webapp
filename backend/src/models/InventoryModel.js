@@ -31,20 +31,57 @@ export class InventoryModel extends BaseModel {
     return rows[0] || null;
   }
 
+  async getTrackingModeById(trackingModeId) {
+    const [rows] = await this.db.query(`
+      SELECT
+        id,
+        mode_key,
+        name
+      FROM asset_tracking_modes
+      WHERE id = ?
+        AND deleted_at IS NULL
+      LIMIT 1
+    `, [trackingModeId]);
+
+    return rows[0] || null;
+  }
+
+  async getAssetCategoryById(assetCategoryId) {
+    const [rows] = await this.db.query(`
+      SELECT
+        id,
+        category_key,
+        name
+      FROM asset_categories
+      WHERE id = ?
+        AND deleted_at IS NULL
+      LIMIT 1
+    `, [assetCategoryId]);
+
+    return rows[0] || null;
+  }
+
   async getAssetTypeById(assetTypeId) {
     const [rows] = await this.db.query(`
       SELECT
         at.id,
         at.asset_category_id,
+        ac.category_key,
+        ac.name AS category_name,
         at.type_key,
+        at.code_prefix,
         at.name,
         at.default_tracking_mode_id,
-        atm.mode_key AS default_tracking_mode_key
+        atm.mode_key AS default_tracking_mode_key,
+        atm.name AS default_tracking_mode_name,
+        at.description,
+        at.deleted_at
       FROM asset_types at
+      INNER JOIN asset_categories ac
+        ON ac.id = at.asset_category_id
       LEFT JOIN asset_tracking_modes atm
         ON atm.id = at.default_tracking_mode_id
       WHERE at.id = ?
-        AND at.deleted_at IS NULL
       LIMIT 1
     `, [assetTypeId]);
 
@@ -81,6 +118,23 @@ export class InventoryModel extends BaseModel {
         AND deleted_at IS NULL
       LIMIT 1
     `, [locationId]);
+
+    return rows[0] || null;
+  }
+
+  async getLocationTypeById(locationTypeId) {
+    const [rows] = await this.db.query(`
+      SELECT
+        id,
+        type_key,
+        code_prefix,
+        name,
+        description,
+        deleted_at
+      FROM location_types
+      WHERE id = ?
+      LIMIT 1
+    `, [locationTypeId]);
 
     return rows[0] || null;
   }
@@ -136,7 +190,11 @@ export class InventoryModel extends BaseModel {
     return rows;
   }
 
-  async listAssetTypes() {
+  async listAssetTypes({ includeInactive = false } = {}) {
+    const whereClause = includeInactive
+      ? 'WHERE ac.deleted_at IS NULL'
+      : 'WHERE at.deleted_at IS NULL AND ac.deleted_at IS NULL';
+
     const [rows] = await this.db.query(`
       SELECT
         at.id,
@@ -144,17 +202,19 @@ export class InventoryModel extends BaseModel {
         ac.category_key,
         ac.name AS category_name,
         at.type_key,
+        at.code_prefix,
         at.name,
         at.default_tracking_mode_id,
         atm.mode_key AS default_tracking_mode_key,
-        at.description
+        atm.name AS default_tracking_mode_name,
+        at.description,
+        at.deleted_at
       FROM asset_types at
       INNER JOIN asset_categories ac
         ON ac.id = at.asset_category_id
       LEFT JOIN asset_tracking_modes atm
         ON atm.id = at.default_tracking_mode_id
-      WHERE at.deleted_at IS NULL
-        AND ac.deleted_at IS NULL
+      ${whereClause}
       ORDER BY ac.name ASC, at.name ASC
     `);
 
@@ -177,15 +237,21 @@ export class InventoryModel extends BaseModel {
     return rows;
   }
 
-  async listLocationTypes() {
+  async listLocationTypes({ includeInactive = false } = {}) {
+    const whereClause = includeInactive
+      ? ''
+      : 'WHERE deleted_at IS NULL';
+
     const [rows] = await this.db.query(`
       SELECT
         id,
         type_key,
+        code_prefix,
         name,
-        description
+        description,
+        deleted_at
       FROM location_types
-      WHERE deleted_at IS NULL
+      ${whereClause}
       ORDER BY name ASC
     `);
 
@@ -242,6 +308,439 @@ export class InventoryModel extends BaseModel {
     `, params);
 
     return rows;
+  }
+
+  async createAssetType(db, {
+    assetCategoryId,
+    typeKey,
+    codePrefix,
+    name,
+    defaultTrackingModeId,
+    description = null
+  }) {
+    const [result] = await db.query(`
+      INSERT INTO asset_types (
+        asset_category_id,
+        type_key,
+        code_prefix,
+        name,
+        default_tracking_mode_id,
+        description
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `, [
+      assetCategoryId,
+      typeKey,
+      codePrefix,
+      name,
+      defaultTrackingModeId,
+      description
+    ]);
+
+    return Number(result.insertId);
+  }
+
+  async updateAssetType(db, {
+    assetTypeId,
+    assetCategoryId,
+    codePrefix,
+    name,
+    defaultTrackingModeId,
+    description = null
+  }) {
+    const [result] = await db.query(`
+      UPDATE asset_types
+      SET
+        asset_category_id = ?,
+        code_prefix = ?,
+        name = ?,
+        default_tracking_mode_id = ?,
+        description = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `, [
+      assetCategoryId,
+      codePrefix,
+      name,
+      defaultTrackingModeId,
+      description,
+      assetTypeId
+    ]);
+
+    return result.affectedRows > 0;
+  }
+
+  async deactivateAssetType(db, assetTypeId) {
+    const [result] = await db.query(`
+      UPDATE asset_types
+      SET
+        deleted_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+        AND deleted_at IS NULL
+    `, [assetTypeId]);
+
+    return result.affectedRows > 0;
+  }
+
+  async reactivateAssetType(db, assetTypeId) {
+    const [result] = await db.query(`
+      UPDATE asset_types
+      SET
+        deleted_at = NULL,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+        AND deleted_at IS NOT NULL
+    `, [assetTypeId]);
+
+    return result.affectedRows > 0;
+  }
+
+  async createLocationType(db, {
+    typeKey,
+    codePrefix,
+    name,
+    description = null
+  }) {
+    const [result] = await db.query(`
+      INSERT INTO location_types (
+        type_key,
+        code_prefix,
+        name,
+        description
+      ) VALUES (?, ?, ?, ?)
+    `, [
+      typeKey,
+      codePrefix,
+      name,
+      description
+    ]);
+
+    return Number(result.insertId);
+  }
+
+  async updateLocationType(db, {
+    locationTypeId,
+    codePrefix,
+    name,
+    description = null
+  }) {
+    const [result] = await db.query(`
+      UPDATE location_types
+      SET
+        code_prefix = ?,
+        name = ?,
+        description = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `, [
+      codePrefix,
+      name,
+      description,
+      locationTypeId
+    ]);
+
+    return result.affectedRows > 0;
+  }
+
+  async deactivateLocationType(db, locationTypeId) {
+    const [result] = await db.query(`
+      UPDATE location_types
+      SET
+        deleted_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+        AND deleted_at IS NULL
+    `, [locationTypeId]);
+
+    return result.affectedRows > 0;
+  }
+
+  async reactivateLocationType(db, locationTypeId) {
+    const [result] = await db.query(`
+      UPDATE location_types
+      SET
+        deleted_at = NULL,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+        AND deleted_at IS NOT NULL
+    `, [locationTypeId]);
+
+    return result.affectedRows > 0;
+  }
+
+  async findAssetTypeByName(name, { excludeId = null } = {}) {
+    const params = [name];
+    let query = `
+      SELECT id
+      FROM asset_types
+      WHERE LOWER(name) = LOWER(?)
+    `;
+
+    if (excludeId) {
+      query += ' AND id <> ?';
+      params.push(excludeId);
+    }
+
+    query += ' LIMIT 1';
+    const [rows] = await this.db.query(query, params);
+    return rows[0] || null;
+  }
+
+  async findAssetTypeByCodePrefix(codePrefix, { excludeId = null } = {}) {
+    const params = [codePrefix];
+    let query = `
+      SELECT id
+      FROM asset_types
+      WHERE code_prefix = ?
+    `;
+
+    if (excludeId) {
+      query += ' AND id <> ?';
+      params.push(excludeId);
+    }
+
+    query += ' LIMIT 1';
+    const [rows] = await this.db.query(query, params);
+    return rows[0] || null;
+  }
+
+  async findAssetTypeByTypeKey(typeKey, { excludeId = null } = {}) {
+    const params = [typeKey];
+    let query = `
+      SELECT id
+      FROM asset_types
+      WHERE type_key = ?
+    `;
+
+    if (excludeId) {
+      query += ' AND id <> ?';
+      params.push(excludeId);
+    }
+
+    query += ' LIMIT 1';
+    const [rows] = await this.db.query(query, params);
+    return rows[0] || null;
+  }
+
+  async findLocationTypeByName(name, { excludeId = null } = {}) {
+    const params = [name];
+    let query = `
+      SELECT id
+      FROM location_types
+      WHERE LOWER(name) = LOWER(?)
+    `;
+
+    if (excludeId) {
+      query += ' AND id <> ?';
+      params.push(excludeId);
+    }
+
+    query += ' LIMIT 1';
+    const [rows] = await this.db.query(query, params);
+    return rows[0] || null;
+  }
+
+  async findLocationTypeByCodePrefix(codePrefix, { excludeId = null } = {}) {
+    const params = [codePrefix];
+    let query = `
+      SELECT id
+      FROM location_types
+      WHERE code_prefix = ?
+    `;
+
+    if (excludeId) {
+      query += ' AND id <> ?';
+      params.push(excludeId);
+    }
+
+    query += ' LIMIT 1';
+    const [rows] = await this.db.query(query, params);
+    return rows[0] || null;
+  }
+
+  async findLocationTypeByTypeKey(typeKey, { excludeId = null } = {}) {
+    const params = [typeKey];
+    let query = `
+      SELECT id
+      FROM location_types
+      WHERE type_key = ?
+    `;
+
+    if (excludeId) {
+      query += ' AND id <> ?';
+      params.push(excludeId);
+    }
+
+    query += ' LIMIT 1';
+    const [rows] = await this.db.query(query, params);
+    return rows[0] || null;
+  }
+
+  async getAssetUnitStatusByKey(statusKey) {
+    const [rows] = await this.db.query(`
+      SELECT
+        id,
+        status_key,
+        name,
+        is_terminal
+      FROM asset_unit_statuses
+      WHERE status_key = ?
+        AND deleted_at IS NULL
+      LIMIT 1
+    `, [statusKey]);
+
+    return rows[0] || null;
+  }
+
+  async getActiveAssetAssignmentByUnitId(assetUnitId) {
+    const [rows] = await this.db.query(`
+      SELECT
+        aa.id,
+        aa.asset_unit_id,
+        aa.collaborator_id,
+        aa.assigned_by_user_id,
+        aa.received_by_user_id,
+        aa.assigned_at,
+        aa.expected_return_at,
+        aa.returned_at,
+        aa.delivery_condition,
+        aa.return_condition,
+        aa.status,
+        aa.notes
+      FROM asset_assignments aa
+      WHERE aa.asset_unit_id = ?
+        AND aa.deleted_at IS NULL
+        AND aa.status = 'active'
+        AND aa.returned_at IS NULL
+      ORDER BY aa.assigned_at DESC, aa.id DESC
+      LIMIT 1
+    `, [assetUnitId]);
+
+    return rows[0] || null;
+  }
+
+  async getAssetAssignmentById(assignmentId) {
+    const [rows] = await this.db.query(`
+      SELECT
+        aa.id,
+        aa.asset_unit_id,
+        aa.collaborator_id,
+        aa.assigned_by_user_id,
+        aa.received_by_user_id,
+        aa.assigned_at,
+        aa.expected_return_at,
+        aa.returned_at,
+        aa.delivery_condition,
+        aa.return_condition,
+        aa.status,
+        aa.notes
+      FROM asset_assignments aa
+      WHERE aa.id = ?
+        AND aa.deleted_at IS NULL
+      LIMIT 1
+    `, [assignmentId]);
+
+    return rows[0] || null;
+  }
+
+  async closeAssetAssignment(db, {
+    assignmentId,
+    returnedAt,
+    returnCondition = null,
+    notes = null
+  }) {
+    const [result] = await db.query(`
+      UPDATE asset_assignments
+      SET
+        returned_at = COALESCE(?, CURRENT_TIMESTAMP),
+        return_condition = ?,
+        notes = ?,
+        status = 'closed',
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+        AND deleted_at IS NULL
+        AND status = 'active'
+    `, [
+      returnedAt,
+      returnCondition,
+      notes,
+      assignmentId
+    ]);
+
+    return result.affectedRows > 0;
+  }
+
+  async updateAssetUnit(db, {
+    assetUnitId,
+    assetUnitStatusId,
+    currentLocationId = null,
+    notes
+  }) {
+    const nextNotes = notes === undefined ? undefined : notes;
+    const [result] = await db.query(`
+      UPDATE asset_units
+      SET
+        asset_unit_status_id = ?,
+        current_location_id = ?,
+        notes = COALESCE(?, notes),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+        AND deleted_at IS NULL
+    `, [
+      assetUnitStatusId,
+      currentLocationId,
+      nextNotes,
+      assetUnitId
+    ]);
+
+    return result.affectedRows > 0;
+  }
+
+  async getLastAssetInternalCodeByType(assetTypeId) {
+    const [rows] = await this.db.query(`
+      SELECT internal_code
+      FROM assets
+      WHERE asset_type_id = ?
+        AND internal_code IS NOT NULL
+        AND deleted_at IS NULL
+      ORDER BY id DESC
+      LIMIT 1
+    `, [assetTypeId]);
+
+    return rows[0]?.internal_code || null;
+  }
+
+  async getLastAssetTagByAsset(assetId) {
+    const [rows] = await this.db.query(`
+      SELECT asset_tag
+      FROM asset_units
+      WHERE asset_id = ?
+        AND asset_tag IS NOT NULL
+        AND deleted_at IS NULL
+      ORDER BY id DESC
+      LIMIT 1
+    `, [assetId]);
+
+    return rows[0]?.asset_tag || null;
+  }
+
+  async findLocationByCode(code, { excludeLocationId = null } = {}) {
+    const params = [code];
+    let query = `
+      SELECT id
+      FROM locations
+      WHERE code = ?
+        AND deleted_at IS NULL
+    `;
+
+    if (excludeLocationId) {
+      query += ' AND id <> ?';
+      params.push(excludeLocationId);
+    }
+
+    query += ' LIMIT 1';
+    const [rows] = await this.db.query(query, params);
+    return rows[0] || null;
   }
 
   async listAssets({ trackingModeKey = '', status = '', search = '' } = {}) {
@@ -460,6 +959,52 @@ export class InventoryModel extends BaseModel {
     return rows;
   }
 
+  async listInventoryMovements({ limit = 80 } = {}) {
+    const safeLimit = normalizeLimit(limit, 80, 300);
+    const [rows] = await this.db.query(`
+      SELECT
+        im.id,
+        im.movement_type_id,
+        imt.movement_type_key,
+        imt.name AS movement_type_name,
+        imt.direction,
+        im.operator_id,
+        u.name AS operator_name,
+        im.reason,
+        im.reference_type,
+        im.reference_id,
+        im.happened_at,
+        im.created_at,
+        iml.id AS movement_line_id,
+        iml.asset_id,
+        a.asset_name,
+        iml.asset_unit_id,
+        iml.quantity,
+        iml.from_location_id,
+        from_loc.name AS from_location_name,
+        iml.to_location_id,
+        to_loc.name AS to_location_name,
+        iml.notes AS movement_line_notes
+      FROM inventory_movement_lines iml
+      INNER JOIN inventory_movements im
+        ON im.id = iml.inventory_movement_id
+      INNER JOIN inventory_movement_types imt
+        ON imt.id = im.movement_type_id
+      INNER JOIN assets a
+        ON a.id = iml.asset_id
+      LEFT JOIN users u
+        ON u.id = im.operator_id
+      LEFT JOIN locations from_loc
+        ON from_loc.id = iml.from_location_id
+      LEFT JOIN locations to_loc
+        ON to_loc.id = iml.to_location_id
+      ORDER BY im.happened_at DESC, im.id DESC, iml.id DESC
+      LIMIT ?
+    `, [safeLimit]);
+
+    return rows;
+  }
+
   async listAssetAssignmentsByUnit(assetUnitId) {
     const [rows] = await this.db.query(`
       SELECT
@@ -563,6 +1108,40 @@ export class InventoryModel extends BaseModel {
     ]);
 
     return Number(result.insertId);
+  }
+
+  async updateLocation(db, {
+    locationId,
+    locationTypeId,
+    name,
+    code = null,
+    parentLocationId = null,
+    description = null,
+    status = 'active'
+  }) {
+    const [result] = await db.query(`
+      UPDATE locations
+      SET
+        location_type_id = ?,
+        name = ?,
+        code = ?,
+        parent_location_id = ?,
+        description = ?,
+        status = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+        AND deleted_at IS NULL
+    `, [
+      locationTypeId,
+      name,
+      code,
+      parentLocationId,
+      description,
+      status,
+      locationId
+    ]);
+
+    return result.affectedRows > 0;
   }
 
   async createAssetUnit(db, {
