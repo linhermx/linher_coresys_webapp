@@ -8,7 +8,6 @@ import {
   Check,
   MapPin,
   PackagePlus,
-  Printer,
   Plus,
   ShieldCheck,
   Settings2,
@@ -30,6 +29,7 @@ import { ToolbarSearchField } from '../components/primitives/ToolbarSearchField.
 import { WorkspaceSplitLayout } from '../components/primitives/WorkspaceSplitLayout.jsx';
 import { ModalDialog } from '../components/primitives/ModalDialog.jsx';
 import { useAuth } from '../hooks/useAuth.js';
+import { getNextHorizontalTabIndex } from '../utils/tabNavigation.js';
 import {
   closeAssetAssignment,
   createAssetAssignment,
@@ -42,8 +42,6 @@ import {
   createLocation,
   getAssetDetail,
   getInventoryCatalog,
-  getAssetUnitLabel,
-  getLocationLabel,
   isAuthError as isInventoryAuthError,
   listAssetAssignments,
   listAssets,
@@ -196,6 +194,71 @@ const normalizeLocationKeyPreview = (value, fallback) => {
   return normalized || fallback;
 };
 
+const normalizePotentialMojibake = (value) => {
+  const text = String(value ?? '');
+  if (!text || !/[ÃÂâ€]/.test(text)) {
+    return text;
+  }
+
+  try {
+    return new TextDecoder('utf-8').decode(Uint8Array.from(text, (character) => character.charCodeAt(0)));
+  } catch (error) {
+    return text;
+  }
+};
+
+const buildLocationTree = (items) => {
+  const byId = new Map();
+  const childrenByParent = new Map();
+
+  items.forEach((item) => {
+    byId.set(Number(item.id), item);
+  });
+
+  items.forEach((item) => {
+    const parentId = item.parent_location_id ? Number(item.parent_location_id) : 0;
+    const normalizedParentId = parentId && byId.has(parentId) ? parentId : 0;
+    const siblings = childrenByParent.get(normalizedParentId) || [];
+    siblings.push(item);
+    childrenByParent.set(normalizedParentId, siblings);
+  });
+
+  const sortItems = (left, right) => String(left.name || '').localeCompare(String(right.name || ''), 'es-MX');
+  childrenByParent.forEach((siblings) => siblings.sort(sortItems));
+
+  const buildBranch = (parentId = 0, depth = 0) => (
+    (childrenByParent.get(parentId) || []).map((item) => ({
+      ...item,
+      depth,
+      children: buildBranch(Number(item.id), depth + 1)
+    }))
+  );
+
+  return buildBranch();
+};
+
+const flattenLocationTree = (nodes, expandedIds, forceExpandAll = false) => {
+  const rows = [];
+
+  const visit = (node) => {
+    const hasChildren = node.children.length > 0;
+    const isExpanded = forceExpandAll || expandedIds.has(Number(node.id));
+
+    rows.push({
+      ...node,
+      hasChildren,
+      isExpanded
+    });
+
+    if (hasChildren && isExpanded) {
+      node.children.forEach(visit);
+    }
+  };
+
+  nodes.forEach(visit);
+  return rows;
+};
+
 const formatDateTime = (value) => {
   if (!value) {
     return 'Sin fecha';
@@ -273,6 +336,11 @@ const toStatusTone = (status) => {
   return 'neutral';
 };
 
+const toUnitStatusTone = (status) => {
+  if (status === 'available') return 'success';
+  return 'neutral';
+};
+
 const InventoryPage = () => {
   const navigate = useNavigate();
   const { authUser, clearSession } = useAuth();
@@ -306,8 +374,7 @@ const InventoryPage = () => {
   const [assetsItemsPerPage, setAssetsItemsPerPage] = useState(DEFAULT_INVENTORY_PAGE_SIZE);
   const [movementsCurrentPage, setMovementsCurrentPage] = useState(1);
   const [movementsItemsPerPage, setMovementsItemsPerPage] = useState(DEFAULT_INVENTORY_PAGE_SIZE);
-  const [locationsCurrentPage, setLocationsCurrentPage] = useState(1);
-  const [locationsItemsPerPage, setLocationsItemsPerPage] = useState(DEFAULT_INVENTORY_PAGE_SIZE);
+  const [expandedLocationIds, setExpandedLocationIds] = useState(() => new Set());
 
   const [isCreateAssetOpen, setIsCreateAssetOpen] = useState(false);
   const [isCreateMovementOpen, setIsCreateMovementOpen] = useState(false);
@@ -316,6 +383,7 @@ const InventoryPage = () => {
   const [isCreateUnitsOpen, setIsCreateUnitsOpen] = useState(false);
   const [isCreateAssignmentOpen, setIsCreateAssignmentOpen] = useState(false);
   const [isCloseAssignmentOpen, setIsCloseAssignmentOpen] = useState(false);
+  const [movementReasonFocusIndex, setMovementReasonFocusIndex] = useState(0);
   const [editingLocationId, setEditingLocationId] = useState(null);
   const [editingAssetTypeId, setEditingAssetTypeId] = useState(null);
   const [editingLocationTypeId, setEditingLocationTypeId] = useState(null);
@@ -326,11 +394,16 @@ const InventoryPage = () => {
   const createMovementTriggerRef = useRef(null);
   const createLocationTriggerRef = useRef(null);
   const catalogTriggerRef = useRef(null);
+  const catalogAssetTabRef = useRef(null);
+  const catalogLocationTabRef = useRef(null);
   const createAssetTypeSelectRef = useRef(null);
   const createMovementTypeSelectRef = useRef(null);
   const createLocationTypeSelectRef = useRef(null);
+  const movementReasonTemplateFirstRef = useRef(null);
+  const movementReasonChipRefs = useRef([]);
   const catalogAssetTypeNameRef = useRef(null);
   const catalogLocationTypeNameRef = useRef(null);
+  const pendingCatalogEditorFocusRef = useRef(null);
   const createUnitLocationSelectRef = useRef(null);
   const createAssignmentUnitSelectRef = useRef(null);
   const closeAssignmentUnitSelectRef = useRef(null);
@@ -656,10 +729,21 @@ const InventoryPage = () => {
     });
   }, [movements, movementsSearchTerm]);
 
+  const normalizedLocations = useMemo(() => (
+    locations.map((location) => ({
+      ...location,
+      name: normalizePotentialMojibake(location.name),
+      code: normalizePotentialMojibake(location.code),
+      location_type_name: normalizePotentialMojibake(location.location_type_name),
+      parent_location_name: normalizePotentialMojibake(location.parent_location_name),
+      description: normalizePotentialMojibake(location.description)
+    }))
+  ), [locations]);
+
   const filteredLocations = useMemo(() => {
     const normalizedSearch = locationsSearchTerm.trim().toLowerCase();
 
-    return locations.filter((location) => {
+    return normalizedLocations.filter((location) => {
       if (!normalizedSearch) {
         return true;
       }
@@ -678,7 +762,48 @@ const InventoryPage = () => {
 
       return searchable.includes(normalizedSearch);
     });
-  }, [locations, locationsSearchTerm]);
+  }, [normalizedLocations, locationsSearchTerm]);
+
+  const locationById = useMemo(() => {
+    const map = new Map();
+    normalizedLocations.forEach((location) => {
+      map.set(Number(location.id), location);
+    });
+    return map;
+  }, [normalizedLocations]);
+
+  const locationVisibleIds = useMemo(() => {
+    if (!locationsSearchTerm.trim()) {
+      return new Set(normalizedLocations.map((location) => Number(location.id)));
+    }
+
+    const visibleIds = new Set();
+
+    filteredLocations.forEach((location) => {
+      let current = location;
+      while (current) {
+        const currentId = Number(current.id);
+        if (visibleIds.has(currentId)) {
+          break;
+        }
+        visibleIds.add(currentId);
+        current = current.parent_location_id
+          ? (locationById.get(Number(current.parent_location_id)) || null)
+          : null;
+      }
+    });
+
+    return visibleIds;
+  }, [filteredLocations, locationById, locationsSearchTerm, normalizedLocations]);
+
+  const visibleLocationTree = useMemo(() => {
+    const visibleLocations = normalizedLocations.filter((location) => locationVisibleIds.has(Number(location.id)));
+    return buildLocationTree(visibleLocations);
+  }, [locationVisibleIds, normalizedLocations]);
+
+  const visibleLocationRows = useMemo(() => (
+    flattenLocationTree(visibleLocationTree, expandedLocationIds, Boolean(locationsSearchTerm.trim()))
+  ), [expandedLocationIds, locationsSearchTerm, visibleLocationTree]);
 
   const canManageCatalog = useMemo(() => (
     Array.isArray(authUser?.role_keys)
@@ -695,11 +820,6 @@ const InventoryPage = () => {
   const movementsPageStart = (resolvedMovementsPage - 1) * movementsItemsPerPage;
   const paginatedMovements = filteredMovements.slice(movementsPageStart, movementsPageStart + movementsItemsPerPage);
 
-  const locationsTotalPages = Math.max(1, Math.ceil(filteredLocations.length / locationsItemsPerPage));
-  const resolvedLocationsPage = Math.min(locationsCurrentPage, locationsTotalPages);
-  const locationsPageStart = (resolvedLocationsPage - 1) * locationsItemsPerPage;
-  const paginatedLocations = filteredLocations.slice(locationsPageStart, locationsPageStart + locationsItemsPerPage);
-
   useEffect(() => {
     setAssetsCurrentPage(1);
   }, [searchTerm, assetStatusFilter, trackingModeFilter]);
@@ -709,8 +829,19 @@ const InventoryPage = () => {
   }, [movementsItemsPerPage, movementsSearchTerm]);
 
   useEffect(() => {
-    setLocationsCurrentPage(1);
-  }, [locationsItemsPerPage, locationsSearchTerm]);
+    const validIds = new Set(normalizedLocations.map((location) => Number(location.id)));
+    const rootIds = normalizedLocations
+      .filter((location) => !location.parent_location_id)
+      .map((location) => Number(location.id));
+
+    setExpandedLocationIds((current) => {
+      const next = new Set([...current].filter((locationId) => validIds.has(locationId)));
+      if (next.size === 0) {
+        rootIds.forEach((locationId) => next.add(locationId));
+      }
+      return next;
+    });
+  }, [normalizedLocations]);
 
   const resetActionFeedback = () => {
     setActionError('');
@@ -800,6 +931,39 @@ const InventoryPage = () => {
     setIsCatalogModalOpen(true);
   };
 
+  const scheduleCatalogEditorFocus = (tabKey, selectContent = false) => {
+    pendingCatalogEditorFocusRef.current = { tabKey, selectContent };
+  };
+
+  useEffect(() => {
+    if (!isCatalogModalOpen || !pendingCatalogEditorFocusRef.current) {
+      return undefined;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      const nextFocus = pendingCatalogEditorFocusRef.current;
+      const target = nextFocus?.tabKey === 'location_types'
+        ? catalogLocationTypeNameRef.current
+        : catalogAssetTypeNameRef.current;
+
+      target?.focus?.();
+      if (nextFocus?.selectContent && typeof target?.select === 'function') {
+        target.select();
+      }
+      pendingCatalogEditorFocusRef.current = null;
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeCatalogTab, editingAssetTypeId, editingLocationTypeId, isCatalogModalOpen]);
+
+  useEffect(() => {
+    if (!isCreateMovementOpen) {
+      return;
+    }
+
+    setMovementReasonFocusIndex(0);
+  }, [isCreateMovementOpen]);
+
   const handleCatalogTabChange = (nextTabKey) => {
     setActiveCatalogTab(nextTabKey);
 
@@ -828,11 +992,13 @@ const InventoryPage = () => {
       description: assetType.description || ''
     });
     setIsCatalogModalOpen(true);
+    scheduleCatalogEditorFocus('asset_types', true);
   };
 
   const resetAssetTypeEditor = () => {
     setEditingAssetTypeId(null);
     setAssetTypeForm(defaultCatalogAssetTypeForm);
+    scheduleCatalogEditorFocus('asset_types');
   };
 
   const openLocationTypeEdit = (locationType) => {
@@ -844,11 +1010,13 @@ const InventoryPage = () => {
       description: locationType.description || ''
     });
     setIsCatalogModalOpen(true);
+    scheduleCatalogEditorFocus('location_types', true);
   };
 
   const resetLocationTypeEditor = () => {
     setEditingLocationTypeId(null);
     setLocationTypeForm(defaultCatalogLocationTypeForm);
+    scheduleCatalogEditorFocus('location_types');
   };
 
   const openCreateUnitsModal = () => {
@@ -864,6 +1032,24 @@ const InventoryPage = () => {
       }
     ]);
     setIsCreateUnitsOpen(true);
+  };
+
+  const focusMovementReasonChip = (nextIndex) => {
+    const clampedIndex = Math.max(0, Math.min(nextIndex, quickReasonTemplates.length - 1));
+    setMovementReasonFocusIndex(clampedIndex);
+    window.requestAnimationFrame(() => {
+      movementReasonChipRefs.current[clampedIndex]?.focus?.();
+    });
+  };
+
+  const handleMovementReasonKeyDown = (event, index) => {
+    const nextIndex = getNextHorizontalTabIndex(quickReasonTemplates.length, index, event.key);
+    if (nextIndex === null) {
+      return;
+    }
+
+    event.preventDefault();
+    focusMovementReasonChip(nextIndex);
   };
 
   const openCreateAssignmentModal = () => {
@@ -1098,54 +1284,6 @@ const InventoryPage = () => {
     }
   };
 
-  const handlePrintLabel = async ({ unitId = null, locationId = null }) => {
-    resetActionFeedback();
-    try {
-      const label = unitId
-        ? await getAssetUnitLabel(unitId)
-        : await getLocationLabel(locationId);
-
-      const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=420,height=320');
-      if (!printWindow) {
-        throw new Error('El navegador bloqueó la ventana de impresión.');
-      }
-
-      const labelHtml = `
-        <!doctype html>
-        <html lang="es">
-          <head>
-            <meta charset="utf-8" />
-            <title>Etiqueta ${label.code}</title>
-            <style>
-              body { font-family: Arial, sans-serif; margin: 0; padding: 16px; }
-              .label { border: 1px solid #1c1830; border-radius: 12px; padding: 16px; width: 100%; box-sizing: border-box; }
-              .label__code { font-size: 24px; font-weight: 700; margin: 0 0 8px; }
-              .label__title { font-size: 18px; font-weight: 600; margin: 0 0 6px; }
-              .label__subtitle { font-size: 13px; color: #5f5a72; margin: 0 0 16px; }
-              .label__qr { display: inline-block; padding: 10px 12px; border: 1px dashed #8f5fd7; border-radius: 10px; font-size: 12px; letter-spacing: 0.08em; }
-            </style>
-          </head>
-          <body>
-            <main class="label">
-              <p class="label__code">${label.code}</p>
-              <p class="label__title">${label.title}</p>
-              <p class="label__subtitle">${label.subtitle || ''}</p>
-              <div class="label__qr">${label.qr_value}</div>
-            </main>
-            <script>window.onload = () => { window.print(); };</script>
-          </body>
-        </html>
-      `;
-
-      printWindow.document.open();
-      printWindow.document.write(labelHtml);
-      printWindow.document.close();
-    } catch (error) {
-      if (applyAuthFallback(error)) return;
-      setActionError(normalizeErrorMessage(error, 'No fue posible generar la etiqueta.'));
-    }
-  };
-
   const handleCreateAsset = async (event) => {
     event.preventDefault();
     resetActionFeedback();
@@ -1309,6 +1447,18 @@ const InventoryPage = () => {
     setIsCreateLocationOpen(true);
   };
 
+  const toggleLocationBranch = (locationId) => {
+    setExpandedLocationIds((current) => {
+      const next = new Set(current);
+      if (next.has(locationId)) {
+        next.delete(locationId);
+      } else {
+        next.add(locationId);
+      }
+      return next;
+    });
+  };
+
   const selectedAsset = useMemo(() => (
     filteredAssets.find((asset) => Number(asset.id) === Number(selectedAssetId)) || null
   ), [filteredAssets, selectedAssetId]);
@@ -1318,6 +1468,10 @@ const InventoryPage = () => {
     : null;
   const selectedAssetUnits = assetDetail?.units || [];
   const selectedAssetMovements = assetDetail?.movements || [];
+  const availableAssetUnitsCount = selectedAssetUnits.filter((unit) => unit.status_key === 'available').length;
+  const assignedAssetUnitsCount = selectedAssetUnits.filter((unit) => unit.status_key === 'assigned').length;
+  const hasAvailableAssetUnits = selectedAssetUnits.some((unit) => unit.status_key === 'available');
+  const hasAssignedAssetUnits = selectedAssetUnits.some((unit) => unit.status_key === 'assigned');
   const recentSummaryMovements = selectedAssetMovements.slice(0, 3);
   const latestMovement = selectedAssetMovements[0] || null;
   const isAssetDetailPanelOpen = activeView === 'assets' && Boolean(detailAsset);
@@ -1328,6 +1482,19 @@ const InventoryPage = () => {
         : `${detailAsset.units_count} unidades`
     )
     : '0 unidades';
+  const detailNextActionHint = detailAsset?.tracking_mode_key === 'unit'
+    ? (
+      selectedAssetUnits.length === 0
+        ? 'Todavía no hay unidades registradas. Usa la pestaña Unidades para dar de alta la primera.'
+        : hasAvailableAssetUnits && hasAssignedAssetUnits
+          ? 'Hay unidades disponibles y resguardos activos. Gestiona ambas acciones desde Unidades.'
+          : hasAvailableAssetUnits
+            ? 'Hay unidades disponibles para asignar. Continúa en la pestaña Unidades.'
+            : hasAssignedAssetUnits
+              ? 'Hay resguardos activos que puedes cerrar desde la pestaña Unidades.'
+              : 'Gestiona las unidades registradas desde la pestaña Unidades.'
+    )
+    : null;
 
   const availableAssetUnitFieldOptions = useMemo(() => ([
     { key: '', label: 'Seleccionar' },
@@ -1703,22 +1870,6 @@ const InventoryPage = () => {
                       />
 
                       <div className="inventory-asset-detail__content">
-                        {detailAsset.tracking_mode_key === 'unit' ? (
-                          <div className="inventory-asset-detail__actions">
-                            <button type="button" className="tickets-page__ghost-action" onClick={openCreateUnitsModal}>
-                              <Tags size={14} aria-hidden="true" />
-                              <span>Registrar unidades</span>
-                            </button>
-                            <button type="button" className="tickets-page__ghost-action" onClick={openCreateAssignmentModal} disabled={selectedAssetUnits.length === 0}>
-                              <ShieldCheck size={14} aria-hidden="true" />
-                              <span>Asignar</span>
-                            </button>
-                            <button type="button" className="tickets-page__ghost-action" onClick={() => void openCloseAssignmentModal()} disabled={selectedAssetUnits.length === 0}>
-                              <Undo2 size={14} aria-hidden="true" />
-                              <span>Cerrar resguardo</span>
-                            </button>
-                          </div>
-                        ) : null}
                         <section
                           id="inventory-detail-panel-summary"
                           role="tabpanel"
@@ -1728,26 +1879,7 @@ const InventoryPage = () => {
                         >
                           <section className="ticket-detail__section inventory-asset-detail__section">
                             <div className="ticket-detail__section-headline inventory-asset-detail__section-headline">
-                              <h3 className="ticket-detail__section-title inventory-asset-detail__section-title">Ficha del activo</h3>
-                            </div>
-                            {detailAsset.description ? (
-                              <p className="inventory-asset-detail__section-copy">{detailAsset.description}</p>
-                            ) : null}
-                            <dl className="ticket-detail__meta-grid inventory-asset-detail__meta-grid">
-                              <div className="ticket-detail__meta-item">
-                                <dt className="ticket-detail__meta-label">Código interno</dt>
-                                <dd>{detailAsset.internal_code || 'Sin código'}</dd>
-                              </div>
-                              <div className="ticket-detail__meta-item">
-                                <dt className="ticket-detail__meta-label">Marca / Modelo</dt>
-                                <dd>{[detailAsset.brand, detailAsset.model].filter(Boolean).join(' / ') || 'No registrado'}</dd>
-                              </div>
-                            </dl>
-                          </section>
-
-                          <section className="ticket-detail__section inventory-asset-detail__section">
-                            <div className="ticket-detail__section-headline inventory-asset-detail__section-headline">
-                              <h3 className="ticket-detail__section-title inventory-asset-detail__section-title">Estado actual</h3>
+                              <h3 className="ticket-detail__section-title inventory-asset-detail__section-title">Estado operativo</h3>
                             </div>
                             <dl className="ticket-detail__meta-grid inventory-asset-detail__meta-grid inventory-asset-detail__meta-grid--status">
                               <div className="ticket-detail__meta-item">
@@ -1773,9 +1905,9 @@ const InventoryPage = () => {
                                 <dd>{formatDateTime(detailAsset.updated_at)}</dd>
                               </div>
                             </dl>
-                            {latestMovement ? (
-                              <p className="inventory-asset-detail__status-caption">
-                                Último movimiento: <strong>{toMovementWhatHappened(latestMovement)}</strong>
+                            {detailNextActionHint ? (
+                              <p className="inventory-asset-detail__status-caption inventory-asset-detail__status-caption--action">
+                                {detailNextActionHint}
                               </p>
                             ) : null}
                           </section>
@@ -1805,6 +1937,25 @@ const InventoryPage = () => {
                               </ul>
                             </section>
                           ) : null}
+
+                          <section className="ticket-detail__section inventory-asset-detail__section">
+                            <div className="ticket-detail__section-headline inventory-asset-detail__section-headline">
+                              <h3 className="ticket-detail__section-title inventory-asset-detail__section-title">Ficha técnica</h3>
+                            </div>
+                            {detailAsset.description ? (
+                              <p className="inventory-asset-detail__section-copy">{detailAsset.description}</p>
+                            ) : null}
+                            <dl className="ticket-detail__meta-grid inventory-asset-detail__meta-grid">
+                              <div className="ticket-detail__meta-item">
+                                <dt className="ticket-detail__meta-label">Código interno</dt>
+                                <dd>{detailAsset.internal_code || 'Sin código'}</dd>
+                              </div>
+                              <div className="ticket-detail__meta-item">
+                                <dt className="ticket-detail__meta-label">Marca / Modelo</dt>
+                                <dd>{[detailAsset.brand, detailAsset.model].filter(Boolean).join(' / ') || 'No registrado'}</dd>
+                              </div>
+                            </dl>
+                          </section>
                         </section>
 
                         <section
@@ -1814,27 +1965,65 @@ const InventoryPage = () => {
                           hidden={activeDetailTab !== 'units'}
                           className="ticket-detail__tab-panel inventory-asset-detail__panel"
                         >
+                          {detailAsset.tracking_mode_key === 'unit' ? (
+                            <div className="inventory-asset-detail__panel-header inventory-asset-detail__panel-header--units">
+                              <div className="inventory-asset-detail__panel-copy">
+                                <h3 className="inventory-asset-detail__panel-title">Unidades registradas</h3>
+                                <p className="inventory-asset-detail__panel-caption">
+                                  {selectedAssetUnits.length === 0
+                                    ? 'Registra la primera unidad serializada para empezar a asignarla y darle seguimiento.'
+                                    : 'Administra asignaciones y cierres de resguardo por unidad desde esta sección.'}
+                                </p>
+                              </div>
+                              <div className="inventory-asset-detail__toolbar">
+                                <button type="button" className="tickets-page__primary-action" onClick={openCreateUnitsModal}>
+                                  <Tags size={14} aria-hidden="true" />
+                                  <span>Registrar unidades</span>
+                                </button>
+                                {selectedAssetUnits.length > 0 && (hasAvailableAssetUnits || hasAssignedAssetUnits) ? (
+                                  <div className="inventory-asset-detail__toolbar-secondary">
+                                    {hasAvailableAssetUnits ? (
+                                      <button
+                                        type="button"
+                                        className="inventory-asset-detail__toolbar-action"
+                                        onClick={openCreateAssignmentModal}
+                                      >
+                                        <ShieldCheck size={14} aria-hidden="true" />
+                                        <span>Asignar ({availableAssetUnitsCount})</span>
+                                      </button>
+                                    ) : null}
+                                    {hasAssignedAssetUnits ? (
+                                      <button
+                                        type="button"
+                                        className="inventory-asset-detail__toolbar-action"
+                                        onClick={() => void openCloseAssignmentModal()}
+                                      >
+                                        <Undo2 size={14} aria-hidden="true" />
+                                        <span>Cerrar resguardo ({assignedAssetUnitsCount})</span>
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                          ) : null}
                           {selectedAssetUnits.length === 0 ? (
                             <p className="inventory-asset-detail__empty-copy">Este activo no tiene unidades serializadas registradas.</p>
                           ) : (
                             <ul className="inventory-asset-detail__list">
                               {selectedAssetUnits.map((unit) => (
                                 <li key={unit.id} className="inventory-asset-detail__unit-item">
-                                  <div className="inventory-asset-detail__unit-main">
-                                    <strong>{unit.asset_tag}</strong>
-                                    <span>{unit.status_name}</span>
-                                    <span>{unit.current_location_name || 'Sin ubicación'}</span>
-                                    {unit.serial_number ? <span>Serie: {unit.serial_number}</span> : null}
+                                  <div className="inventory-asset-detail__unit-head">
+                                    <div className="inventory-asset-detail__unit-identity">
+                                      <strong>{unit.asset_tag}</strong>
+                                      <span className={`inventory-status-chip inventory-status-chip--${toUnitStatusTone(unit.status_key)}`}>
+                                        {unit.status_name}
+                                      </span>
+                                    </div>
                                   </div>
-                                  <div className="inventory-asset-detail__unit-actions">
-                                    <button
-                                      type="button"
-                                      className="tickets-page__ghost-action"
-                                      onClick={() => void handlePrintLabel({ unitId: unit.id })}
-                                    >
-                                      <Printer size={14} aria-hidden="true" />
-                                      <span>Etiqueta</span>
-                                    </button>
+                                  <div className="inventory-asset-detail__unit-meta">
+                                    <span className="inventory-asset-detail__unit-location">{unit.current_location_name || 'Sin ubicación'}</span>
+                                    {unit.serial_number ? <span className="inventory-asset-detail__unit-serial">Serie: {unit.serial_number}</span> : null}
                                   </div>
                                 </li>
                               ))}
@@ -1987,54 +2176,86 @@ const InventoryPage = () => {
                   ariaLabel="Listado de ubicaciones"
                   scrollClassName="data-table__scroll inventory-locations-workspace"
                   content={(
-                    <div className="inventory-locations-grid">
-                      {paginatedLocations.map((location) => (
-                        <article key={location.id} className="inventory-location-card">
-                          <header>
-                            <div>
-                              <h3>{location.name}</h3>
-                              <p>{location.location_type_name}</p>
-                            </div>
-                            <div className="inventory-location-card__actions">
-                              <button type="button" className="tickets-page__ghost-action" onClick={() => void handlePrintLabel({ locationId: location.id })}>
-                                <Printer size={14} aria-hidden="true" />
-                                <span>Etiqueta</span>
-                              </button>
-                              <button type="button" className="tickets-page__ghost-action" onClick={() => openLocationEdit(location)}>
-                                <Settings2 size={14} aria-hidden="true" />
-                                <span>Editar</span>
-                              </button>
-                            </div>
-                          </header>
-                          <dl>
-                            <div><dt>Código</dt><dd>{location.code || 'Sin código'}</dd></div>
-                            <div><dt>Padre</dt><dd>{location.parent_location_name || 'Raíz'}</dd></div>
-                            <div><dt>Estado</dt><dd><span className={`inventory-status-chip inventory-status-chip--${toStatusTone(location.status)}`}>{toStatusLabel(location.status)}</span></dd></div>
-                          </dl>
-                          {location.description ? <p>{location.description}</p> : null}
-                        </article>
-                      ))}
-                    </div>
-                  )}
-                  pagination={(
-                    <PaginationBar
-                      ariaLabel="Paginación de ubicaciones"
-                      start={locationsPageStart + 1}
-                      end={Math.min(locationsPageStart + locationsItemsPerPage, filteredLocations.length)}
-                      total={filteredLocations.length}
-                      pageSize={locationsItemsPerPage}
-                      pageSizeOptions={INVENTORY_PAGE_SIZE_OPTIONS}
-                      pageSizeId="inventory-locations-page-size"
-                      pageSizeName="inventory_locations_page_size"
-                      currentPage={resolvedLocationsPage}
-                      totalPages={locationsTotalPages}
-                      onPageSizeChange={(nextSize) => {
-                        setLocationsItemsPerPage(nextSize);
-                        setLocationsCurrentPage(1);
-                      }}
-                      onPrev={() => setLocationsCurrentPage((page) => Math.max(1, page - 1))}
-                      onNext={() => setLocationsCurrentPage((page) => Math.min(locationsTotalPages, page + 1))}
-                    />
+                    <table className="inventory-location-table">
+                      <colgroup>
+                        <col className="inventory-location-table__col inventory-location-table__col--location" />
+                        <col className="inventory-location-table__col inventory-location-table__col--code" />
+                        <col className="inventory-location-table__col inventory-location-table__col--type" />
+                        <col className="inventory-location-table__col inventory-location-table__col--status" />
+                        <col className="inventory-location-table__col inventory-location-table__col--actions" />
+                      </colgroup>
+                      <thead>
+                        <tr>
+                          <th scope="col">Ubicación</th>
+                          <th scope="col">Código</th>
+                          <th scope="col">Tipo</th>
+                          <th scope="col">Estado</th>
+                          <th scope="col" className="inventory-location-table__actions-head">Acción</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {visibleLocationRows.map((location) => {
+                          const locationId = Number(location.id);
+                          const isEditingLocation = Number(editingLocationId) === locationId;
+
+                          return (
+                            <tr
+                              key={location.id}
+                              className={`inventory-location-table__row${isEditingLocation ? ' inventory-location-table__row--active' : ''}`}
+                            >
+                              <th scope="row" className="inventory-location-table__cell inventory-location-table__cell--name">
+                                <div
+                                  className="inventory-location-table__identity"
+                                  style={{ '--location-level': location.depth }}
+                                >
+                                  {location.hasChildren ? (
+                                    <button
+                                      type="button"
+                                      className={`inventory-location-table__toggle${location.isExpanded ? ' inventory-location-table__toggle--expanded' : ''}`}
+                                      onClick={() => toggleLocationBranch(locationId)}
+                                      aria-label={`${location.isExpanded ? 'Colapsar' : 'Expandir'} ${location.name}`}
+                                      aria-expanded={location.isExpanded}
+                                    >
+                                      <ChevronRight size={14} aria-hidden="true" />
+                                    </button>
+                                  ) : (
+                                    <span className="inventory-location-table__toggle-placeholder" aria-hidden="true" />
+                                  )}
+                                  <div className="inventory-location-table__title-group">
+                                    <span className="inventory-location-table__name data-table__item-title">{location.name}</span>
+                                    {location.description ? (
+                                      <span className="inventory-location-table__summary data-table__item-meta">{location.description}</span>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              </th>
+                              <td className="inventory-location-table__cell inventory-location-table__cell--code">
+                                <span className="inventory-location-table__code">{location.code || 'Sin código'}</span>
+                              </td>
+                              <td className="inventory-location-table__cell inventory-location-table__cell--type">
+                                <span className="inventory-location-table__type">{location.location_type_name}</span>
+                              </td>
+                              <td className="inventory-location-table__cell inventory-location-table__cell--status">
+                                <span className={`inventory-status-chip inventory-status-chip--${toStatusTone(location.status)}`}>
+                                  {toStatusLabel(location.status)}
+                                </span>
+                              </td>
+                              <td className="inventory-location-table__cell inventory-location-table__cell--actions">
+                                <button
+                                  type="button"
+                                  className="action-inline"
+                                  onClick={() => openLocationEdit(location)}
+                                  aria-label={`Editar ubicación ${location.name}`}
+                                >
+                                  <Settings2 size={14} aria-hidden="true" />
+                                  <span>Editar</span>
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   )}
                   emptyTitle="No encontramos ubicaciones con estos filtros"
                   emptyCopy="Ajusta la búsqueda o registra una nueva ubicación para continuar."
@@ -2126,16 +2347,30 @@ const InventoryPage = () => {
         title="Registrar movimiento"
         onClose={() => setIsCreateMovementOpen(false)}
         returnFocusRef={createMovementTriggerRef}
-        initialFocusRef={createMovementTypeSelectRef}
+        initialFocusRef={movementReasonTemplateFirstRef}
         size="wide"
       >
         <form className="modal-dialog__form" onSubmit={handleCreateMovement}>
-          <div className="inventory-modal__reason-templates" role="group" aria-label="Plantillas de motivo frecuente">
-            {quickReasonTemplates.map((template) => (
-              <button key={template} type="button" className="inventory-modal__reason-chip" onClick={() => setMovementForm((current) => ({ ...current, reason: template }))}>
+          <div className="inventory-modal__reason-templates" role="toolbar" aria-label="Plantillas de motivo frecuente">
+            {quickReasonTemplates.map((template, index) => (
+              <button
+                key={template}
+                ref={(node) => {
+                  movementReasonChipRefs.current[index] = node;
+                  if (index === 0) {
+                    movementReasonTemplateFirstRef.current = node;
+                  }
+                }}
+                type="button"
+                className="inventory-modal__reason-chip"
+                tabIndex={movementReasonFocusIndex === index ? 0 : -1}
+                onFocus={() => setMovementReasonFocusIndex(index)}
+                onKeyDown={(event) => handleMovementReasonKeyDown(event, index)}
+                onClick={() => setMovementForm((current) => ({ ...current, reason: template }))}
+              >
                 {template}
               </button>
-            ))} 
+            ))}
           </div>
           <div className="modal-dialog__grid">
             <div className="modal-dialog__field">
@@ -2312,7 +2547,7 @@ const InventoryPage = () => {
           setEditingLocationTypeId(null);
         }}
         returnFocusRef={catalogTriggerRef}
-        initialFocusRef={activeCatalogTab === 'location_types' ? catalogLocationTypeNameRef : catalogAssetTypeNameRef}
+        initialFocusRef={activeCatalogTab === 'location_types' ? catalogLocationTabRef : catalogAssetTabRef}
         size="wide"
       >
         <div className="modal-dialog__form">
@@ -2325,7 +2560,8 @@ const InventoryPage = () => {
               key: tabOption.key,
               label: tabOption.label,
               id: `inventory-catalog-tab-${tabOption.key}`,
-              controls: `inventory-catalog-panel-${tabOption.key}`
+              controls: `inventory-catalog-panel-${tabOption.key}`,
+              ref: tabOption.key === 'location_types' ? catalogLocationTabRef : catalogAssetTabRef
             }))}
           />
 
@@ -2337,7 +2573,11 @@ const InventoryPage = () => {
             className="inventory-catalog"
           >
             <div className="inventory-catalog__stack">
-              <section className="inventory-catalog__editor" aria-labelledby="inventory-catalog-asset-editor-title">
+              <section
+                id="inventory-catalog-asset-editor"
+                className="inventory-catalog__editor"
+                aria-labelledby="inventory-catalog-asset-editor-title"
+              >
                 <div className="inventory-catalog__section-header inventory-catalog__section-header--editor">
                   <div className="inventory-catalog__section-copy">
                     <h3 id="inventory-catalog-asset-editor-title">
@@ -2425,56 +2665,100 @@ const InventoryPage = () => {
                 </form>
               </section>
 
-              <section className="inventory-catalog__existing" aria-labelledby="inventory-catalog-asset-existing-title">
+              <section
+                className="inventory-catalog__existing"
+                aria-labelledby="inventory-catalog-asset-existing-title"
+                aria-describedby="inventory-catalog-asset-existing-help"
+              >
                 <div className="inventory-catalog__existing-header">
-                  <div className="inventory-catalog__section-copy inventory-catalog__section-copy--split">
-                    <h3 id="inventory-catalog-asset-existing-title">{catalogTabCopy.asset_types.recordsTitle}</h3>
-                    <span className="inventory-catalog__existing-count">
-                      {filteredCatalogAssetTypes.length === catalogAssetTypes.length ? `${catalogAssetTypes.length} tipos` : `${filteredCatalogAssetTypes.length} de ${catalogAssetTypes.length}`}
-                    </span>
+                  <div className="inventory-catalog__section-copy">
+                    <div className="inventory-catalog__existing-heading">
+                      <h3 id="inventory-catalog-asset-existing-title">{catalogTabCopy.asset_types.recordsTitle}</h3>
+                      <span
+                        id="inventory-catalog-asset-existing-count"
+                        className="inventory-catalog__existing-count"
+                        aria-live="polite"
+                        aria-atomic="true"
+                      >
+                        {filteredCatalogAssetTypes.length === catalogAssetTypes.length ? `${catalogAssetTypes.length} tipos` : `${filteredCatalogAssetTypes.length} de ${catalogAssetTypes.length}`}
+                      </span>
+                    </div>
+                    <p className="inventory-catalog__existing-note">Selecciona un tipo para cargarlo en el editor.</p>
+                    <p id="inventory-catalog-asset-existing-help" className="sr-only">
+                      Usa Editar para cargar un tipo en el formulario superior. Desactivar cambia su disponibilidad sin borrarlo.
+                    </p>
                   </div>
                   <div className="inventory-catalog__existing-toolbar">
+                    <label className="sr-only" htmlFor="inventory-catalog-asset-type-search">
+                      Buscar tipos de activo existentes
+                    </label>
                     <input
+                      id="inventory-catalog-asset-type-search"
                       className="inventory-catalog__existing-search"
                       type="search"
                       name="inventory_catalog_asset_type_search"
                       value={catalogAssetTypeQuery}
                       onChange={(event) => setCatalogAssetTypeQuery(event.target.value)}
                       placeholder="Buscar por nombre o código"
-                      aria-label="Buscar tipos de activo existentes"
+                      aria-describedby="inventory-catalog-asset-existing-count inventory-catalog-asset-existing-help"
                     />
                   </div>
                 </div>
 
-                <div className="inventory-catalog__existing-list">
-                  {filteredCatalogAssetTypes.length ? filteredCatalogAssetTypes.map((assetType) => (
-                    <article
-                      key={assetType.id}
-                      className={`inventory-catalog__existing-row${editingAssetTypeId === Number(assetType.id) ? ' inventory-catalog__existing-row--active' : ''}`}
-                    >
-                      <button type="button" className="inventory-catalog__existing-select" onClick={() => openAssetTypeEdit(assetType)}>
-                        <span className="inventory-catalog__existing-info">
-                          {editingAssetTypeId === Number(assetType.id) ? <span className="inventory-catalog__existing-flag">Editando</span> : null}
-                          <span className="inventory-catalog__existing-name">{assetType.name}</span>
-                          <span className="inventory-catalog__existing-meta">
-                            <span>{assetType.code_prefix}</span>
-                            <span>{assetType.category_name}</span>
-                            <span>{assetType.default_tracking_mode_name || assetType.default_tracking_mode_key}</span>
+                <ul
+                  className="inventory-catalog__existing-list"
+                  role="list"
+                  aria-describedby="inventory-catalog-asset-existing-help inventory-catalog-asset-existing-count"
+                >
+                  {filteredCatalogAssetTypes.length ? filteredCatalogAssetTypes.map((assetType) => {
+                    const isEditing = editingAssetTypeId === Number(assetType.id);
+                    const metaId = `inventory-catalog-asset-type-meta-${assetType.id}`;
+                    const statusId = `inventory-catalog-asset-type-status-${assetType.id}`;
+
+                    return (
+                      <li
+                        key={assetType.id}
+                        className={`inventory-catalog__existing-row${isEditing ? ' inventory-catalog__existing-row--active' : ''}`}
+                        aria-current={isEditing ? 'true' : undefined}
+                      >
+                        <button
+                          type="button"
+                          className="inventory-catalog__existing-select"
+                          onClick={() => openAssetTypeEdit(assetType)}
+                          aria-label={`Editar tipo de activo ${assetType.name}`}
+                          aria-controls="inventory-catalog-asset-editor"
+                          aria-describedby={isEditing ? `${metaId} ${statusId}` : metaId}
+                        >
+                          <span className="inventory-catalog__existing-info">
+                            {isEditing ? <span id={statusId} className="inventory-catalog__existing-flag">Editando</span> : null}
+                            <span className="inventory-catalog__existing-name">{assetType.name}</span>
+                            <span id={metaId} className="inventory-catalog__existing-meta">
+                              <span>{assetType.code_prefix}</span>
+                              <span>{assetType.category_name}</span>
+                              <span>{assetType.default_tracking_mode_name || assetType.default_tracking_mode_key}</span>
+                            </span>
                           </span>
-                        </span>
-                        <span className="inventory-catalog__existing-edit" aria-hidden="true">
-                          <span>{editingAssetTypeId === Number(assetType.id) ? 'Editando' : 'Editar'}</span>
-                          <ChevronRight size={16} strokeWidth={1.9} />
-                        </span>
-                      </button>
-                      <button type="button" className="tickets-page__ghost-action inventory-catalog__existing-state" onClick={() => void handleToggleAssetTypeActive(assetType)}>
-                        {assetType.is_active ? 'Desactivar' : 'Reactivar'}
-                      </button>
-                    </article>
-                  )) : (
-                    <p className="inventory-catalog__existing-empty">No hay tipos que coincidan con la búsqueda.</p>
+                          <span className="inventory-catalog__existing-edit" aria-hidden="true">
+                            <span>{isEditing ? 'En edición' : 'Editar'}</span>
+                            <ChevronRight size={16} strokeWidth={1.9} />
+                          </span>
+                        </button>
+                        <div className="inventory-catalog__existing-actions">
+                          <button
+                            type="button"
+                            className="tickets-page__ghost-action inventory-catalog__existing-state"
+                            onClick={() => void handleToggleAssetTypeActive(assetType)}
+                            aria-label={`${assetType.is_active ? 'Desactivar' : 'Reactivar'} ${assetType.name}`}
+                          >
+                            {assetType.is_active ? 'Desactivar' : 'Reactivar'}
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  }) : (
+                    <li className="inventory-catalog__existing-empty">No hay tipos que coincidan con la búsqueda.</li>
                   )}
-                </div>
+                </ul>
               </section>
             </div>
           </section>
@@ -2487,7 +2771,11 @@ const InventoryPage = () => {
             className="inventory-catalog"
           >
             <div className="inventory-catalog__stack">
-              <section className="inventory-catalog__editor" aria-labelledby="inventory-catalog-location-editor-title">
+              <section
+                id="inventory-catalog-location-editor"
+                className="inventory-catalog__editor"
+                aria-labelledby="inventory-catalog-location-editor-title"
+              >
                 <div className="inventory-catalog__section-header inventory-catalog__section-header--editor">
                   <div className="inventory-catalog__section-copy">
                     <h3 id="inventory-catalog-location-editor-title">
@@ -2547,55 +2835,99 @@ const InventoryPage = () => {
                 </form>
               </section>
 
-              <section className="inventory-catalog__existing" aria-labelledby="inventory-catalog-location-existing-title">
+              <section
+                className="inventory-catalog__existing"
+                aria-labelledby="inventory-catalog-location-existing-title"
+                aria-describedby="inventory-catalog-location-existing-help"
+              >
                 <div className="inventory-catalog__existing-header">
-                  <div className="inventory-catalog__section-copy inventory-catalog__section-copy--split">
-                    <h3 id="inventory-catalog-location-existing-title">{catalogTabCopy.location_types.recordsTitle}</h3>
-                    <span className="inventory-catalog__existing-count">
-                      {filteredCatalogLocationTypes.length === catalogLocationTypes.length ? `${catalogLocationTypes.length} tipos` : `${filteredCatalogLocationTypes.length} de ${catalogLocationTypes.length}`}
-                    </span>
+                  <div className="inventory-catalog__section-copy">
+                    <div className="inventory-catalog__existing-heading">
+                      <h3 id="inventory-catalog-location-existing-title">{catalogTabCopy.location_types.recordsTitle}</h3>
+                      <span
+                        id="inventory-catalog-location-existing-count"
+                        className="inventory-catalog__existing-count"
+                        aria-live="polite"
+                        aria-atomic="true"
+                      >
+                        {filteredCatalogLocationTypes.length === catalogLocationTypes.length ? `${catalogLocationTypes.length} tipos` : `${filteredCatalogLocationTypes.length} de ${catalogLocationTypes.length}`}
+                      </span>
+                    </div>
+                    <p className="inventory-catalog__existing-note">Selecciona un tipo para cargarlo en el editor.</p>
+                    <p id="inventory-catalog-location-existing-help" className="sr-only">
+                      Usa Editar para cargar un tipo en el formulario superior. Desactivar cambia su disponibilidad sin borrarlo.
+                    </p>
                   </div>
                   <div className="inventory-catalog__existing-toolbar">
+                    <label className="sr-only" htmlFor="inventory-catalog-location-type-search">
+                      Buscar tipos de ubicación existentes
+                    </label>
                     <input
+                      id="inventory-catalog-location-type-search"
                       className="inventory-catalog__existing-search"
                       type="search"
                       name="inventory_catalog_location_type_search"
                       value={catalogLocationTypeQuery}
                       onChange={(event) => setCatalogLocationTypeQuery(event.target.value)}
                       placeholder="Buscar por nombre o código"
-                      aria-label="Buscar tipos de ubicación existentes"
+                      aria-describedby="inventory-catalog-location-existing-count inventory-catalog-location-existing-help"
                     />
                   </div>
                 </div>
 
-                <div className="inventory-catalog__existing-list">
-                  {filteredCatalogLocationTypes.length ? filteredCatalogLocationTypes.map((locationType) => (
-                    <article
-                      key={locationType.id}
-                      className={`inventory-catalog__existing-row${editingLocationTypeId === Number(locationType.id) ? ' inventory-catalog__existing-row--active' : ''}`}
-                    >
-                      <button type="button" className="inventory-catalog__existing-select" onClick={() => openLocationTypeEdit(locationType)}>
-                        <span className="inventory-catalog__existing-info">
-                          {editingLocationTypeId === Number(locationType.id) ? <span className="inventory-catalog__existing-flag">Editando</span> : null}
-                          <span className="inventory-catalog__existing-name">{locationType.name}</span>
-                          <span className="inventory-catalog__existing-meta">
-                            <span>{locationType.code_prefix}</span>
-                            {locationType.description ? <span>{locationType.description}</span> : null}
+                <ul
+                  className="inventory-catalog__existing-list"
+                  role="list"
+                  aria-describedby="inventory-catalog-location-existing-help inventory-catalog-location-existing-count"
+                >
+                  {filteredCatalogLocationTypes.length ? filteredCatalogLocationTypes.map((locationType) => {
+                    const isEditing = editingLocationTypeId === Number(locationType.id);
+                    const metaId = `inventory-catalog-location-type-meta-${locationType.id}`;
+                    const statusId = `inventory-catalog-location-type-status-${locationType.id}`;
+
+                    return (
+                      <li
+                        key={locationType.id}
+                        className={`inventory-catalog__existing-row${isEditing ? ' inventory-catalog__existing-row--active' : ''}`}
+                        aria-current={isEditing ? 'true' : undefined}
+                      >
+                        <button
+                          type="button"
+                          className="inventory-catalog__existing-select"
+                          onClick={() => openLocationTypeEdit(locationType)}
+                          aria-label={`Editar tipo de ubicación ${locationType.name}`}
+                          aria-controls="inventory-catalog-location-editor"
+                          aria-describedby={isEditing ? `${metaId} ${statusId}` : metaId}
+                        >
+                          <span className="inventory-catalog__existing-info">
+                            {isEditing ? <span id={statusId} className="inventory-catalog__existing-flag">Editando</span> : null}
+                            <span className="inventory-catalog__existing-name">{locationType.name}</span>
+                            <span id={metaId} className="inventory-catalog__existing-meta">
+                              <span>{locationType.code_prefix}</span>
+                              {locationType.description ? <span>{locationType.description}</span> : null}
+                            </span>
                           </span>
-                        </span>
-                        <span className="inventory-catalog__existing-edit" aria-hidden="true">
-                          <span>{editingLocationTypeId === Number(locationType.id) ? 'Editando' : 'Editar'}</span>
-                          <ChevronRight size={16} strokeWidth={1.9} />
-                        </span>
-                      </button>
-                      <button type="button" className="tickets-page__ghost-action inventory-catalog__existing-state" onClick={() => void handleToggleLocationTypeActive(locationType)}>
-                        {locationType.is_active ? 'Desactivar' : 'Reactivar'}
-                      </button>
-                    </article>
-                  )) : (
-                    <p className="inventory-catalog__existing-empty">No hay tipos que coincidan con la búsqueda.</p>
+                          <span className="inventory-catalog__existing-edit" aria-hidden="true">
+                            <span>{isEditing ? 'En edición' : 'Editar'}</span>
+                            <ChevronRight size={16} strokeWidth={1.9} />
+                          </span>
+                        </button>
+                        <div className="inventory-catalog__existing-actions">
+                          <button
+                            type="button"
+                            className="tickets-page__ghost-action inventory-catalog__existing-state"
+                            onClick={() => void handleToggleLocationTypeActive(locationType)}
+                            aria-label={`${locationType.is_active ? 'Desactivar' : 'Reactivar'} ${locationType.name}`}
+                          >
+                            {locationType.is_active ? 'Desactivar' : 'Reactivar'}
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  }) : (
+                    <li className="inventory-catalog__existing-empty">No hay tipos que coincidan con la búsqueda.</li>
                   )}
-                </div>
+                </ul>
               </section>
             </div>
           </section>
