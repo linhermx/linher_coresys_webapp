@@ -43,7 +43,7 @@ export const DrawerTabs = ({
             id={tab.id}
             aria-selected={isActive}
             aria-controls={tab.controls}
-            tabIndex={isActive ? 0 : -1}
+            tabIndex={0}
             className={`ticket-detail__tab ${isActive ? 'ticket-detail__tab--active' : ''}`}
             onClick={() => onChange(tab.key)}
             onKeyDown={(event) => handleTabKeyDown(event, tab.key, tab.onKeyDown)}
