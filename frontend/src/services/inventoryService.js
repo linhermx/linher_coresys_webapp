@@ -72,15 +72,16 @@ export const reactivateCatalogLocationType = (locationTypeId) => requestInventor
   method: 'POST'
 });
 
-export const listAssets = ({ search = '', status = '', trackingModeKey = '' } = {}) => {
+export const listAssets = ({ search = '', status = '', operationalStatus = '', trackingModeKey = '' } = {}) => {
   const query = new URLSearchParams();
 
   if (String(search || '').trim()) {
     query.set('search', String(search || '').trim());
   }
 
-  if (String(status || '').trim()) {
-    query.set('status', String(status || '').trim());
+  const resolvedStatus = String(operationalStatus || status || '').trim();
+  if (resolvedStatus) {
+    query.set('operational_status', resolvedStatus);
   }
 
   if (String(trackingModeKey || '').trim()) {
@@ -97,6 +98,25 @@ export const getAssetDetail = (assetId, { movementLimit = 60 } = {}) => requestI
 
 export const listAssetUnits = (assetId) => requestInventoryJson(`/inventory/assets/${assetId}/units`);
 
+export const listInventoryAssetUnits = ({ status = '', assetId = '', search = '' } = {}) => {
+  const query = new URLSearchParams();
+
+  if (String(status || '').trim()) {
+    query.set('status', String(status || '').trim());
+  }
+
+  if (Number(assetId) > 0) {
+    query.set('asset_id', String(Number(assetId)));
+  }
+
+  if (String(search || '').trim()) {
+    query.set('search', String(search || '').trim());
+  }
+
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return requestInventoryJson(`/inventory/asset-units${suffix}`);
+};
+
 export const createAssetUnits = (assetId, payload) => requestInventoryJson(`/inventory/assets/${assetId}/units`, {
   method: 'POST',
   body: payload
@@ -104,6 +124,11 @@ export const createAssetUnits = (assetId, payload) => requestInventoryJson(`/inv
 
 export const createAsset = (payload) => requestInventoryJson('/inventory/assets', {
   method: 'POST',
+  body: payload
+});
+
+export const updateAsset = (assetId, payload) => requestInventoryJson(`/inventory/assets/${assetId}`, {
+  method: 'PATCH',
   body: payload
 });
 
@@ -136,7 +161,38 @@ export const updateLocation = (locationId, payload) => requestInventoryJson(`/in
   body: payload
 });
 
-export const listAssetAssignments = ({ assetUnitId }) => requestInventoryJson(`/inventory/assignments?asset_unit_id=${Number(assetUnitId)}`);
+export const listAssetAssignments = ({
+  assetUnitId = '',
+  assetId = '',
+  collaboratorId = '',
+  status = '',
+  search = ''
+} = {}) => {
+  const query = new URLSearchParams();
+
+  if (Number(assetUnitId) > 0) {
+    query.set('asset_unit_id', String(Number(assetUnitId)));
+  }
+
+  if (Number(assetId) > 0) {
+    query.set('asset_id', String(Number(assetId)));
+  }
+
+  if (Number(collaboratorId) > 0) {
+    query.set('collaborator_id', String(Number(collaboratorId)));
+  }
+
+  if (String(status || '').trim()) {
+    query.set('status', String(status || '').trim());
+  }
+
+  if (String(search || '').trim()) {
+    query.set('search', String(search || '').trim());
+  }
+
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return requestInventoryJson(`/inventory/assignments${suffix}`);
+};
 
 export const createAssetAssignment = (payload) => requestInventoryJson('/inventory/assignments', {
   method: 'POST',
@@ -145,6 +201,11 @@ export const createAssetAssignment = (payload) => requestInventoryJson('/invento
 
 export const closeAssetAssignment = (assignmentId, payload) => requestInventoryJson(`/inventory/assignments/${assignmentId}/close`, {
   method: 'POST',
+  body: payload
+});
+
+export const updateAssetUnitStatus = (assetUnitId, payload) => requestInventoryJson(`/inventory/units/${assetUnitId}/status`, {
+  method: 'PATCH',
   body: payload
 });
 

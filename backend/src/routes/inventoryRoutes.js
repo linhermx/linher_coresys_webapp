@@ -20,7 +20,9 @@ router.post('/catalog/location-types/:locationTypeId/reactivate', requireAuth, r
 router.get('/assets', requireAuth, requirePermission('inventory.view'), InventoryController.listAssets);
 router.get('/assets/:assetId', requireAuth, requirePermission('inventory.view'), InventoryController.getAssetDetail);
 router.get('/assets/:assetId/units', requireAuth, requirePermission('inventory.view'), InventoryController.listAssetUnits);
+router.get('/asset-units', requireAuth, requirePermission('inventory.view'), InventoryController.listAvailableAssetUnits);
 router.post('/assets/:assetId/units', requireAuth, requirePermission('inventory.create'), InventoryController.createAssetUnits);
+router.patch('/assets/:assetId', requireAuth, requirePermission('inventory.update'), InventoryController.updateAsset);
 router.get('/locations', requireAuth, requirePermission('inventory.view'), InventoryController.listLocations);
 router.get('/locations/:locationId/label', requireAuth, requirePermission('inventory.view'), InventoryController.getLocationLabel);
 router.get('/movements', requireAuth, requirePermission('inventory.view'), InventoryController.listMovements);
@@ -31,6 +33,7 @@ router.post('/movements', requireAuth, requirePermission('inventory.update'), In
 router.post('/assignments', requireAuth, requirePermission('inventory.assign'), InventoryController.createAssignment);
 router.post('/assignments/:assignmentId/close', requireAuth, requirePermission('inventory.assign'), InventoryController.closeAssignment);
 router.patch('/locations/:locationId', requireAuth, requirePermission('inventory.update'), InventoryController.updateLocation);
+router.patch('/units/:assetUnitId/status', requireAuth, requirePermission('inventory.update'), InventoryController.updateAssetUnitStatus);
 router.get('/units/:assetUnitId/label', requireAuth, requirePermission('inventory.view'), InventoryController.getAssetUnitLabel);
 
 export default router;

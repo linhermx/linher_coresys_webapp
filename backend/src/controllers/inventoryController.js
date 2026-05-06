@@ -289,6 +289,24 @@ export const InventoryController = {
     }
   },
 
+  async listAvailableAssetUnits(req, res, next) {
+    try {
+      const data = await InventoryService.listAvailableAssetUnits({
+        query: req.query
+      });
+
+      res.success({
+        message: 'Unidades de inventario obtenidas correctamente.',
+        data,
+        meta: {
+          total: data.length
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async createAsset(req, res, next) {
     try {
       const data = await InventoryService.createAsset({
@@ -300,6 +318,24 @@ export const InventoryController = {
       res.success({
         statusCode: 201,
         message: 'Activo de inventario creado correctamente.',
+        data
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async updateAsset(req, res, next) {
+    try {
+      const data = await InventoryService.updateAsset({
+        assetId: req.params.assetId,
+        payload: req.body,
+        authUser: req.authUser,
+        requestContext: AuditService.buildRequestContext(req)
+      });
+
+      res.success({
+        message: 'Activo de inventario actualizado correctamente.',
         data
       });
     } catch (error) {
@@ -430,6 +466,24 @@ export const InventoryController = {
 
       res.success({
         message: 'Resguardo cerrado correctamente.',
+        data
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async updateAssetUnitStatus(req, res, next) {
+    try {
+      const data = await InventoryService.updateAssetUnitStatus({
+        assetUnitId: req.params.assetUnitId,
+        payload: req.body,
+        authUser: req.authUser,
+        requestContext: AuditService.buildRequestContext(req)
+      });
+
+      res.success({
+        message: 'Estado de la unidad actualizado correctamente.',
         data
       });
     } catch (error) {

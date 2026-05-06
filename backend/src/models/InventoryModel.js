@@ -801,7 +801,12 @@ export class InventoryModel extends BaseModel {
         a.created_at,
         a.updated_at,
         COALESCE(unit_stats.units_count, 0) AS units_count,
-        COALESCE(stock_stats.stock_quantity, 0) AS stock_quantity
+        COALESCE(unit_status_stats.available_units_count, 0) AS available_units_count,
+        COALESCE(unit_status_stats.assigned_units_count, 0) AS assigned_units_count,
+        COALESCE(unit_status_stats.in_repair_units_count, 0) AS in_repair_units_count,
+        COALESCE(unit_status_stats.retired_units_count, 0) AS retired_units_count,
+        COALESCE(stock_stats.stock_quantity, 0) AS stock_quantity,
+        stock_signal.latest_stock_signal_key
       FROM assets a
       INNER JOIN asset_types at
         ON at.id = a.asset_type_id
@@ -818,6 +823,20 @@ export class InventoryModel extends BaseModel {
         GROUP BY au.asset_id
       ) unit_stats
         ON unit_stats.asset_id = a.id
+      LEFT JOIN (
+        SELECT
+          au.asset_id,
+          SUM(CASE WHEN aus.status_key = 'available' THEN 1 ELSE 0 END) AS available_units_count,
+          SUM(CASE WHEN aus.status_key = 'assigned' THEN 1 ELSE 0 END) AS assigned_units_count,
+          SUM(CASE WHEN aus.status_key = 'in_repair' THEN 1 ELSE 0 END) AS in_repair_units_count,
+          SUM(CASE WHEN aus.status_key = 'retired' THEN 1 ELSE 0 END) AS retired_units_count
+        FROM asset_units au
+        INNER JOIN asset_unit_statuses aus
+          ON aus.id = au.asset_unit_status_id
+        WHERE au.deleted_at IS NULL
+        GROUP BY au.asset_id
+      ) unit_status_stats
+        ON unit_status_stats.asset_id = a.id
       LEFT JOIN (
         SELECT
           iml.asset_id,
@@ -842,6 +861,36 @@ export class InventoryModel extends BaseModel {
         GROUP BY iml.asset_id
       ) stock_stats
         ON stock_stats.asset_id = a.id
+      LEFT JOIN (
+        SELECT
+          signal_rows.asset_id,
+          SUBSTRING_INDEX(
+            GROUP_CONCAT(
+              signal_rows.movement_type_key
+              ORDER BY signal_rows.happened_at DESC, signal_rows.movement_id DESC, signal_rows.movement_line_id DESC
+              SEPARATOR ','
+            ),
+            ',',
+            1
+          ) AS latest_stock_signal_key
+        FROM (
+          SELECT
+            iml.asset_id,
+            im.id AS movement_id,
+            iml.id AS movement_line_id,
+            im.happened_at,
+            imt.movement_type_key
+          FROM inventory_movement_lines iml
+          INNER JOIN inventory_movements im
+            ON im.id = iml.inventory_movement_id
+          INNER JOIN inventory_movement_types imt
+            ON imt.id = im.movement_type_id
+          WHERE iml.asset_unit_id IS NULL
+            AND imt.movement_type_key IN ('repair_out', 'repair_in', 'retire_out')
+        ) signal_rows
+        GROUP BY signal_rows.asset_id
+      ) stock_signal
+        ON stock_signal.asset_id = a.id
       ${whereClause}
       ORDER BY a.created_at DESC, a.id DESC
     `, params);
@@ -870,7 +919,14 @@ export class InventoryModel extends BaseModel {
         a.status,
         a.description,
         a.created_at,
-        a.updated_at
+        a.updated_at,
+        COALESCE(unit_stats.units_count, 0) AS units_count,
+        COALESCE(unit_status_stats.available_units_count, 0) AS available_units_count,
+        COALESCE(unit_status_stats.assigned_units_count, 0) AS assigned_units_count,
+        COALESCE(unit_status_stats.in_repair_units_count, 0) AS in_repair_units_count,
+        COALESCE(unit_status_stats.retired_units_count, 0) AS retired_units_count,
+        COALESCE(stock_stats.stock_quantity, 0) AS stock_quantity,
+        stock_signal.latest_stock_signal_key
       FROM assets a
       INNER JOIN asset_types at
         ON at.id = a.asset_type_id
@@ -878,6 +934,83 @@ export class InventoryModel extends BaseModel {
         ON ac.id = at.asset_category_id
       INNER JOIN asset_tracking_modes atm
         ON atm.id = a.tracking_mode_id
+      LEFT JOIN (
+        SELECT
+          au.asset_id,
+          COUNT(*) AS units_count
+        FROM asset_units au
+        WHERE au.deleted_at IS NULL
+        GROUP BY au.asset_id
+      ) unit_stats
+        ON unit_stats.asset_id = a.id
+      LEFT JOIN (
+        SELECT
+          au.asset_id,
+          SUM(CASE WHEN aus.status_key = 'available' THEN 1 ELSE 0 END) AS available_units_count,
+          SUM(CASE WHEN aus.status_key = 'assigned' THEN 1 ELSE 0 END) AS assigned_units_count,
+          SUM(CASE WHEN aus.status_key = 'in_repair' THEN 1 ELSE 0 END) AS in_repair_units_count,
+          SUM(CASE WHEN aus.status_key = 'retired' THEN 1 ELSE 0 END) AS retired_units_count
+        FROM asset_units au
+        INNER JOIN asset_unit_statuses aus
+          ON aus.id = au.asset_unit_status_id
+        WHERE au.deleted_at IS NULL
+        GROUP BY au.asset_id
+      ) unit_status_stats
+        ON unit_status_stats.asset_id = a.id
+      LEFT JOIN (
+        SELECT
+          iml.asset_id,
+          SUM(
+            CASE
+              WHEN imt.direction = 'in' THEN iml.quantity
+              WHEN imt.direction = 'out' THEN -iml.quantity
+              WHEN imt.direction IN ('transfer', 'adjustment') THEN
+                CASE
+                  WHEN iml.from_location_id IS NULL AND iml.to_location_id IS NOT NULL THEN iml.quantity
+                  WHEN iml.from_location_id IS NOT NULL AND iml.to_location_id IS NULL THEN -iml.quantity
+                  ELSE 0
+                END
+              ELSE 0
+            END
+          ) AS stock_quantity
+        FROM inventory_movement_lines iml
+        INNER JOIN inventory_movements im
+          ON im.id = iml.inventory_movement_id
+        INNER JOIN inventory_movement_types imt
+          ON imt.id = im.movement_type_id
+        GROUP BY iml.asset_id
+      ) stock_stats
+        ON stock_stats.asset_id = a.id
+      LEFT JOIN (
+        SELECT
+          signal_rows.asset_id,
+          SUBSTRING_INDEX(
+            GROUP_CONCAT(
+              signal_rows.movement_type_key
+              ORDER BY signal_rows.happened_at DESC, signal_rows.movement_id DESC, signal_rows.movement_line_id DESC
+              SEPARATOR ','
+            ),
+            ',',
+            1
+          ) AS latest_stock_signal_key
+        FROM (
+          SELECT
+            iml.asset_id,
+            im.id AS movement_id,
+            iml.id AS movement_line_id,
+            im.happened_at,
+            imt.movement_type_key
+          FROM inventory_movement_lines iml
+          INNER JOIN inventory_movements im
+            ON im.id = iml.inventory_movement_id
+          INNER JOIN inventory_movement_types imt
+            ON imt.id = im.movement_type_id
+          WHERE iml.asset_unit_id IS NULL
+            AND imt.movement_type_key IN ('repair_out', 'repair_in', 'retire_out')
+        ) signal_rows
+        GROUP BY signal_rows.asset_id
+      ) stock_signal
+        ON stock_signal.asset_id = a.id
       WHERE a.id = ?
         AND a.deleted_at IS NULL
       LIMIT 1
@@ -898,6 +1031,13 @@ export class InventoryModel extends BaseModel {
         aus.name AS status_name,
         au.current_location_id,
         l.name AS current_location_name,
+        active_assignment.id AS active_assignment_id,
+        active_assignment.status AS active_assignment_status,
+        active_assignment.assigned_at AS active_assignment_assigned_at,
+        active_assignment.expected_return_at AS active_assignment_expected_return_at,
+        active_assignment.collaborator_id AS active_assignment_collaborator_id,
+        collaborator.employee_id AS active_assignment_employee_id,
+        CONCAT_WS(' ', collaborator.first_name, collaborator.last_name) AS active_assignment_collaborator_name,
         au.acquired_at,
         au.warranty_expires_at,
         au.notes,
@@ -908,10 +1048,93 @@ export class InventoryModel extends BaseModel {
         ON aus.id = au.asset_unit_status_id
       LEFT JOIN locations l
         ON l.id = au.current_location_id
+      LEFT JOIN asset_assignments active_assignment
+        ON active_assignment.asset_unit_id = au.id
+        AND active_assignment.deleted_at IS NULL
+        AND active_assignment.status = 'active'
+        AND active_assignment.returned_at IS NULL
+      LEFT JOIN collaborators collaborator
+        ON collaborator.id = active_assignment.collaborator_id
       WHERE au.asset_id = ?
         AND au.deleted_at IS NULL
       ORDER BY au.created_at DESC, au.id DESC
     `, [assetId]);
+
+    return rows;
+  }
+
+  async listAssetUnitsByStatus({
+    statusKey = 'available',
+    assetId = null,
+    search = ''
+  } = {}) {
+    const normalizedSearch = normalizeSearch(search);
+    const normalizedAssetId = Number.parseInt(assetId, 10);
+    const filters = ['aus.status_key = ?', 'au.deleted_at IS NULL', 'a.deleted_at IS NULL'];
+    const params = [statusKey];
+
+    if (Number.isInteger(normalizedAssetId) && normalizedAssetId > 0) {
+      filters.push('au.asset_id = ?');
+      params.push(normalizedAssetId);
+    }
+
+    if (normalizedSearch) {
+      const likeTerm = `%${normalizedSearch}%`;
+      filters.push(`(
+        au.asset_tag LIKE ?
+        OR COALESCE(au.serial_number, '') LIKE ?
+        OR a.asset_name LIKE ?
+        OR COALESCE(a.internal_code, '') LIKE ?
+        OR COALESCE(l.name, '') LIKE ?
+      )`);
+      params.push(likeTerm, likeTerm, likeTerm, likeTerm, likeTerm);
+    }
+
+    const [rows] = await this.db.query(`
+      SELECT
+        au.id,
+        au.asset_id,
+        au.asset_tag,
+        au.serial_number,
+        au.asset_unit_status_id,
+        aus.status_key,
+        aus.name AS status_name,
+        au.current_location_id,
+        l.name AS current_location_name,
+        a.asset_name,
+        a.internal_code AS asset_internal_code,
+        at.name AS asset_type_name,
+        active_assignment.id AS active_assignment_id,
+        active_assignment.status AS active_assignment_status,
+        active_assignment.assigned_at AS active_assignment_assigned_at,
+        active_assignment.expected_return_at AS active_assignment_expected_return_at,
+        active_assignment.collaborator_id AS active_assignment_collaborator_id,
+        collaborator.employee_id AS active_assignment_employee_id,
+        CONCAT_WS(' ', collaborator.first_name, collaborator.last_name) AS active_assignment_collaborator_name,
+        au.acquired_at,
+        au.warranty_expires_at,
+        au.notes,
+        au.created_at,
+        au.updated_at
+      FROM asset_units au
+      INNER JOIN assets a
+        ON a.id = au.asset_id
+      INNER JOIN asset_unit_statuses aus
+        ON aus.id = au.asset_unit_status_id
+      LEFT JOIN asset_types at
+        ON at.id = a.asset_type_id
+      LEFT JOIN locations l
+        ON l.id = au.current_location_id
+      LEFT JOIN asset_assignments active_assignment
+        ON active_assignment.asset_unit_id = au.id
+        AND active_assignment.deleted_at IS NULL
+        AND active_assignment.status = 'active'
+        AND active_assignment.returned_at IS NULL
+      LEFT JOIN collaborators collaborator
+        ON collaborator.id = active_assignment.collaborator_id
+      WHERE ${filters.join('\n        AND ')}
+      ORDER BY a.asset_name ASC, au.asset_tag ASC, au.id ASC
+    `, params);
 
     return rows;
   }
@@ -1043,6 +1266,118 @@ export class InventoryModel extends BaseModel {
     return rows;
   }
 
+  async listAssetAssignments({
+    assetUnitId = null,
+    assetId = null,
+    collaboratorId = null,
+    status = '',
+    search = ''
+  } = {}) {
+    const params = [];
+    let whereClause = 'WHERE aa.deleted_at IS NULL';
+    const normalizedStatus = normalizeSearch(status).toLowerCase();
+    const normalizedSearch = normalizeSearch(search);
+
+    if (assetUnitId) {
+      whereClause += ' AND aa.asset_unit_id = ?';
+      params.push(assetUnitId);
+    }
+
+    if (assetId) {
+      whereClause += ' AND au.asset_id = ?';
+      params.push(assetId);
+    }
+
+    if (collaboratorId) {
+      whereClause += ' AND aa.collaborator_id = ?';
+      params.push(collaboratorId);
+    }
+
+    if (normalizedStatus) {
+      whereClause += ' AND aa.status = ?';
+      params.push(normalizedStatus);
+    }
+
+    if (normalizedSearch) {
+      whereClause += `
+        AND (
+          a.asset_name LIKE ?
+          OR a.internal_code LIKE ?
+          OR au.asset_tag LIKE ?
+          OR CAST(c.employee_id AS CHAR) LIKE ?
+          OR CONCAT_WS(' ', c.first_name, c.last_name) LIKE ?
+          OR COALESCE(c.area_name, '') LIKE ?
+          OR COALESCE(l.name, '') LIKE ?
+        )
+      `;
+      params.push(
+        `%${normalizedSearch}%`,
+        `%${normalizedSearch}%`,
+        `%${normalizedSearch}%`,
+        `%${normalizedSearch}%`,
+        `%${normalizedSearch}%`,
+        `%${normalizedSearch}%`,
+        `%${normalizedSearch}%`
+      );
+    }
+
+    const [rows] = await this.db.query(`
+      SELECT
+        aa.id,
+        aa.asset_unit_id,
+        aa.collaborator_id,
+        c.employee_id,
+        c.first_name,
+        c.last_name,
+        c.area_name,
+        aa.assigned_by_user_id,
+        assigned_user.name AS assigned_by_user_name,
+        aa.received_by_user_id,
+        received_user.name AS received_by_user_name,
+        aa.assigned_at,
+        aa.expected_return_at,
+        aa.returned_at,
+        aa.delivery_condition,
+        aa.return_condition,
+        aa.status,
+        aa.notes,
+        aa.created_at,
+        aa.updated_at,
+        au.asset_id,
+        au.asset_tag,
+        au.serial_number,
+        aus.status_key AS asset_unit_status_key,
+        aus.name AS asset_unit_status_name,
+        a.asset_name,
+        a.internal_code,
+        at.name AS asset_type_name,
+        l.id AS current_location_id,
+        l.name AS current_location_name,
+        l.code AS current_location_code
+      FROM asset_assignments aa
+      INNER JOIN asset_units au
+        ON au.id = aa.asset_unit_id
+      INNER JOIN asset_unit_statuses aus
+        ON aus.id = au.asset_unit_status_id
+      INNER JOIN assets a
+        ON a.id = au.asset_id
+      INNER JOIN asset_types at
+        ON at.id = a.asset_type_id
+      INNER JOIN collaborators c
+        ON c.id = aa.collaborator_id
+      LEFT JOIN users assigned_user
+        ON assigned_user.id = aa.assigned_by_user_id
+      LEFT JOIN users received_user
+        ON received_user.id = aa.received_by_user_id
+      LEFT JOIN locations l
+        ON l.id = au.current_location_id
+      ${whereClause}
+      ORDER BY aa.assigned_at DESC, aa.id DESC
+    `, params);
+
+    return rows;
+  }
+
   async createAsset(db, {
     assetTypeId,
     trackingModeId,
@@ -1079,6 +1414,37 @@ export class InventoryModel extends BaseModel {
     ]);
 
     return Number(result.insertId);
+  }
+
+  async updateAsset(db, {
+    assetId,
+    assetName,
+    brand = null,
+    model = null,
+    minQuantity = 0,
+    description = null
+  }) {
+    const [result] = await db.query(`
+      UPDATE assets
+      SET
+        asset_name = ?,
+        brand = ?,
+        model = ?,
+        min_quantity = ?,
+        description = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+        AND deleted_at IS NULL
+    `, [
+      assetName,
+      brand,
+      model,
+      minQuantity,
+      description,
+      assetId
+    ]);
+
+    return result.affectedRows > 0;
   }
 
   async createLocation(db, {

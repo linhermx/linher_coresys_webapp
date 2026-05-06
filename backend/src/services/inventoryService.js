@@ -143,6 +143,111 @@ const assertRequiredText = (value, fieldLabel) => {
   return normalized;
 };
 
+const OPERATIONAL_STATUS_LABELS = {
+  available: 'Disponible',
+  assigned: 'Asignado',
+  in_repair: 'En reparación',
+  retired: 'Baja'
+};
+
+const toOperationalStatusName = (statusKey) => (
+  OPERATIONAL_STATUS_LABELS[statusKey] || 'Sin estado operativo'
+);
+
+const resolveStockOperationalStatusKey = (row) => {
+  const latestSignal = normalizeText(row?.latest_stock_signal_key).toLowerCase();
+  if (latestSignal === 'retire_out') {
+    return 'retired';
+  }
+
+  if (latestSignal === 'repair_out') {
+    return 'in_repair';
+  }
+
+  if (latestSignal === 'repair_in') {
+    return 'available';
+  }
+
+  return normalizeStatus(row?.status, 'active') === 'inactive'
+    ? 'retired'
+    : 'available';
+};
+
+const resolveUnitOperationalStatusKey = (row) => {
+  const unitsCount = Number(row?.units_count || 0);
+  const availableCount = Number(row?.available_units_count || 0);
+  const assignedCount = Number(row?.assigned_units_count || 0);
+  const repairCount = Number(row?.in_repair_units_count || 0);
+  const retiredCount = Number(row?.retired_units_count || 0);
+
+  if (unitsCount > 0 && retiredCount >= unitsCount) {
+    return 'retired';
+  }
+
+  if (availableCount > 0) {
+    return 'available';
+  }
+
+  if (assignedCount > 0) {
+    return 'assigned';
+  }
+
+  if (repairCount > 0) {
+    return 'in_repair';
+  }
+
+  if (unitsCount > 0) {
+    return 'available';
+  }
+
+  return normalizeStatus(row?.status, 'active') === 'inactive'
+    ? 'retired'
+    : 'available';
+};
+
+const resolveAssetOperationalStatus = (row) => {
+  const statusKey = row?.tracking_mode_key === 'unit'
+    ? resolveUnitOperationalStatusKey(row)
+    : resolveStockOperationalStatusKey(row);
+
+  return {
+    operational_status_key: statusKey,
+    operational_status_name: toOperationalStatusName(statusKey)
+  };
+};
+
+const buildCollaboratorSummary = (row) => ({
+  id: Number(row.collaborator_id),
+  employee_id: Number(row.employee_id),
+  full_name: `${row.first_name || ''} ${row.last_name || ''}`.trim(),
+  area_name: row.area_name || null
+});
+
+const buildAssignmentResponse = (row) => ({
+  ...toAssignmentResponse(row),
+  collaborator: buildCollaboratorSummary(row),
+  assigned_by_user_name: row.assigned_by_user_name || null,
+  received_by_user_name: row.received_by_user_name || null,
+  asset: row.asset_id ? {
+    id: Number(row.asset_id),
+    asset_name: row.asset_name || null,
+    internal_code: row.internal_code || null,
+    type_name: row.asset_type_name || null
+  } : null,
+  asset_unit: {
+    id: Number(row.asset_unit_id),
+    asset_tag: row.asset_tag || null,
+    serial_number: row.serial_number || null,
+    status_key: row.asset_unit_status_key || null,
+    status_name: row.asset_unit_status_name || null
+  },
+  location: row.current_location_id ? {
+    id: Number(row.current_location_id),
+    name: row.current_location_name || null,
+    code: row.current_location_code || null
+  } : null
+});
+
 const toAssetResponse = (row) => ({
   id: Number(row.id),
   asset_type_id: Number(row.asset_type_id),
@@ -160,10 +265,16 @@ const toAssetResponse = (row) => ({
   model: row.model || null,
   min_quantity: Number(row.min_quantity || 0),
   status: row.status,
+  record_status: row.status,
+  ...resolveAssetOperationalStatus(row),
   description: row.description || null,
   created_at: row.created_at,
   updated_at: row.updated_at,
   units_count: Number(row.units_count || 0),
+  available_units_count: Number(row.available_units_count || 0),
+  assigned_units_count: Number(row.assigned_units_count || 0),
+  in_repair_units_count: Number(row.in_repair_units_count || 0),
+  retired_units_count: Number(row.retired_units_count || 0),
   stock_quantity: Number(row.stock_quantity || 0)
 });
 
@@ -172,11 +283,23 @@ const toAssetUnitResponse = (row) => ({
   asset_id: Number(row.asset_id),
   asset_tag: row.asset_tag,
   serial_number: row.serial_number || null,
+  asset_name: row.asset_name || null,
+  asset_internal_code: row.asset_internal_code || null,
+  asset_type_name: row.asset_type_name || null,
   asset_unit_status_id: Number(row.asset_unit_status_id),
   status_key: row.status_key,
   status_name: row.status_name,
   current_location_id: row.current_location_id ? Number(row.current_location_id) : null,
   current_location_name: row.current_location_name || null,
+  active_assignment: row.active_assignment_id ? {
+    id: Number(row.active_assignment_id),
+    status: row.active_assignment_status || null,
+    assigned_at: row.active_assignment_assigned_at || null,
+    expected_return_at: row.active_assignment_expected_return_at || null,
+    collaborator_id: row.active_assignment_collaborator_id ? Number(row.active_assignment_collaborator_id) : null,
+    employee_id: row.active_assignment_employee_id ? Number(row.active_assignment_employee_id) : null,
+    collaborator_name: row.active_assignment_collaborator_name || null
+  } : null,
   acquired_at: row.acquired_at,
   warranty_expires_at: row.warranty_expires_at,
   notes: row.notes || null,
@@ -931,11 +1054,17 @@ export const InventoryService = {
   async listAssets({ query = {} } = {}) {
     const rows = await inventoryModel.listAssets({
       trackingModeKey: query.tracking_mode_key,
-      status: query.status,
       search: query.search
     });
 
-    return rows.map(toAssetResponse);
+    const operationalStatusKey = normalizeText(query.operational_status || query.status).toLowerCase();
+    const resolvedAssets = rows.map(toAssetResponse);
+
+    if (!operationalStatusKey) {
+      return resolvedAssets;
+    }
+
+    return resolvedAssets.filter((asset) => asset.operational_status_key === operationalStatusKey);
   },
 
   async listLocations({ query = {} } = {}) {
@@ -1071,6 +1200,91 @@ export const InventoryService = {
       });
 
       return toAssetResponse(createdAsset);
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  },
+
+  async updateAsset({ assetId, payload, authUser = null, requestContext = {} }) {
+    const normalizedAssetId = normalizeId(assetId);
+    if (!normalizedAssetId) {
+      throw new AppError('El identificador del activo no es válido.', {
+        statusCode: 400,
+        code: 'INVALID_ASSET_ID'
+      });
+    }
+
+    const currentAsset = await inventoryModel.getAssetById(normalizedAssetId);
+    if (!currentAsset) {
+      throw new AppError('El activo solicitado no existe.', {
+        statusCode: 404,
+        code: 'ASSET_NOT_FOUND'
+      });
+    }
+
+    const assetName = assertRequiredText(
+      payload?.asset_name !== undefined ? payload?.asset_name : currentAsset.asset_name,
+      'el nombre del activo'
+    );
+
+    const minQuantity = currentAsset.tracking_mode_key === 'stock'
+      ? (normalizeDecimal(
+        payload?.min_quantity !== undefined ? payload?.min_quantity : currentAsset.min_quantity,
+        { allowZero: true }
+      ) ?? 0)
+      : 0;
+
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+      const txModel = new InventoryModel(connection);
+
+      const updated = await txModel.updateAsset(connection, {
+        assetId: normalizedAssetId,
+        assetName,
+        brand: payload?.brand !== undefined ? (normalizeText(payload?.brand) || null) : (currentAsset.brand || null),
+        model: payload?.model !== undefined ? (normalizeText(payload?.model) || null) : (currentAsset.model || null),
+        minQuantity,
+        description: payload?.description !== undefined ? (normalizeText(payload?.description) || null) : (currentAsset.description || null)
+      });
+
+      if (!updated) {
+        throw new AppError('No fue posible actualizar el activo.', {
+          statusCode: 409,
+          code: 'ASSET_NOT_UPDATED'
+        });
+      }
+
+      const updatedAsset = await txModel.getAssetById(normalizedAssetId);
+
+      await txModel.createAssetEvent(connection, {
+        assetId: normalizedAssetId,
+        operatorId: authUser?.id || null,
+        actionKey: 'asset_updated',
+        entityType: 'assets',
+        entityId: normalizedAssetId,
+        reason: normalizeText(payload?.reason) || 'Actualización de activo.',
+        beforeSnapshot: currentAsset,
+        afterSnapshot: updatedAsset
+      });
+
+      await connection.commit();
+
+      await AuditService.record({
+        operatorId: authUser?.id || null,
+        action: 'inventory.update_asset',
+        entityType: 'assets',
+        entityId: normalizedAssetId,
+        beforeSnapshot: currentAsset,
+        afterSnapshot: updatedAsset,
+        requestContext
+      });
+
+      return toAssetResponse(updatedAsset);
     } catch (error) {
       await connection.rollback();
       throw error;
@@ -1400,6 +1614,18 @@ export const InventoryService = {
     return rows.map(toAssetUnitResponse);
   },
 
+  async listAvailableAssetUnits({ query = {} } = {}) {
+    const statusKey = normalizeText(query.status_key || query.status || 'available').toLowerCase() || 'available';
+    const assetId = normalizeId(query.asset_id);
+    const rows = await inventoryModel.listAssetUnitsByStatus({
+      statusKey,
+      assetId,
+      search: normalizeText(query.search)
+    });
+
+    return rows.map(toAssetUnitResponse);
+  },
+
   async createAssetUnits({ assetId, payload, authUser = null, requestContext = {} }) {
     const normalizedAssetId = normalizeId(assetId);
     if (!normalizedAssetId) {
@@ -1543,25 +1769,18 @@ export const InventoryService = {
 
   async listAssignments({ query = {} } = {}) {
     const assetUnitId = normalizeId(query.asset_unit_id);
-    if (!assetUnitId) {
-      throw new AppError('Debes indicar una unidad válida para consultar resguardos.', {
-        statusCode: 400,
-        code: 'INVALID_ASSET_UNIT_ID'
-      });
-    }
+    const assetId = normalizeId(query.asset_id);
+    const collaboratorId = normalizeId(query.collaborator_id);
 
-    const assignments = await inventoryModel.listAssetAssignmentsByUnit(assetUnitId);
-    return assignments.map((assignment) => ({
-      ...toAssignmentResponse(assignment),
-      collaborator: {
-        id: Number(assignment.collaborator_id),
-        employee_id: Number(assignment.employee_id),
-        full_name: `${assignment.first_name || ''} ${assignment.last_name || ''}`.trim(),
-        area_name: assignment.area_name || null
-      },
-      assigned_by_user_name: assignment.assigned_by_user_name || null,
-      received_by_user_name: assignment.received_by_user_name || null
-    }));
+    const assignments = await inventoryModel.listAssetAssignments({
+      assetUnitId,
+      assetId,
+      collaboratorId,
+      status: query.status,
+      search: query.search
+    });
+
+    return assignments.map(buildAssignmentResponse);
   },
 
   async createAssignment({ payload, authUser = null, requestContext = {} }) {
@@ -1846,6 +2065,195 @@ export const InventoryService = {
       });
 
       return toAssignmentResponse(closedAssignment);
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  },
+
+  async updateAssetUnitStatus({ assetUnitId, payload, authUser = null, requestContext = {} }) {
+    const normalizedAssetUnitId = normalizeId(assetUnitId);
+    if (!normalizedAssetUnitId) {
+      throw new AppError('El identificador de la unidad no es válido.', {
+        statusCode: 400,
+        code: 'INVALID_ASSET_UNIT_ID'
+      });
+    }
+
+    const targetStatusKey = normalizeText(payload?.status_key).toLowerCase();
+    if (!['available', 'in_repair', 'retired'].includes(targetStatusKey)) {
+      throw new AppError('Debes indicar un estado operativo válido para la unidad.', {
+        statusCode: 400,
+        code: 'INVALID_ASSET_UNIT_STATUS'
+      });
+    }
+
+    const reason = assertRequiredText(payload?.reason, 'el motivo del cambio de estado');
+    const locationId = normalizeId(payload?.location_id);
+    const unit = await inventoryModel.getAssetUnitById(normalizedAssetUnitId);
+
+    if (!unit) {
+      throw new AppError('La unidad serializada indicada no existe.', {
+        statusCode: 404,
+        code: 'ASSET_UNIT_NOT_FOUND'
+      });
+    }
+
+    if (unit.status_key === targetStatusKey) {
+      throw new AppError('La unidad ya se encuentra en ese estado.', {
+        statusCode: 409,
+        code: 'ASSET_UNIT_STATUS_UNCHANGED'
+      });
+    }
+
+    if (!['available', 'in_repair', 'assigned'].includes(unit.status_key)) {
+      throw new AppError('La unidad ya se encuentra fuera del ciclo operativo editable.', {
+        statusCode: 409,
+        code: 'ASSET_UNIT_STATUS_LOCKED'
+      });
+    }
+
+    if (unit.status_key === 'assigned') {
+      const activeAssignment = await inventoryModel.getActiveAssetAssignmentByUnitId(normalizedAssetUnitId);
+      if (activeAssignment) {
+        throw new AppError('Primero debes cerrar el resguardo activo antes de cambiar el estado de la unidad.', {
+          statusCode: 409,
+          code: 'ASSET_UNIT_ACTIVE_ASSIGNMENT'
+        });
+      }
+    }
+
+    if (unit.status_key === 'retired') {
+      throw new AppError('Las unidades en baja ya no se pueden cambiar desde este flujo.', {
+        statusCode: 409,
+        code: 'ASSET_UNIT_RETIRED'
+      });
+    }
+
+    if (targetStatusKey === 'available' && !locationId) {
+      throw new AppError('Debes indicar una ubicación válida para dejar disponible la unidad.', {
+        statusCode: 400,
+        code: 'INVALID_ASSET_UNIT_LOCATION'
+      });
+    }
+
+    if (locationId) {
+      const location = await inventoryModel.getLocationById(locationId);
+      if (!location) {
+        throw new AppError('La ubicación indicada no existe.', {
+          statusCode: 404,
+          code: 'LOCATION_NOT_FOUND'
+        });
+      }
+    }
+
+    const targetStatus = await inventoryModel.getAssetUnitStatusByKey(targetStatusKey);
+    if (!targetStatus) {
+      throw new AppError('El estado de unidad solicitado no existe.', {
+        statusCode: 404,
+        code: 'ASSET_UNIT_STATUS_NOT_FOUND'
+      });
+    }
+
+    const movementTypeKey = targetStatusKey === 'available'
+      ? 'repair_in'
+      : targetStatusKey === 'in_repair'
+        ? 'repair_out'
+        : 'retire_out';
+
+    const movementType = await inventoryModel.getMovementTypeByKey(movementTypeKey);
+    if (!movementType) {
+      throw new AppError('El catálogo base de cambios operativos no está configurado correctamente.', {
+        statusCode: 500,
+        code: 'INVENTORY_BASE_CATALOG_MISSING'
+      });
+    }
+
+    const happenedAt = normalizeDateTime(payload?.happened_at);
+    if (payload?.happened_at && !happenedAt) {
+      throw new AppError('La fecha del cambio de estado no tiene un formato válido.', {
+        statusCode: 400,
+        code: 'INVALID_ASSET_UNIT_STATUS_DATE'
+      });
+    }
+
+    const currentLocationId = unit.current_location_id ? Number(unit.current_location_id) : null;
+    const nextLocationId = targetStatusKey === 'available'
+      ? locationId
+      : (locationId || null);
+
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+      const txModel = new InventoryModel(connection);
+
+      const movementId = await txModel.createInventoryMovement(connection, {
+        movementTypeId: Number(movementType.id),
+        operatorId: authUser?.id || null,
+        reason,
+        referenceType: 'asset_unit',
+        referenceId: normalizedAssetUnitId,
+        happenedAt
+      });
+
+      await txModel.createInventoryMovementLine(connection, {
+        inventoryMovementId: movementId,
+        assetId: Number(unit.asset_id),
+        assetUnitId: normalizedAssetUnitId,
+        quantity: 1,
+        fromLocationId: currentLocationId,
+        toLocationId: nextLocationId,
+        notes: normalizeText(payload?.notes) || null
+      });
+
+      await txModel.updateAssetUnit(connection, {
+        assetUnitId: normalizedAssetUnitId,
+        assetUnitStatusId: Number(targetStatus.id),
+        currentLocationId: nextLocationId,
+        notes: payload?.notes !== undefined ? (normalizeText(payload?.notes) || null) : undefined
+      });
+
+      await txModel.createAssetEvent(connection, {
+        assetId: Number(unit.asset_id),
+        assetUnitId: normalizedAssetUnitId,
+        operatorId: authUser?.id || null,
+        actionKey: 'asset_unit_status_updated',
+        entityType: 'asset_units',
+        entityId: normalizedAssetUnitId,
+        reason,
+        beforeSnapshot: unit,
+        afterSnapshot: {
+          status_key: targetStatusKey,
+          current_location_id: nextLocationId,
+          movement_type_key: movementTypeKey
+        }
+      });
+
+      await connection.commit();
+
+      const updatedUnit = await inventoryModel.getAssetUnitById(normalizedAssetUnitId);
+
+      await AuditService.record({
+        operatorId: authUser?.id || null,
+        action: 'inventory.update_asset_unit_status',
+        entityType: 'asset_units',
+        entityId: normalizedAssetUnitId,
+        beforeSnapshot: unit,
+        afterSnapshot: updatedUnit,
+        requestContext
+      });
+
+      const resolvedUnit = (await inventoryModel.listAssetUnits(Number(unit.asset_id)))
+        .find((assetUnit) => Number(assetUnit.id) === normalizedAssetUnitId);
+
+      return resolvedUnit ? toAssetUnitResponse(resolvedUnit) : toAssetUnitResponse({
+        ...updatedUnit,
+        status_name: targetStatus.name,
+        current_location_name: null
+      });
     } catch (error) {
       await connection.rollback();
       throw error;
