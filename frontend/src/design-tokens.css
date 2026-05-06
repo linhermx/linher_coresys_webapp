@@ -19,6 +19,10 @@
   --radius-md: 8px;
   --radius-lg: 8px;
 
+  --control-height-compact: 38px;
+  --control-height-regular: 40px;
+  --control-height-touch: 44px;
+
   --sidebar-width: 248px;
   --topbar-height: 60px;
   --content-max-width: 1600px;
@@ -61,6 +65,22 @@
   --shadow-accent: 0 10px 20px color-mix(in srgb, var(--color-primary) 10%, transparent);
   --color-overlay-strong: oklch(0.19 0.015 304 / 0.58);
   --color-overlay-soft: oklch(0.23 0.018 304 / 0.24);
+
+  --tone-primary: var(--color-primary-outline);
+  --tone-info: var(--color-info);
+  --tone-warning: var(--color-warning);
+  --tone-success: var(--color-success);
+  --tone-neutral: var(--color-border-strong);
+  --tone-danger: var(--color-danger);
+
+  --table-surface-bg: color-mix(in oklch, var(--color-surface) 94%, var(--color-bg) 6%);
+  --table-border-color: color-mix(in oklch, var(--color-border) 62%, transparent);
+  --table-header-bg: color-mix(in oklch, var(--color-surface-soft) 86%, var(--color-surface) 14%);
+  --table-header-border: color-mix(in oklch, var(--color-border) 78%, transparent);
+  --table-header-color: color-mix(in oklch, var(--color-text-dim) 88%, var(--color-text-main) 12%);
+  --table-row-border-color: color-mix(in oklch, var(--color-border) 58%, transparent);
+  --table-footer-bg: color-mix(in oklch, var(--color-surface-soft) 28%, var(--color-surface) 72%);
+  --table-scrollbar-thumb: color-mix(in oklch, var(--color-border-strong) 46%, transparent);
 }
 
 [data-theme='dark'] {
@@ -104,4 +124,11 @@
   --shadow-accent: 0 10px 20px color-mix(in srgb, var(--color-primary) 18%, transparent);
   --color-overlay-strong: oklch(0.08 0.01 304 / 0.72);
   --color-overlay-soft: oklch(0.1 0.012 304 / 0.46);
+
+  --tone-primary: var(--color-primary-outline);
+  --tone-info: var(--color-info);
+  --tone-warning: var(--color-warning);
+  --tone-success: var(--color-success);
+  --tone-neutral: var(--color-border-strong);
+  --tone-danger: var(--color-danger);
 }

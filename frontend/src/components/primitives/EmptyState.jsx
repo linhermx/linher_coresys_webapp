@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import PropTypes from 'prop-types';
 
 export const EmptyState = ({
@@ -8,20 +9,39 @@ export const EmptyState = ({
   id,
   role,
   ariaLabelledBy,
+  ariaDescribedBy,
+  ariaLive,
+  ariaAtomic,
+  ariaBusy,
+  titleAs = 'h2',
   hidden
-}) => (
-  <div
-    className={className}
-    id={id}
-    role={role}
-    aria-labelledby={ariaLabelledBy}
-    hidden={hidden}
-  >
-    <p className="tickets-empty-state__title">{title}</p>
-    <p className="tickets-empty-state__copy">{copy}</p>
-    {children}
-  </div>
-);
+}) => {
+  const fallbackId = useId().replace(/:/g, '');
+  const resolvedId = id ?? `empty-state-${fallbackId}`;
+  const resolvedTitleId = `${resolvedId}-title`;
+  const resolvedCopyId = `${resolvedId}-copy`;
+  const resolvedAriaLabelledBy = ariaLabelledBy ?? resolvedTitleId;
+  const resolvedAriaDescribedBy = ariaDescribedBy ?? resolvedCopyId;
+  const TitleTag = titleAs;
+
+  return (
+    <div
+      className={className}
+      id={resolvedId}
+      role={role}
+      aria-labelledby={resolvedAriaLabelledBy}
+      aria-describedby={resolvedAriaDescribedBy}
+      aria-live={ariaLive}
+      aria-atomic={ariaAtomic}
+      aria-busy={ariaBusy}
+      hidden={hidden}
+    >
+      <TitleTag className="tickets-empty-state__title" id={resolvedTitleId}>{title}</TitleTag>
+      <p className="tickets-empty-state__copy" id={resolvedCopyId}>{copy}</p>
+      {children}
+    </div>
+  );
+};
 
 EmptyState.propTypes = {
   title: PropTypes.string.isRequired,
@@ -31,6 +51,11 @@ EmptyState.propTypes = {
   id: PropTypes.string,
   role: PropTypes.string,
   ariaLabelledBy: PropTypes.string,
+  ariaDescribedBy: PropTypes.string,
+  ariaLive: PropTypes.oneOf(['off', 'polite', 'assertive']),
+  ariaAtomic: PropTypes.bool,
+  ariaBusy: PropTypes.bool,
+  titleAs: PropTypes.string,
   hidden: PropTypes.bool
 };
 
@@ -38,6 +63,10 @@ EmptyState.defaultProps = {
   id: undefined,
   role: undefined,
   ariaLabelledBy: undefined,
+  ariaDescribedBy: undefined,
+  ariaLive: undefined,
+  ariaAtomic: undefined,
+  ariaBusy: undefined,
+  titleAs: 'h2',
   hidden: undefined
 };
-

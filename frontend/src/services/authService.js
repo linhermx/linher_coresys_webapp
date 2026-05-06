@@ -1,56 +1,8 @@
-const normalizeBaseUrl = (value) => String(value || '').trim().replace(/\/+$/, '');
-
-const API_BASE_URL = normalizeBaseUrl(
-  import.meta.env.VITE_API_URL ||
-  import.meta.env.VITE_API_BASE_URL ||
-  'http://localhost:3000/api/v1'
-);
-
-const buildApiError = (response, payload, fallbackMessage) => {
-  const error = new Error(payload?.message || fallbackMessage);
-  error.status = Number(response?.status || 0);
-  error.code = payload?.error?.code || null;
-  error.details = payload?.error?.details || null;
-  error.isAuthError = (
-    error.status === 401 ||
-    error.code === 'AUTH_REQUIRED' ||
-    error.code === 'INVALID_ACCESS_TOKEN' ||
-    error.code === 'INVALID_REFRESH_TOKEN' ||
-    error.code === 'REFRESH_TOKEN_REQUIRED'
-  );
-  return error;
-};
-
-const requestJson = async (path, {
-  method = 'GET',
-  body = null,
-  accessToken = ''
-} = {}) => {
-  const headers = {
-    Accept: 'application/json',
-    ...(body ? { 'Content-Type': 'application/json' } : {}),
-    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {})
-  };
-
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method,
-    headers,
-    ...(body ? { body: JSON.stringify(body) } : {})
-  });
-
-  const payload = await response.json().catch(() => null);
-
-  if (!response.ok || !payload?.ok) {
-    throw buildApiError(response, payload, 'No fue posible completar la operación de sesión.');
-  }
-
-  return payload.data;
-};
+import { isApiAuthError, requestJson } from './apiClient.js';
 
 export const isAuthError = (error) => (
   Boolean(
-    error?.isAuthError ||
-    error?.status === 401 ||
+    isApiAuthError(error) ||
     error?.code === 'AUTH_REQUIRED'
   )
 );
@@ -61,10 +13,28 @@ export const loginSession = ({ email, password, rememberMe = false }) => request
     email,
     password,
     remember_me: rememberMe
-  }
+  },
+  allowAuthRetry: false,
+  fallbackMessage: 'No fue posible completar la operacion de sesion.'
 });
 
-export const logoutSession = ({ refreshToken, accessToken = '' } = {}) => {
+export const refreshSession = ({ refreshToken } = {}) => {
+  const normalizedRefreshToken = String(refreshToken || '').trim();
+  if (!normalizedRefreshToken) {
+    return Promise.reject(new Error('Debes indicar un refresh token.'));
+  }
+
+  return requestJson('/auth/refresh', {
+    method: 'POST',
+    body: {
+      refresh_token: normalizedRefreshToken
+    },
+    allowAuthRetry: false,
+    fallbackMessage: 'No fue posible actualizar la sesion.'
+  });
+};
+
+export const logoutSession = ({ refreshToken } = {}) => {
   const normalizedRefreshToken = String(refreshToken || '').trim();
   if (!normalizedRefreshToken) {
     return Promise.resolve({ revoked: false });
@@ -75,11 +45,13 @@ export const logoutSession = ({ refreshToken, accessToken = '' } = {}) => {
     body: {
       refresh_token: normalizedRefreshToken
     },
-    accessToken
+    allowAuthRetry: false,
+    fallbackMessage: 'No fue posible cerrar la sesion.'
   });
 };
 
-export const getCurrentSession = ({ accessToken }) => requestJson('/auth/me', {
+export const getCurrentSession = () => requestJson('/auth/me', {
   method: 'GET',
-  accessToken
+  allowAuthRetry: false,
+  fallbackMessage: 'No fue posible obtener la sesion actual.'
 });

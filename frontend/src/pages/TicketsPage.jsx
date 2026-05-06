@@ -18,7 +18,13 @@ import {
 
 import { EmptyState } from '../components/primitives/EmptyState.jsx';
 import { FilterChipGroup } from '../components/primitives/FilterChipGroup.jsx';
+import { DrawerTabs } from '../components/primitives/DrawerTabs.jsx';
+import { FilterSelect } from '../components/primitives/FilterSelect.jsx';
+import { ModalDialog } from '../components/primitives/ModalDialog.jsx';
+import { OperationalTablePanel } from '../components/primitives/OperationalTablePanel.jsx';
+import { PaginationBar } from '../components/primitives/PaginationBar.jsx';
 import { SegmentedControl } from '../components/primitives/SegmentedControl.jsx';
+import { WorkspaceSplitLayout } from '../components/primitives/WorkspaceSplitLayout.jsx';
 import {
   addTicketComment,
   createTicket,
@@ -152,54 +158,6 @@ const createPipelineVisibleCounts = () => (
     return accumulator;
   }, {})
 );
-
-const getFocusableElements = (container) => {
-  if (!container) {
-    return [];
-  }
-
-  const selector = [
-    'a[href]',
-    'button:not([disabled])',
-    'textarea:not([disabled])',
-    'input:not([type="hidden"]):not([disabled])',
-    'select:not([disabled])',
-    '[tabindex]:not([tabindex="-1"])'
-  ].join(',');
-
-  return Array.from(container.querySelectorAll(selector)).filter(
-    (element) => !element.hasAttribute('disabled') && element.getAttribute('aria-hidden') !== 'true'
-  );
-};
-
-const trapFocusInContainer = (event, container) => {
-  if (event.key !== 'Tab') {
-    return;
-  }
-
-  const focusableElements = getFocusableElements(container);
-  if (focusableElements.length === 0) {
-    event.preventDefault();
-    return;
-  }
-
-  const firstElement = focusableElements[0];
-  const lastElement = focusableElements[focusableElements.length - 1];
-  const activeElement = document.activeElement;
-
-  if (event.shiftKey) {
-    if (activeElement === firstElement || !container.contains(activeElement)) {
-      event.preventDefault();
-      lastElement.focus();
-    }
-    return;
-  }
-
-  if (activeElement === lastElement) {
-    event.preventDefault();
-    firstElement.focus();
-  }
-};
 
 const matchesSearch = (ticket, searchTerm) => {
   if (!searchTerm) {
@@ -386,195 +344,184 @@ const TicketEditorModal = ({
   submitError,
   returnFocusRef
 }) => {
-  const modalRef = useRef(null);
   const titleInputRef = useRef(null);
-  const wasOpenRef = useRef(false);
-
-  useEffect(() => {
-    if (!open) {
-      if (wasOpenRef.current) {
-        returnFocusRef?.current?.focus?.();
-      }
-      wasOpenRef.current = false;
-      return undefined;
-    }
-
-    wasOpenRef.current = true;
-    const frame = window.requestAnimationFrame(() => {
-      const fallbackTarget = getFocusableElements(modalRef.current)[0] || null;
-      (titleInputRef.current || fallbackTarget)?.focus?.();
-    });
-
-    return () => window.cancelAnimationFrame(frame);
-  }, [open, returnFocusRef]);
 
   if (!open) {
     return null;
   }
 
   return (
-    <div className="ticket-modal-backdrop" role="presentation" onClick={onClose}>
-      <div
-        className="ticket-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        ref={modalRef}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            event.preventDefault();
-            onClose();
-            return;
-          }
+    <ModalDialog
+      open={open}
+      title={title}
+      onClose={onClose}
+      returnFocusRef={returnFocusRef}
+      initialFocusRef={titleInputRef}
+      closeAriaLabel="Cerrar formulario de ticket"
+    >
+      <form className="modal-dialog__form" onSubmit={onSubmit}>
+        <label className="modal-dialog__field">
+          <span>Título</span>
+          <input
+            ref={titleInputRef}
+            type="text"
+            name="title"
+            id="ticket-editor-title"
+            value={formData.title}
+            onChange={onFieldChange}
+            maxLength={220}
+            required
+          />
+        </label>
 
-          trapFocusInContainer(event, modalRef.current);
-        }}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <header className="ticket-modal__header">
-          <h2 className="ticket-modal__title">{title}</h2>
-          <button
-            type="button"
-            className="ticket-modal__close"
-            onClick={onClose}
-            aria-label="Cerrar formulario de ticket"
-          >
-            <X size={16} aria-hidden="true" />
-          </button>
-        </header>
+        <label className="modal-dialog__field">
+          <span>Resumen</span>
+          <textarea
+            name="summary"
+            id="ticket-editor-summary"
+            rows="4"
+            value={formData.summary}
+            onChange={onFieldChange}
+            required
+          />
+        </label>
 
-        <form className="ticket-modal__form" onSubmit={onSubmit}>
-          <label className="ticket-modal__field">
-            <span>Título</span>
-            <input
-              ref={titleInputRef}
-              type="text"
-              name="title"
-              value={formData.title}
-              onChange={onFieldChange}
-              maxLength={220}
-              required
+        <div className="modal-dialog__grid">
+          <div className="modal-dialog__field">
+            <span id="ticket-editor-type-label">Tipo</span>
+            <FilterSelect
+              id="ticket-editor-type"
+              name="type"
+              label="Tipo"
+              labelId="ticket-editor-type-label"
+              value={formData.type}
+              options={Object.entries(typeMeta).map(([key, value]) => ({
+                key,
+                label: value.label
+              }))}
+              onChange={(nextValue) => onFieldChange({ target: { name: 'type', value: nextValue } })}
+              variant="field"
             />
-          </label>
-
-          <label className="ticket-modal__field">
-            <span>Resumen</span>
-            <textarea
-              name="summary"
-              rows="4"
-              value={formData.summary}
-              onChange={onFieldChange}
-              required
-            />
-          </label>
-
-          <div className="ticket-modal__grid">
-            <label className="ticket-modal__field">
-              <span>Tipo</span>
-              <select name="type" value={formData.type} onChange={onFieldChange}>
-                {Object.entries(typeMeta).map(([key, value]) => (
-                  <option key={key} value={key}>
-                    {value.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="ticket-modal__field">
-              <span>Categoría</span>
-              <select name="category" value={formData.category} onChange={onFieldChange}>
-                {Object.entries(categoryLabels).map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="ticket-modal__field">
-              <span>Prioridad</span>
-              <select name="priority" value={formData.priority} onChange={onFieldChange}>
-                {Object.entries(priorityMeta).map(([key, value]) => (
-                  <option key={key} value={key}>
-                    {value.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="ticket-modal__field">
-              <span>Canal</span>
-              <select name="channel" value={formData.channel} onChange={onFieldChange}>
-                {channelOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="ticket-modal__field">
-              <span>Solicitante</span>
-              <select
-                name="requester_user_id"
-                value={formData.requester_user_id}
-                onChange={onFieldChange}
-                required
-              >
-                {requesterUsers.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="ticket-modal__field">
-              <span>Responsable</span>
-              <select
-                name="assignee_user_id"
-                value={formData.assignee_user_id}
-                onChange={onFieldChange}
-              >
-                <option value="">Sin asignar</option>
-                {assigneeUsers.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="ticket-modal__field ticket-modal__field--full">
-              <span>Vence</span>
-              <input
-                type="datetime-local"
-                name="due_at"
-                value={formData.due_at}
-                onChange={onFieldChange}
-              />
-            </label>
           </div>
 
-          {submitError ? (
-            <p className="ticket-modal__error" role="alert">{submitError}</p>
-          ) : null}
+          <div className="modal-dialog__field">
+            <span id="ticket-editor-category-label">Categoría</span>
+            <FilterSelect
+              id="ticket-editor-category"
+              name="category"
+              label="Categoría"
+              labelId="ticket-editor-category-label"
+              value={formData.category}
+              options={Object.entries(categoryLabels).map(([key, label]) => ({
+                key,
+                label
+              }))}
+              onChange={(nextValue) => onFieldChange({ target: { name: 'category', value: nextValue } })}
+              variant="field"
+            />
+          </div>
 
-          <footer className="ticket-modal__actions">
-            <button
-              type="button"
-              className="tickets-empty-state__action tickets-empty-state__action--ghost"
-              onClick={onClose}
-            >
-              Cancelar
-            </button>
-            <button type="submit" className="tickets-page__primary-action" disabled={isSubmitting}>
-              {isSubmitting ? 'Guardando...' : submitLabel}
-            </button>
-          </footer>
-        </form>
-      </div>
-    </div>
+          <div className="modal-dialog__field">
+            <span id="ticket-editor-priority-label">Prioridad</span>
+            <FilterSelect
+              id="ticket-editor-priority"
+              name="priority"
+              label="Prioridad"
+              labelId="ticket-editor-priority-label"
+              value={formData.priority}
+              options={Object.entries(priorityMeta).map(([key, value]) => ({
+                key,
+                label: value.label
+              }))}
+              onChange={(nextValue) => onFieldChange({ target: { name: 'priority', value: nextValue } })}
+              variant="field"
+            />
+          </div>
+
+          <div className="modal-dialog__field">
+            <span id="ticket-editor-channel-label">Canal</span>
+            <FilterSelect
+              id="ticket-editor-channel"
+              name="channel"
+              label="Canal"
+              labelId="ticket-editor-channel-label"
+              value={formData.channel}
+              options={channelOptions.map((option) => ({
+                key: option,
+                label: option
+              }))}
+              onChange={(nextValue) => onFieldChange({ target: { name: 'channel', value: nextValue } })}
+              variant="field"
+            />
+          </div>
+
+          <div className="modal-dialog__field">
+            <span id="ticket-editor-requester-label">Solicitante</span>
+            <FilterSelect
+              id="ticket-editor-requester"
+              name="requester_user_id"
+              label="Solicitante"
+              labelId="ticket-editor-requester-label"
+              value={formData.requester_user_id}
+              options={requesterUsers.map((user) => ({
+                key: String(user.id),
+                label: user.name
+              }))}
+              onChange={(nextValue) => onFieldChange({ target: { name: 'requester_user_id', value: nextValue } })}
+              variant="field"
+            />
+          </div>
+
+          <div className="modal-dialog__field">
+            <span id="ticket-editor-assignee-label">Responsable</span>
+            <FilterSelect
+              id="ticket-editor-assignee"
+              name="assignee_user_id"
+              label="Responsable"
+              labelId="ticket-editor-assignee-label"
+              value={formData.assignee_user_id}
+              options={[
+                { key: '', label: 'Sin asignar' },
+                ...assigneeUsers.map((user) => ({
+                  key: String(user.id),
+                  label: user.name
+                }))
+              ]}
+              onChange={(nextValue) => onFieldChange({ target: { name: 'assignee_user_id', value: nextValue } })}
+              variant="field"
+            />
+          </div>
+
+          <label className="modal-dialog__field modal-dialog__field--full">
+            <span>Vence</span>
+            <input
+              type="datetime-local"
+              name="due_at"
+              id="ticket-editor-due-at"
+              value={formData.due_at}
+              onChange={onFieldChange}
+            />
+          </label>
+        </div>
+
+        {submitError ? (
+          <p className="modal-dialog__error" role="alert">{submitError}</p>
+        ) : null}
+
+        <footer className="modal-dialog__actions">
+          <button
+            type="button"
+            className="tickets-empty-state__action tickets-empty-state__action--ghost"
+            onClick={onClose}
+          >
+            Cancelar
+          </button>
+          <button type="submit" className="tickets-page__primary-action" disabled={isSubmitting}>
+            {isSubmitting ? 'Guardando...' : submitLabel}
+          </button>
+        </footer>
+      </form>
+    </ModalDialog>
   );
 };
 
@@ -588,147 +535,122 @@ const AdvancedFiltersModal = ({
   assigneeUsers,
   returnFocusRef
 }) => {
-  const modalRef = useRef(null);
   const prioritySelectRef = useRef(null);
-  const wasOpenRef = useRef(false);
-
-  useEffect(() => {
-    if (!open) {
-      if (wasOpenRef.current) {
-        returnFocusRef?.current?.focus?.();
-      }
-      wasOpenRef.current = false;
-      return undefined;
-    }
-
-    wasOpenRef.current = true;
-    const frame = window.requestAnimationFrame(() => {
-      const fallbackTarget = getFocusableElements(modalRef.current)[0] || null;
-      (prioritySelectRef.current || fallbackTarget)?.focus?.();
-    });
-
-    return () => window.cancelAnimationFrame(frame);
-  }, [open, returnFocusRef]);
 
   if (!open) {
     return null;
   }
 
   return (
-    <div className="ticket-modal-backdrop" role="presentation" onClick={onClose}>
-      <div
-        className="ticket-modal ticket-modal--narrow"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Filtros avanzados"
-        ref={modalRef}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            event.preventDefault();
-            onClose();
-            return;
-          }
-
-          trapFocusInContainer(event, modalRef.current);
-        }}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <header className="ticket-modal__header">
-          <h2 className="ticket-modal__title">Filtros avanzados</h2>
-          <button
-            type="button"
-            className="ticket-modal__close"
-            onClick={onClose}
-            aria-label="Cerrar filtros avanzados"
-          >
-            <X size={16} aria-hidden="true" />
-          </button>
-        </header>
-
-        <div className="ticket-modal__form">
-          <div className="ticket-modal__grid">
-            <label className="ticket-modal__field">
-              <span>Prioridad</span>
-              <select
-                ref={prioritySelectRef}
-                name="priority"
-                value={draftFilters.priority}
-                onChange={onDraftChange}
-              >
-                <option value="all">Todas</option>
-                {Object.entries(priorityMeta).map(([key, value]) => (
-                  <option key={key} value={key}>
-                    {value.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="ticket-modal__field">
-              <span>Categoría</span>
-              <select
-                name="category"
-                value={draftFilters.category}
-                onChange={onDraftChange}
-              >
-                <option value="all">Todas</option>
-                {Object.entries(categoryLabels).map(([key, label]) => (
-                  <option key={key} value={key}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="ticket-modal__field">
-              <span>Responsable</span>
-              <select
-                name="assigneeUserId"
-                value={draftFilters.assigneeUserId}
-                onChange={onDraftChange}
-              >
-                <option value="all">Todos</option>
-                <option value="none">Sin asignar</option>
-                {assigneeUsers.map((user) => (
-                  <option key={user.id} value={String(user.id)}>
-                    {user.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="ticket-modal__field">
-              <span>Adjuntos</span>
-              <select
-                name="hasAttachments"
-                value={draftFilters.hasAttachments}
-                onChange={onDraftChange}
-              >
-                <option value="all">Todos</option>
-                <option value="with">Con adjuntos</option>
-                <option value="without">Sin adjuntos</option>
-              </select>
-            </label>
+    <ModalDialog
+      open={open}
+      title="Filtros avanzados"
+      onClose={onClose}
+      returnFocusRef={returnFocusRef}
+      initialFocusRef={prioritySelectRef}
+      closeAriaLabel="Cerrar filtros avanzados"
+      size="narrow"
+    >
+      <div className="modal-dialog__form">
+        <div className="modal-dialog__grid">
+          <div className="modal-dialog__field">
+            <span id="ticket-filters-priority-label">Prioridad</span>
+            <FilterSelect
+              id="ticket-filters-priority"
+              name="priority"
+              label="Prioridad"
+              labelId="ticket-filters-priority-label"
+              value={draftFilters.priority}
+              options={[
+                { key: 'all', label: 'Todas' },
+                ...Object.entries(priorityMeta).map(([key, value]) => ({
+                  key,
+                  label: value.label
+                }))
+              ]}
+              onChange={(nextValue) => onDraftChange({ target: { name: 'priority', value: nextValue } })}
+              variant="field"
+              ref={prioritySelectRef}
+            />
           </div>
 
-          <footer className="ticket-modal__actions">
-            <button
-              type="button"
-              className="tickets-empty-state__action tickets-empty-state__action--ghost"
-              onClick={onClear}
-            >
-              Limpiar
-            </button>
-            <button type="button" className="tickets-empty-state__action" onClick={onClose}>
-              Cancelar
-            </button>
-            <button type="button" className="tickets-page__primary-action" onClick={onApply}>
-              Aplicar filtros
-            </button>
-          </footer>
+          <div className="modal-dialog__field">
+            <span id="ticket-filters-category-label">Categoría</span>
+            <FilterSelect
+              id="ticket-filters-category"
+              name="category"
+              label="Categoría"
+              labelId="ticket-filters-category-label"
+              value={draftFilters.category}
+              options={[
+                { key: 'all', label: 'Todas' },
+                ...Object.entries(categoryLabels).map(([key, label]) => ({
+                  key,
+                  label
+                }))
+              ]}
+              onChange={(nextValue) => onDraftChange({ target: { name: 'category', value: nextValue } })}
+              variant="field"
+            />
+          </div>
+
+          <div className="modal-dialog__field">
+            <span id="ticket-filters-assignee-label">Responsable</span>
+            <FilterSelect
+              id="ticket-filters-assignee"
+              name="assigneeUserId"
+              label="Responsable"
+              labelId="ticket-filters-assignee-label"
+              value={draftFilters.assigneeUserId}
+              options={[
+                { key: 'all', label: 'Todos' },
+                { key: 'none', label: 'Sin asignar' },
+                ...assigneeUsers.map((user) => ({
+                  key: String(user.id),
+                  label: user.name
+                }))
+              ]}
+              onChange={(nextValue) => onDraftChange({ target: { name: 'assigneeUserId', value: nextValue } })}
+              variant="field"
+            />
+          </div>
+
+          <div className="modal-dialog__field">
+            <span id="ticket-filters-attachments-label">Adjuntos</span>
+            <FilterSelect
+              id="ticket-filters-attachments"
+              name="hasAttachments"
+              label="Adjuntos"
+              labelId="ticket-filters-attachments-label"
+              value={draftFilters.hasAttachments}
+              options={[
+                { key: 'all', label: 'Todos' },
+                { key: 'with', label: 'Con adjuntos' },
+                { key: 'without', label: 'Sin adjuntos' }
+              ]}
+              onChange={(nextValue) => onDraftChange({ target: { name: 'hasAttachments', value: nextValue } })}
+              variant="field"
+            />
+          </div>
         </div>
+
+        <footer className="modal-dialog__actions">
+          <button
+            type="button"
+            className="tickets-empty-state__action tickets-empty-state__action--ghost"
+            onClick={onClear}
+          >
+            Limpiar
+          </button>
+          <button type="button" className="tickets-empty-state__action" onClick={onClose}>
+            Cancelar
+          </button>
+          <button type="button" className="tickets-page__primary-action" onClick={onApply}>
+            Aplicar filtros
+          </button>
+        </footer>
       </div>
-    </div>
+    </ModalDialog>
   );
 };
 
@@ -810,6 +732,42 @@ const TicketDetailPanel = ({
     setDetailTab(nextTabKey);
     requestAnimationFrame(() => moveTabFocus(nextTabKey));
   };
+
+  const detailTabsConfig = [
+    {
+      key: 'comments',
+      label: 'Comentarios',
+      count: ticket.comments.length,
+      id: getDetailTabId('comments'),
+      controls: getDetailPanelId('comments'),
+      onKeyDown: (event) => handleDetailTabKeyDown(event, 'comments'),
+      ref: (node) => {
+        detailTabRefs.current.comments = node;
+      }
+    },
+    {
+      key: 'activity',
+      label: 'Actividad',
+      count: ticket.activity.length,
+      id: getDetailTabId('activity'),
+      controls: getDetailPanelId('activity'),
+      onKeyDown: (event) => handleDetailTabKeyDown(event, 'activity'),
+      ref: (node) => {
+        detailTabRefs.current.activity = node;
+      }
+    },
+    {
+      key: 'attachments',
+      label: 'Adjuntos',
+      count: ticket.attachments.length,
+      id: getDetailTabId('attachments'),
+      controls: getDetailPanelId('attachments'),
+      onKeyDown: (event) => handleDetailTabKeyDown(event, 'attachments'),
+      ref: (node) => {
+        detailTabRefs.current.attachments = node;
+      }
+    }
+  ];
 
   return (
     <aside
@@ -917,64 +875,13 @@ const TicketDetailPanel = ({
       </section>
 
       <section className="ticket-detail__section ticket-detail__section--log">
-        <div
+        <DrawerTabs
+          label="Registro del ticket"
+          tabs={detailTabsConfig}
+          activeKey={detailTab}
+          onChange={setDetailTab}
           className="ticket-detail__tabs"
-          role="tablist"
-          aria-label="Registro del ticket"
-          aria-orientation="horizontal"
-        >
-          <button
-            type="button"
-            role="tab"
-            id={getDetailTabId('comments')}
-            aria-selected={detailTab === 'comments'}
-            aria-controls={getDetailPanelId('comments')}
-            tabIndex={detailTab === 'comments' ? 0 : -1}
-            className={`ticket-detail__tab ${detailTab === 'comments' ? 'ticket-detail__tab--active' : ''}`}
-            onClick={() => setDetailTab('comments')}
-            onKeyDown={(event) => handleDetailTabKeyDown(event, 'comments')}
-            ref={(node) => {
-              detailTabRefs.current.comments = node;
-            }}
-          >
-            <span>Comentarios</span>
-            <span>{ticket.comments.length}</span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            id={getDetailTabId('activity')}
-            aria-selected={detailTab === 'activity'}
-            aria-controls={getDetailPanelId('activity')}
-            tabIndex={detailTab === 'activity' ? 0 : -1}
-            className={`ticket-detail__tab ${detailTab === 'activity' ? 'ticket-detail__tab--active' : ''}`}
-            onClick={() => setDetailTab('activity')}
-            onKeyDown={(event) => handleDetailTabKeyDown(event, 'activity')}
-            ref={(node) => {
-              detailTabRefs.current.activity = node;
-            }}
-          >
-            <span>Actividad</span>
-            <span>{ticket.activity.length}</span>
-          </button>
-          <button
-            type="button"
-            role="tab"
-            id={getDetailTabId('attachments')}
-            aria-selected={detailTab === 'attachments'}
-            aria-controls={getDetailPanelId('attachments')}
-            tabIndex={detailTab === 'attachments' ? 0 : -1}
-            className={`ticket-detail__tab ${detailTab === 'attachments' ? 'ticket-detail__tab--active' : ''}`}
-            onClick={() => setDetailTab('attachments')}
-            onKeyDown={(event) => handleDetailTabKeyDown(event, 'attachments')}
-            ref={(node) => {
-              detailTabRefs.current.attachments = node;
-            }}
-          >
-            <span>Adjuntos</span>
-            <span>{ticket.attachments.length}</span>
-          </button>
-        </div>
+        />
 
         {detailTab === 'comments' ? (
           <div
@@ -1961,55 +1868,95 @@ const TicketsPage = () => {
           {liveStatusMessage}
         </p>
 
-        <div className={`tickets-layout tickets-layout--${activeView}${hasDetailPanel ? ' tickets-layout--detail-open' : ''}`}>
-          <div className="tickets-layout__main">
-            {isTicketsLoading ? (
-              <EmptyState
-                title="Cargando tickets"
-                copy="Estamos obteniendo la bandeja operativa desde base de datos."
-              />
-            ) : ticketsError ? (
-              <EmptyState
-                title="No fue posible cargar los tickets"
-                copy={ticketsError}
-              >
-                <div className="tickets-empty-state__actions">
-                  {isAuthRequiredError ? (
-                    <button
-                      type="button"
-                      className="tickets-page__primary-action"
-                      onClick={() => {
-                        clearSession();
-                        navigate('/login', { replace: true, state: { from: '/tickets' } });
-                      }}
-                    >
-                      Iniciar sesión
+        <WorkspaceSplitLayout
+          viewKey={activeView}
+          detailOpen={hasDetailPanel}
+          detailId="tickets-detail-panel"
+          main={(
+            <>
+              {isTicketsLoading ? (
+                <EmptyState
+                  title="Cargando tickets"
+                  copy="Estamos obteniendo la bandeja operativa desde base de datos."
+                  role="status"
+                  ariaLive="polite"
+                  ariaAtomic
+                />
+              ) : ticketsError ? (
+                <EmptyState
+                  title="No fue posible cargar los tickets"
+                  copy={ticketsError}
+                  role="alert"
+                  ariaLive="assertive"
+                  ariaAtomic
+                >
+                  <div className="tickets-empty-state__actions">
+                    {isAuthRequiredError ? (
+                      <button
+                        type="button"
+                        className="tickets-page__primary-action"
+                        onClick={() => {
+                          clearSession();
+                          navigate('/login', { replace: true, state: { from: '/tickets' } });
+                        }}
+                      >
+                        Iniciar sesión
+                      </button>
+                    ) : null}
+                    <button type="button" className="tickets-empty-state__action" onClick={loadWorkspaceData}>
+                      Reintentar carga
                     </button>
-                  ) : null}
-                  <button type="button" className="tickets-empty-state__action" onClick={loadWorkspaceData}>
-                    Reintentar carga
-                  </button>
-                </div>
-              </EmptyState>
-            ) : activeView === 'list' ? (
-              hasResults ? (
-                <div
-                  className={`ticket-list${statusFilter !== 'all' ? ` ticket-list--${statusMeta[statusFilter].tone}` : ''}`}
+                  </div>
+                </EmptyState>
+              ) : activeView === 'list' ? (
+                <OperationalTablePanel
+                  hasData={hasResults}
+                  tone="neutral"
                   id="tickets-list-panel"
                   role="tabpanel"
-                  aria-labelledby="tickets-view-tab-list"
+                  ariaLabelledBy="tickets-view-tab-list"
                   hidden={activeView !== 'list'}
-                >
-                  <div className="ticket-list__scroll">
-                    <table className="ticket-list__table">
+                  emptyTitle="No encontramos tickets con estos filtros"
+                  emptyCopy="Ajusta la búsqueda, el alcance o el tipo para recuperar resultados."
+                  emptyId="tickets-list-panel"
+                  emptyRole="tabpanel"
+                  emptyAriaLabelledBy="tickets-view-tab-list"
+                  emptyHidden={activeView !== 'list'}
+                  emptyActions={(
+                    <button type="button" className="tickets-empty-state__action" onClick={clearFilters}>
+                      Limpiar filtros
+                    </button>
+                  )}
+                  pagination={(
+                    <PaginationBar
+                      ariaLabel="Paginación de tickets"
+                      start={pageStart + 1}
+                      end={Math.min(pageStart + itemsPerPage, filteredTickets.length)}
+                      total={filteredTickets.length}
+                      pageSize={itemsPerPage}
+                      pageSizeOptions={LIST_PAGE_SIZE_OPTIONS}
+                      pageSizeId="tickets-page-size"
+                      pageSizeName="tickets_page_size"
+                      currentPage={resolvedCurrentPage}
+                      totalPages={totalPages}
+                      onPageSizeChange={(nextSize) => {
+                        setItemsPerPage(nextSize);
+                        setCurrentPage(1);
+                      }}
+                      onPrev={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                      onNext={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                    />
+                  )}
+                  table={(
+                    <table className="data-table__table">
                       <colgroup>
-                        <col className="ticket-list__col ticket-list__col--ticket" />
-                        <col className="ticket-list__col ticket-list__col--status" />
-                        <col className="ticket-list__col ticket-list__col--priority" />
-                        <col className="ticket-list__col ticket-list__col--requester" />
-                        <col className="ticket-list__col ticket-list__col--assignee" />
-                        <col className="ticket-list__col ticket-list__col--due" />
-                        <col className="ticket-list__col ticket-list__col--activity" />
+                        <col className="data-table__col data-table__col--ticket" />
+                        <col className="data-table__col data-table__col--status" />
+                        <col className="data-table__col data-table__col--priority" />
+                        <col className="data-table__col data-table__col--requester" />
+                        <col className="data-table__col data-table__col--assignee" />
+                        <col className="data-table__col data-table__col--due" />
+                        <col className="data-table__col data-table__col--activity" />
                       </colgroup>
                       <thead>
                         <tr>
@@ -2029,58 +1976,60 @@ const TicketsPage = () => {
                           return (
                             <tr
                               key={ticket.id}
-                              className={isSelected ? 'ticket-list__row ticket-list__row--active' : 'ticket-list__row'}
+                              className={isSelected ? 'data-table__row data-table__row--active' : 'data-table__row'}
                             >
                               <td>
                                 <button
                                   type="button"
-                                  className="ticket-list__row-action"
+                                  className="data-table__row-action"
                                   onClick={(event) => {
                                     openTicketDetail(ticket.id, event.currentTarget, {
                                       shouldAutoFocus: event.detail === 0
                                     });
                                   }}
                                   aria-label={`Ver detalle del ticket ${ticket.id}`}
+                                  aria-controls={hasDetailPanel ? 'tickets-detail-panel' : undefined}
+                                  aria-expanded={hasDetailPanel ? isSelected : undefined}
                                 >
-                                  <span className="ticket-list__ticket-id">{ticket.id}</span>
-                                  <span className="ticket-list__ticket-title">{ticket.title}</span>
-                                  <span className="ticket-list__ticket-meta">
+                                  <span className="data-table__item-id">{ticket.id}</span>
+                                  <span className="data-table__item-title">{ticket.title}</span>
+                                  <span className="data-table__item-meta">
                                     {typeMeta[ticket.type].label} · {categoryLabels[ticket.category]}
                                   </span>
-                                  <span className="ticket-list__ticket-meta ticket-list__ticket-meta--compact">
+                                  <span className="data-table__item-meta data-table__item-meta--compact">
                                     {ticket.requester} · {ticket.assignee} · {ticket.dueLabel}
                                   </span>
                                 </button>
                               </td>
-                              <td className="ticket-list__cell ticket-list__cell--status">
+                              <td className="data-table__cell data-table__cell--status">
                                 <TicketBadge label={statusMeta[ticket.status].label} tone={statusMeta[ticket.status].tone} />
                               </td>
-                              <td className="ticket-list__cell ticket-list__cell--priority">
+                              <td className="data-table__cell data-table__cell--priority">
                                 <TicketBadge label={priorityMeta[ticket.priority].label} tone={priorityMeta[ticket.priority].tone} />
                               </td>
-                              <td className="ticket-list__cell ticket-list__cell--requester">
-                                <div className="ticket-list__person">
-                                  <span className="ticket-list__avatar" aria-hidden="true">
+                              <td className="data-table__cell data-table__cell--requester">
+                                <div className="data-table__person">
+                                  <span className="data-table__avatar" aria-hidden="true">
                                     {ticket.requesterPhoto ? (
                                       <img src={ticket.requesterPhoto} alt="" loading="lazy" />
                                     ) : (
                                       <span>{getInitials(ticket.requester)}</span>
                                     )}
                                   </span>
-                                  <div className="ticket-list__person-copy">
+                                  <div className="data-table__person-copy">
                                     <strong>{ticket.requester}</strong>
                                     <span>{ticket.area}</span>
                                   </div>
                                 </div>
                               </td>
-                              <td className="ticket-list__cell ticket-list__cell--assignee">
-                                <span className="ticket-list__truncate">{ticket.assignee}</span>
+                              <td className="data-table__cell data-table__cell--assignee">
+                                <span className="data-table__truncate">{ticket.assignee}</span>
                               </td>
-                              <td className="ticket-list__cell ticket-list__cell--due">
-                                <span className="ticket-list__truncate">{ticket.dueLabel}</span>
+                              <td className="data-table__cell data-table__cell--due">
+                                <span className="data-table__truncate">{ticket.dueLabel}</span>
                               </td>
-                              <td className="ticket-list__cell ticket-list__cell--activity">
-                                <div className="ticket-list__activity">
+                              <td className="data-table__cell data-table__cell--activity">
+                                <div className="data-table__activity">
                                   <span>{ticket.activityLabel || ticket.updatedLabel}</span>
                                   <span>{ticket.commentsLabel || `${ticket.commentsCount} comentarios`}</span>
                                 </div>
@@ -2090,75 +2039,9 @@ const TicketsPage = () => {
                         })}
                       </tbody>
                     </table>
-                  </div>
-
-                  <div className="ticket-list__pagination" aria-label="Paginación de tickets">
-                    <div className="ticket-list__pagination-meta">
-                      <p className="ticket-list__pagination-summary">
-                        Mostrando <strong>{pageStart + 1}</strong>-
-                        <strong>{Math.min(pageStart + itemsPerPage, filteredTickets.length)}</strong> de{' '}
-                        <strong>{filteredTickets.length}</strong>
-                      </p>
-
-                      <label className="ticket-list__page-size" htmlFor="tickets-page-size">
-                        <span>Por página</span>
-                        <select
-                          id="tickets-page-size"
-                          name="tickets_page_size"
-                          value={itemsPerPage}
-                          onChange={(event) => {
-                            setItemsPerPage(Number(event.target.value));
-                            setCurrentPage(1);
-                          }}
-                        >
-                          {LIST_PAGE_SIZE_OPTIONS.map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    </div>
-
-                    <div className="ticket-list__pagination-actions">
-                      <button
-                        type="button"
-                        className="ticket-list__pagination-button"
-                        onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                        disabled={resolvedCurrentPage === 1}
-                      >
-                        Anterior
-                      </button>
-                      <span className="ticket-list__pagination-page">
-                        Página <strong>{resolvedCurrentPage}</strong> de <strong>{totalPages}</strong>
-                      </span>
-                      <button
-                        type="button"
-                        className="ticket-list__pagination-button"
-                        onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
-                        disabled={resolvedCurrentPage === totalPages}
-                      >
-                        Siguiente
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                <EmptyState
-                  title="No encontramos tickets con estos filtros"
-                  copy="Ajusta la búsqueda, el alcance o el tipo para recuperar resultados."
-                  id="tickets-list-panel"
-                  role="tabpanel"
-                  ariaLabelledBy="tickets-view-tab-list"
-                  hidden={activeView !== 'list'}
-                >
-                  <button type="button" className="tickets-empty-state__action" onClick={clearFilters}>
-                    Limpiar filtros
-                  </button>
-                </EmptyState>
-              )
-            ) : (
-              hasResults ? (
+                  )}
+                />
+              ) : hasResults ? (
                 <div
                   className="ticket-board-shell"
                   id="tickets-pipeline-panel"
@@ -2223,6 +2106,8 @@ const TicketsPage = () => {
                                     });
                                   }}
                                   aria-label={`Ver detalle del ticket ${ticket.id}`}
+                                  aria-controls={hasDetailPanel ? 'tickets-detail-panel' : undefined}
+                                  aria-expanded={hasDetailPanel ? isSelected : undefined}
                                   draggable
                                   onDragStart={(event) => {
                                     event.dataTransfer.effectAllowed = 'move';
@@ -2281,46 +2166,41 @@ const TicketsPage = () => {
                     Limpiar filtros
                   </button>
                 </EmptyState>
-              )
-            )}
-          </div>
-
-          {hasDetailPanel ? (
-            <aside className="tickets-layout__detail" aria-label="Panel contextual de detalle">
-              {shouldRenderDetail ? (
-                <TicketDetailPanel
-                  ticket={selectedTicket}
-                  onClose={closeTicketDetail}
-                  onEdit={handleOpenEditModal}
-                  onChangeStatus={handleChangeStatusFromDetail}
-                  onAddComment={handleAddCommentFromDetail}
-                  isStatusSubmitting={isStatusSubmitting}
-                  statusChangeError={statusChangeError}
-                  isCommentSubmitting={isCommentSubmitting}
-                  commentError={commentError}
-                  onUploadAttachment={handleUploadAttachment}
-                  isUploadingAttachment={isAttachmentUploading}
-                  attachmentError={attachmentUploadError}
-                  closeButtonRef={detailCloseButtonRef}
-                />
-              ) : (
-                <TicketDetailContextState
-                  reason={detailHiddenReason}
-                  ticketId={selectedTicketId}
-                  targetPage={selectedTicketTargetPage}
-                  onGoToPage={() => {
-                    if (selectedTicketTargetPage) {
-                      setCurrentPage(selectedTicketTargetPage);
-                    }
-                  }}
-                  onResetFilters={clearFilters}
-                  onClose={closeTicketDetail}
-                  closeButtonRef={detailCloseButtonRef}
-                />
               )}
-            </aside>
+            </>
+          )}
+          detail={shouldRenderDetail ? (
+            <TicketDetailPanel
+              ticket={selectedTicket}
+              onClose={closeTicketDetail}
+              onEdit={handleOpenEditModal}
+              onChangeStatus={handleChangeStatusFromDetail}
+              onAddComment={handleAddCommentFromDetail}
+              isStatusSubmitting={isStatusSubmitting}
+              statusChangeError={statusChangeError}
+              isCommentSubmitting={isCommentSubmitting}
+              commentError={commentError}
+              onUploadAttachment={handleUploadAttachment}
+              isUploadingAttachment={isAttachmentUploading}
+              attachmentError={attachmentUploadError}
+              closeButtonRef={detailCloseButtonRef}
+            />
+          ) : hasDetailPanel ? (
+            <TicketDetailContextState
+              reason={detailHiddenReason}
+              ticketId={selectedTicketId}
+              targetPage={selectedTicketTargetPage}
+              onGoToPage={() => {
+                if (selectedTicketTargetPage) {
+                  setCurrentPage(selectedTicketTargetPage);
+                }
+              }}
+              onResetFilters={clearFilters}
+              onClose={closeTicketDetail}
+              closeButtonRef={detailCloseButtonRef}
+            />
           ) : null}
-        </div>
+        />
       </section>
 
       <AdvancedFiltersModal
@@ -2406,3 +2286,4 @@ const TicketsPage = () => {
 };
 
 export default TicketsPage;
+
