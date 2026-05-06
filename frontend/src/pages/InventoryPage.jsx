@@ -1,18 +1,22 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
+  Archive,
   ArrowRightLeft,
   Boxes,
   Building2,
   ChevronRight,
   Check,
+  CircleOff,
   MapPin,
   PackagePlus,
+  PencilLine,
   Plus,
   ShieldCheck,
   Settings2,
   Tags,
   Undo2,
+  Wrench,
   X
 } from 'lucide-react';
 
@@ -44,6 +48,7 @@ import {
   getInventoryCatalog,
   isAuthError as isInventoryAuthError,
   listAssetAssignments,
+  listInventoryAssetUnits,
   listAssets,
   listCatalogAssetTypes,
   listCatalogLocationTypes,
@@ -52,22 +57,33 @@ import {
   reactivateCatalogAssetType,
   reactivateCatalogLocationType,
   registerInventoryMovement,
+  updateAsset,
   updateCatalogAssetType,
   updateCatalogLocationType,
-  updateLocation
+  updateLocation,
+  updateAssetUnitStatus
 } from '../services/inventoryService.js';
 import { isCollaboratorAuthError, listCollaborators } from '../services/collaboratorService.js';
 
 const inventoryViewOptions = [
   { key: 'assets', label: 'Activos', icon: Boxes },
   { key: 'movements', label: 'Movimientos', icon: ArrowRightLeft },
+  { key: 'assignments', label: 'Resguardos', icon: ShieldCheck },
   { key: 'locations', label: 'Ubicaciones', icon: MapPin }
 ];
 
 const assetStatusOptions = [
   { key: 'all', label: 'Todos' },
+  { key: 'available', label: 'Disponibles' },
+  { key: 'assigned', label: 'Asignados' },
+  { key: 'in_repair', label: 'En reparación' },
+  { key: 'retired', label: 'Baja' }
+];
+
+const assignmentStatusOptions = [
+  { key: 'all', label: 'Todos' },
   { key: 'active', label: 'Activos' },
-  { key: 'inactive', label: 'Inactivos' }
+  { key: 'closed', label: 'Cerrados' }
 ];
 
 const detailTabOptions = [
@@ -152,6 +168,24 @@ const defaultAssignmentCloseForm = {
   location_id: '',
   returned_at: '',
   return_condition: '',
+  notes: ''
+};
+
+const defaultAssetEditForm = {
+  asset_name: '',
+  brand: '',
+  model: '',
+  min_quantity: '0',
+  description: '',
+  reason: 'Actualización del activo por operación de Sistemas.'
+};
+
+const defaultUnitStatusForm = {
+  asset_unit_id: '',
+  status_key: '',
+  location_id: '',
+  happened_at: '',
+  reason: '',
   notes: ''
 };
 
@@ -336,8 +370,26 @@ const toStatusTone = (status) => {
   return 'neutral';
 };
 
+const toOperationalStatusLabel = (status) => {
+  if (status === 'available') return 'Disponible';
+  if (status === 'assigned') return 'Asignado';
+  if (status === 'in_repair') return 'En reparación';
+  if (status === 'retired') return 'Baja';
+  return status || 'Sin estado';
+};
+
+const toOperationalStatusTone = (status) => {
+  if (status === 'available') return 'success';
+  if (status === 'assigned') return 'accent';
+  if (status === 'in_repair') return 'warning';
+  if (status === 'retired') return 'neutral';
+  return 'neutral';
+};
+
 const toUnitStatusTone = (status) => {
   if (status === 'available') return 'success';
+  if (status === 'assigned') return 'accent';
+  if (status === 'in_repair') return 'warning';
   return 'neutral';
 };
 
@@ -358,6 +410,8 @@ const InventoryPage = () => {
   const [assets, setAssets] = useState([]);
   const [locations, setLocations] = useState([]);
   const [movements, setMovements] = useState([]);
+  const [assignments, setAssignments] = useState([]);
+  const [assignableUnits, setAssignableUnits] = useState([]);
   const [selectedAssetId, setSelectedAssetId] = useState(null);
   const [assetDetail, setAssetDetail] = useState(null);
   const [isLoadingAssetDetail, setIsLoadingAssetDetail] = useState(false);
@@ -367,22 +421,30 @@ const InventoryPage = () => {
   const [actionSuccess, setActionSuccess] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [movementsSearchTerm, setMovementsSearchTerm] = useState('');
+  const [assignmentsSearchTerm, setAssignmentsSearchTerm] = useState('');
   const [locationsSearchTerm, setLocationsSearchTerm] = useState('');
   const [assetStatusFilter, setAssetStatusFilter] = useState('all');
   const [trackingModeFilter, setTrackingModeFilter] = useState('all');
+  const [assignmentStatusFilter, setAssignmentStatusFilter] = useState('all');
+  const [assignmentCollaboratorFilter, setAssignmentCollaboratorFilter] = useState('all');
   const [assetsCurrentPage, setAssetsCurrentPage] = useState(1);
   const [assetsItemsPerPage, setAssetsItemsPerPage] = useState(DEFAULT_INVENTORY_PAGE_SIZE);
   const [movementsCurrentPage, setMovementsCurrentPage] = useState(1);
   const [movementsItemsPerPage, setMovementsItemsPerPage] = useState(DEFAULT_INVENTORY_PAGE_SIZE);
+  const [assignmentsCurrentPage, setAssignmentsCurrentPage] = useState(1);
+  const [assignmentsItemsPerPage, setAssignmentsItemsPerPage] = useState(DEFAULT_INVENTORY_PAGE_SIZE);
   const [expandedLocationIds, setExpandedLocationIds] = useState(() => new Set());
 
   const [isCreateAssetOpen, setIsCreateAssetOpen] = useState(false);
+  const [isEditAssetOpen, setIsEditAssetOpen] = useState(false);
   const [isCreateMovementOpen, setIsCreateMovementOpen] = useState(false);
   const [isCreateLocationOpen, setIsCreateLocationOpen] = useState(false);
   const [isCatalogModalOpen, setIsCatalogModalOpen] = useState(false);
   const [isCreateUnitsOpen, setIsCreateUnitsOpen] = useState(false);
   const [isCreateAssignmentOpen, setIsCreateAssignmentOpen] = useState(false);
   const [isCloseAssignmentOpen, setIsCloseAssignmentOpen] = useState(false);
+  const [isUnitStatusOpen, setIsUnitStatusOpen] = useState(false);
+  const [isGlobalAssignmentFlow, setIsGlobalAssignmentFlow] = useState(false);
   const [movementReasonFocusIndex, setMovementReasonFocusIndex] = useState(0);
   const [editingLocationId, setEditingLocationId] = useState(null);
   const [editingAssetTypeId, setEditingAssetTypeId] = useState(null);
@@ -406,7 +468,11 @@ const InventoryPage = () => {
   const pendingCatalogEditorFocusRef = useRef(null);
   const createUnitLocationSelectRef = useRef(null);
   const createAssignmentUnitSelectRef = useRef(null);
+  const createAssignmentTriggerRef = useRef(null);
   const closeAssignmentUnitSelectRef = useRef(null);
+  const editAssetNameRef = useRef(null);
+  const unitStatusLocationSelectRef = useRef(null);
+  const unitStatusReasonRef = useRef(null);
   const assetDetailCloseButtonRef = useRef(null);
   const assetDetailTriggerRef = useRef(null);
   const shouldAutoFocusAssetDetailRef = useRef(false);
@@ -414,6 +480,8 @@ const InventoryPage = () => {
   const [catalogLocationTypes, setCatalogLocationTypes] = useState([]);
   const [collaborators, setCollaborators] = useState([]);
   const [unitAssignments, setUnitAssignments] = useState([]);
+  const [assetEditForm, setAssetEditForm] = useState(defaultAssetEditForm);
+  const [unitStatusForm, setUnitStatusForm] = useState(defaultUnitStatusForm);
   const [assetTypeForm, setAssetTypeForm] = useState(defaultCatalogAssetTypeForm);
   const [locationTypeForm, setLocationTypeForm] = useState(defaultCatalogLocationTypeForm);
   const [unitLines, setUnitLines] = useState([defaultUnitLine]);
@@ -447,6 +515,7 @@ const InventoryPage = () => {
   });
 
   const [isSubmittingAsset, setIsSubmittingAsset] = useState(false);
+  const [isSubmittingAssetEdit, setIsSubmittingAssetEdit] = useState(false);
   const [isSubmittingMovement, setIsSubmittingMovement] = useState(false);
   const [isSubmittingLocation, setIsSubmittingLocation] = useState(false);
   const [isSubmittingCatalogAssetType, setIsSubmittingCatalogAssetType] = useState(false);
@@ -454,6 +523,7 @@ const InventoryPage = () => {
   const [isSubmittingUnits, setIsSubmittingUnits] = useState(false);
   const [isSubmittingAssignment, setIsSubmittingAssignment] = useState(false);
   const [isSubmittingAssignmentClose, setIsSubmittingAssignmentClose] = useState(false);
+  const [isSubmittingUnitStatus, setIsSubmittingUnitStatus] = useState(false);
   const activeCatalogTabCopy = catalogTabCopy[activeCatalogTab] || catalogTabCopy.asset_types;
   const filteredCatalogAssetTypes = useMemo(() => {
     const query = String(catalogAssetTypeQuery || '').trim().toLowerCase();
@@ -494,11 +564,13 @@ const InventoryPage = () => {
     setIsLoadingScreen(true);
     setScreenError('');
     try {
-      const [catalogData, assetsData, locationsData, movementsData, collaboratorsData, assetTypesData, locationTypesData] = await Promise.all([
+      const [catalogData, assetsData, locationsData, movementsData, assignmentsData, assignableUnitsData, collaboratorsData, assetTypesData, locationTypesData] = await Promise.all([
         getInventoryCatalog(),
         listAssets(),
         listLocations(),
         listInventoryMovements({ limit: 140 }),
+        listAssetAssignments(),
+        listInventoryAssetUnits({ status: 'available' }),
         listCollaborators({ status: 'active' }),
         listCatalogAssetTypes({ includeInactive: true }),
         listCatalogLocationTypes({ includeInactive: true })
@@ -507,6 +579,8 @@ const InventoryPage = () => {
       setAssets(Array.isArray(assetsData) ? assetsData : []);
       setLocations(Array.isArray(locationsData) ? locationsData : []);
       setMovements(Array.isArray(movementsData) ? movementsData : []);
+      setAssignments(Array.isArray(assignmentsData) ? assignmentsData : []);
+      setAssignableUnits(Array.isArray(assignableUnitsData) ? assignableUnitsData : []);
       setCollaborators(Array.isArray(collaboratorsData) ? collaboratorsData : []);
       setCatalogAssetTypes(Array.isArray(assetTypesData) ? assetTypesData : []);
       setCatalogLocationTypes(Array.isArray(locationTypesData) ? locationTypesData : []);
@@ -679,6 +753,14 @@ const InventoryPage = () => {
     }))
   ]), [collaborators]);
 
+  const collaboratorFilterOptions = useMemo(() => ([
+    { key: 'all', label: 'Todos los colaboradores' },
+    ...collaborators.map((collaborator) => ({
+      key: String(collaborator.id),
+      label: `${collaborator.employee_id} · ${collaborator.full_name}`
+    }))
+  ]), [collaborators]);
+
   const selectedAssetTypeForForm = useMemo(() => (
     catalog.types.find((type) => String(type.id) === assetForm.asset_type_id) || null
   ), [assetForm.asset_type_id, catalog.types]);
@@ -689,7 +771,7 @@ const InventoryPage = () => {
   const filteredAssets = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
     return assets.filter((asset) => {
-      if (assetStatusFilter !== 'all' && asset.status !== assetStatusFilter) return false;
+      if (assetStatusFilter !== 'all' && asset.operational_status_key !== assetStatusFilter) return false;
       if (trackingModeFilter !== 'all' && asset.tracking_mode_key !== trackingModeFilter) return false;
       if (!normalizedSearch) return true;
       const searchable = [
@@ -697,12 +779,52 @@ const InventoryPage = () => {
         asset.internal_code,
         asset.type_name,
         asset.category_name,
+        asset.operational_status_name,
         asset.brand,
         asset.model
       ].join(' ').toLowerCase();
       return searchable.includes(normalizedSearch);
     });
   }, [assets, assetStatusFilter, searchTerm, trackingModeFilter]);
+
+  const filteredAssignments = useMemo(() => {
+    const normalizedSearch = assignmentsSearchTerm.trim().toLowerCase();
+
+    return assignments.filter((assignment) => {
+      if (assignmentStatusFilter !== 'all' && assignment.status !== assignmentStatusFilter) {
+        return false;
+      }
+
+      if (assignmentCollaboratorFilter !== 'all' && Number(assignment.collaborator?.id) !== Number(assignmentCollaboratorFilter)) {
+        return false;
+      }
+
+      if (!normalizedSearch) {
+        return true;
+      }
+
+      const searchable = [
+        assignment.asset?.asset_name,
+        assignment.asset?.internal_code,
+        assignment.asset?.type_name,
+        assignment.asset_unit?.asset_tag,
+        assignment.asset_unit?.serial_number,
+        assignment.collaborator?.full_name,
+        assignment.collaborator?.employee_id,
+        assignment.collaborator?.area_name,
+        assignment.location?.name,
+        assignment.location?.code,
+        assignment.delivery_condition,
+        assignment.return_condition,
+        assignment.notes
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return searchable.includes(normalizedSearch);
+    });
+  }, [assignmentCollaboratorFilter, assignmentStatusFilter, assignments, assignmentsSearchTerm]);
 
   const filteredMovements = useMemo(() => {
     const normalizedSearch = movementsSearchTerm.trim().toLowerCase();
@@ -805,10 +927,14 @@ const InventoryPage = () => {
     flattenLocationTree(visibleLocationTree, expandedLocationIds, Boolean(locationsSearchTerm.trim()))
   ), [expandedLocationIds, locationsSearchTerm, visibleLocationTree]);
 
-  const canManageCatalog = useMemo(() => (
-    Array.isArray(authUser?.role_keys)
-    && authUser.role_keys.some((roleKey) => ['admin', 'operator'].includes(roleKey))
-  ), [authUser?.role_keys]);
+  const grantedPermissions = useMemo(() => (
+    new Set(Array.isArray(authUser?.permissions) ? authUser.permissions : [])
+  ), [authUser?.permissions]);
+
+  const canCreateInventory = grantedPermissions.has('inventory.create');
+  const canUpdateInventory = grantedPermissions.has('inventory.update');
+  const canAssignInventory = grantedPermissions.has('inventory.assign');
+  const canManageCatalog = canUpdateInventory;
 
   const assetsTotalPages = Math.max(1, Math.ceil(filteredAssets.length / assetsItemsPerPage));
   const resolvedAssetsPage = Math.min(assetsCurrentPage, assetsTotalPages);
@@ -820,6 +946,11 @@ const InventoryPage = () => {
   const movementsPageStart = (resolvedMovementsPage - 1) * movementsItemsPerPage;
   const paginatedMovements = filteredMovements.slice(movementsPageStart, movementsPageStart + movementsItemsPerPage);
 
+  const assignmentsTotalPages = Math.max(1, Math.ceil(filteredAssignments.length / assignmentsItemsPerPage));
+  const resolvedAssignmentsPage = Math.min(assignmentsCurrentPage, assignmentsTotalPages);
+  const assignmentsPageStart = (resolvedAssignmentsPage - 1) * assignmentsItemsPerPage;
+  const paginatedAssignments = filteredAssignments.slice(assignmentsPageStart, assignmentsPageStart + assignmentsItemsPerPage);
+
   useEffect(() => {
     setAssetsCurrentPage(1);
   }, [searchTerm, assetStatusFilter, trackingModeFilter]);
@@ -827,6 +958,10 @@ const InventoryPage = () => {
   useEffect(() => {
     setMovementsCurrentPage(1);
   }, [movementsItemsPerPage, movementsSearchTerm]);
+
+  useEffect(() => {
+    setAssignmentsCurrentPage(1);
+  }, [assignmentCollaboratorFilter, assignmentStatusFilter, assignmentsItemsPerPage, assignmentsSearchTerm]);
 
   useEffect(() => {
     const validIds = new Set(normalizedLocations.map((location) => Number(location.id)));
@@ -861,6 +996,19 @@ const InventoryPage = () => {
     setActiveDetailTab('summary');
   };
 
+  const openAssetFromAssignment = (assignment, triggerElement) => {
+    const assetId = Number(assignment?.asset?.id || 0);
+    if (!assetId) {
+      return;
+    }
+
+    setSearchTerm('');
+    setAssetStatusFilter('all');
+    setTrackingModeFilter('all');
+    setActiveView('assets');
+    openAssetDetail(assetId, triggerElement);
+  };
+
   const closeAssetDetail = (shouldRestoreFocus = true) => {
     setAssetDetail(null);
     setIsLoadingAssetDetail(false);
@@ -878,7 +1026,7 @@ const InventoryPage = () => {
   const reloadAssets = async ({ preserveSelection = true } = {}) => {
     const assetsData = await listAssets({
       search: searchTerm,
-      status: assetStatusFilter === 'all' ? '' : assetStatusFilter,
+      operationalStatus: assetStatusFilter === 'all' ? '' : assetStatusFilter,
       trackingModeKey: trackingModeFilter === 'all' ? '' : trackingModeFilter
     });
     setAssets(Array.isArray(assetsData) ? assetsData : []);
@@ -893,6 +1041,16 @@ const InventoryPage = () => {
     if (!stillExists) {
       setSelectedAssetId(assetsData?.[0]?.id ? Number(assetsData[0].id) : null);
     }
+  };
+
+  const reloadAssignments = async () => {
+    const assignmentsData = await listAssetAssignments();
+    setAssignments(Array.isArray(assignmentsData) ? assignmentsData : []);
+  };
+
+  const reloadAssignableUnits = async () => {
+    const unitsData = await listInventoryAssetUnits({ status: 'available' });
+    setAssignableUnits(Array.isArray(unitsData) ? unitsData : []);
   };
 
   const reloadSelectedAssetDetail = async () => {
@@ -920,6 +1078,10 @@ const InventoryPage = () => {
   };
 
   const openCatalogModal = () => {
+    if (!canManageCatalog) {
+      return;
+    }
+
     resetActionFeedback();
     setActiveCatalogTab('asset_types');
     setCatalogAssetTypeQuery('');
@@ -1020,7 +1182,7 @@ const InventoryPage = () => {
   };
 
   const openCreateUnitsModal = () => {
-    if (!detailAsset || detailAsset.tracking_mode_key !== 'unit') {
+    if (!canCreateInventory || !detailAsset || detailAsset.tracking_mode_key !== 'unit') {
       return;
     }
 
@@ -1052,14 +1214,32 @@ const InventoryPage = () => {
     focusMovementReasonChip(nextIndex);
   };
 
-  const openCreateAssignmentModal = () => {
-    const defaultUnit = selectedAssetUnits.find((unit) => unit.status_key === 'available') || selectedAssetUnits[0];
+  const openCreateAssignmentModal = (assetUnitId = null, { useGlobal = false, triggerElement = null } = {}) => {
+    if (!canAssignInventory) {
+      return;
+    }
+
+    if (triggerElement instanceof HTMLElement) {
+      createAssignmentTriggerRef.current = triggerElement;
+    }
+
+    const requestedUnitId = normalizeOptionalNumber(assetUnitId);
+    const unitPool = useGlobal
+      ? assignableUnits
+      : selectedAssetUnits.filter((unit) => unit.status_key === 'available');
+    const defaultUnit = requestedUnitId
+      ? resolveAssignableUnit(requestedUnitId)
+      : (unitPool[0] || null);
+
     if (!defaultUnit) {
-      setActionError('Este activo no tiene unidades disponibles para asignar.');
+      setActionError(useGlobal
+        ? 'No hay unidades disponibles para generar un nuevo resguardo.'
+        : 'Este activo no tiene unidades disponibles para asignar.');
       return;
     }
 
     resetActionFeedback();
+    setIsGlobalAssignmentFlow(useGlobal);
     setAssignmentForm({
       ...defaultAssignmentForm,
       asset_unit_id: String(defaultUnit.id),
@@ -1068,22 +1248,78 @@ const InventoryPage = () => {
     setIsCreateAssignmentOpen(true);
   };
 
-  const openCloseAssignmentModal = async () => {
-    const defaultUnit = selectedAssetUnits.find((unit) => unit.status_key === 'assigned') || selectedAssetUnits[0];
+  const openCloseAssignmentModal = async (assetUnitId = null) => {
+    if (!canAssignInventory) {
+      return;
+    }
+
+    const requestedUnitId = normalizeOptionalNumber(assetUnitId);
+    const defaultUnit = requestedUnitId
+      ? (
+        selectedAssetUnits.find((unit) => Number(unit.id) === requestedUnitId)
+        || assignments.find((assignment) => Number(assignment.asset_unit?.id) === requestedUnitId)
+      )
+      : (selectedAssetUnits.find((unit) => unit.status_key === 'assigned') || assignments.find((assignment) => assignment.status === 'active'));
+
     if (!defaultUnit) {
       setActionError('No hay unidades serializadas para cerrar resguardo.');
       return;
     }
 
+    const resolvedUnitId = Number(defaultUnit.asset_unit?.id || defaultUnit.id || 0);
+    const resolvedLocationId = Number(defaultUnit.location?.id || defaultUnit.current_location_id || 0);
+
     resetActionFeedback();
     setAssignmentCloseForm({
       ...defaultAssignmentCloseForm,
-      asset_unit_id: String(defaultUnit.id),
-      location_id: locations[0]?.id ? String(locations[0].id) : '',
+      asset_unit_id: String(resolvedUnitId),
+      location_id: resolvedLocationId ? String(resolvedLocationId) : (locations[0]?.id ? String(locations[0].id) : ''),
       notes: ''
     });
-    await loadAssignmentsForUnit(defaultUnit.id);
+    await loadAssignmentsForUnit(resolvedUnitId);
     setIsCloseAssignmentOpen(true);
+  };
+
+  const openEditAssetModal = () => {
+    if (!detailAsset || !canUpdateInventory) {
+      return;
+    }
+
+    resetActionFeedback();
+    setAssetEditForm({
+      asset_name: detailAsset.asset_name || '',
+      brand: detailAsset.brand || '',
+      model: detailAsset.model || '',
+      min_quantity: String(detailAsset.min_quantity ?? 0),
+      description: detailAsset.description || '',
+      reason: 'Actualización del activo por operación de Sistemas.'
+    });
+    setIsEditAssetOpen(true);
+  };
+
+  const openUnitStatusModal = (unit, targetStatusKey) => {
+    if (!unit || !canUpdateInventory) {
+      return;
+    }
+
+    const nextReason = targetStatusKey === 'in_repair'
+      ? 'Envío a reparación.'
+      : targetStatusKey === 'retired'
+        ? 'Baja operativa de la unidad.'
+        : 'Retorno desde reparación.';
+
+    resetActionFeedback();
+    setUnitStatusForm({
+      asset_unit_id: String(unit.id),
+      status_key: targetStatusKey,
+      location_id: targetStatusKey === 'available'
+        ? (unit.current_location_id ? String(unit.current_location_id) : (locations[0]?.id ? String(locations[0].id) : ''))
+        : (unit.current_location_id ? String(unit.current_location_id) : ''),
+      happened_at: '',
+      reason: nextReason,
+      notes: ''
+    });
+    setIsUnitStatusOpen(true);
   };
 
   const handleSaveAssetType = async (event) => {
@@ -1203,7 +1439,9 @@ const InventoryPage = () => {
 
       await Promise.all([
         reloadAssets({ preserveSelection: true }),
-        reloadSelectedAssetDetail()
+        reloadSelectedAssetDetail(),
+        reloadAssignments(),
+        reloadAssignableUnits()
       ]);
       setIsCreateUnitsOpen(false);
       setUnitLines([defaultUnitLine]);
@@ -1234,10 +1472,13 @@ const InventoryPage = () => {
 
       await Promise.all([
         reloadAssets({ preserveSelection: true }),
-        reloadSelectedAssetDetail()
+        reloadSelectedAssetDetail(),
+        reloadAssignments(),
+        reloadAssignableUnits()
       ]);
       await loadAssignmentsForUnit(assignmentForm.asset_unit_id);
       setIsCreateAssignmentOpen(false);
+      setIsGlobalAssignmentFlow(false);
       setAssignmentForm(defaultAssignmentForm);
       setActionSuccess('Resguardo registrado correctamente.');
     } catch (error) {
@@ -1270,7 +1511,9 @@ const InventoryPage = () => {
 
       await Promise.all([
         reloadAssets({ preserveSelection: true }),
-        reloadSelectedAssetDetail()
+        reloadSelectedAssetDetail(),
+        reloadAssignments(),
+        reloadAssignableUnits()
       ]);
       await loadAssignmentsForUnit(assignmentCloseForm.asset_unit_id);
       setIsCloseAssignmentOpen(false);
@@ -1281,6 +1524,73 @@ const InventoryPage = () => {
       setActionError(normalizeErrorMessage(error, 'No fue posible cerrar el resguardo.'));
     } finally {
       setIsSubmittingAssignmentClose(false);
+    }
+  };
+
+  const handleUpdateAsset = async (event) => {
+    event.preventDefault();
+    if (!detailAsset) {
+      return;
+    }
+
+    resetActionFeedback();
+    setIsSubmittingAssetEdit(true);
+
+    try {
+      await updateAsset(detailAsset.id, {
+        asset_name: assetEditForm.asset_name,
+        brand: assetEditForm.brand || null,
+        model: assetEditForm.model || null,
+        min_quantity: detailAsset.tracking_mode_key === 'stock'
+          ? (normalizeOptionalDecimal(assetEditForm.min_quantity) ?? 0)
+          : 0,
+        description: assetEditForm.description || null,
+        reason: assetEditForm.reason || null
+      });
+
+      await Promise.all([
+        reloadAssets({ preserveSelection: true }),
+        reloadSelectedAssetDetail(),
+        reloadAssignments()
+      ]);
+      setIsEditAssetOpen(false);
+      setActionSuccess('Activo actualizado correctamente.');
+    } catch (error) {
+      if (applyAuthFallback(error)) return;
+      setActionError(normalizeErrorMessage(error, 'No fue posible actualizar el activo.'));
+    } finally {
+      setIsSubmittingAssetEdit(false);
+    }
+  };
+
+  const handleUpdateUnitStatus = async (event) => {
+    event.preventDefault();
+    resetActionFeedback();
+    setIsSubmittingUnitStatus(true);
+
+    try {
+      await updateAssetUnitStatus(unitStatusForm.asset_unit_id, {
+        status_key: unitStatusForm.status_key,
+        location_id: normalizeOptionalNumber(unitStatusForm.location_id),
+        happened_at: unitStatusForm.happened_at || null,
+        reason: unitStatusForm.reason,
+        notes: unitStatusForm.notes || null
+      });
+
+      await Promise.all([
+        reloadAssets({ preserveSelection: true }),
+        reloadSelectedAssetDetail(),
+        reloadAssignments(),
+        reloadAssignableUnits()
+      ]);
+      setIsUnitStatusOpen(false);
+      setUnitStatusForm(defaultUnitStatusForm);
+      setActionSuccess('Estado de la unidad actualizado correctamente.');
+    } catch (error) {
+      if (applyAuthFallback(error)) return;
+      setActionError(normalizeErrorMessage(error, 'No fue posible actualizar el estado de la unidad.'));
+    } finally {
+      setIsSubmittingUnitStatus(false);
     }
   };
 
@@ -1422,6 +1732,10 @@ const InventoryPage = () => {
   };
 
   const openLocationCreate = () => {
+    if (!canCreateInventory) {
+      return;
+    }
+
     setEditingLocationId(null);
     setLocationForm({
       location_type_id: catalog.location_types[0]?.id ? String(catalog.location_types[0].id) : '',
@@ -1435,6 +1749,10 @@ const InventoryPage = () => {
   };
 
   const openLocationEdit = (location) => {
+    if (!canUpdateInventory) {
+      return;
+    }
+
     setEditingLocationId(Number(location.id));
     setLocationForm({
       location_type_id: String(location.location_type_id),
@@ -1460,8 +1778,8 @@ const InventoryPage = () => {
   };
 
   const selectedAsset = useMemo(() => (
-    filteredAssets.find((asset) => Number(asset.id) === Number(selectedAssetId)) || null
-  ), [filteredAssets, selectedAssetId]);
+    assets.find((asset) => Number(asset.id) === Number(selectedAssetId)) || null
+  ), [assets, selectedAssetId]);
 
   const detailAsset = selectedAssetId != null
     ? (assetDetail?.asset || selectedAsset)
@@ -1472,8 +1790,8 @@ const InventoryPage = () => {
   const assignedAssetUnitsCount = selectedAssetUnits.filter((unit) => unit.status_key === 'assigned').length;
   const hasAvailableAssetUnits = selectedAssetUnits.some((unit) => unit.status_key === 'available');
   const hasAssignedAssetUnits = selectedAssetUnits.some((unit) => unit.status_key === 'assigned');
+  const hasRepairingAssetUnits = selectedAssetUnits.some((unit) => unit.status_key === 'in_repair');
   const recentSummaryMovements = selectedAssetMovements.slice(0, 3);
-  const latestMovement = selectedAssetMovements[0] || null;
   const isAssetDetailPanelOpen = activeView === 'assets' && Boolean(detailAsset);
   const detailExistenceLabel = detailAsset
     ? (
@@ -1482,20 +1800,6 @@ const InventoryPage = () => {
         : `${detailAsset.units_count} unidades`
     )
     : '0 unidades';
-  const detailNextActionHint = detailAsset?.tracking_mode_key === 'unit'
-    ? (
-      selectedAssetUnits.length === 0
-        ? 'Todavía no hay unidades registradas. Usa la pestaña Unidades para dar de alta la primera.'
-        : hasAvailableAssetUnits && hasAssignedAssetUnits
-          ? 'Hay unidades disponibles y resguardos activos. Gestiona ambas acciones desde Unidades.'
-          : hasAvailableAssetUnits
-            ? 'Hay unidades disponibles para asignar. Continúa en la pestaña Unidades.'
-            : hasAssignedAssetUnits
-              ? 'Hay resguardos activos que puedes cerrar desde la pestaña Unidades.'
-              : 'Gestiona las unidades registradas desde la pestaña Unidades.'
-    )
-    : null;
-
   const availableAssetUnitFieldOptions = useMemo(() => ([
     { key: '', label: 'Seleccionar' },
     ...selectedAssetUnits
@@ -1506,19 +1810,49 @@ const InventoryPage = () => {
       }))
   ]), [selectedAssetUnits]);
 
-  const assignedAssetUnitFieldOptions = useMemo(() => ([
+  const assignableAssetUnitFieldOptions = useMemo(() => ([
     { key: '', label: 'Seleccionar' },
-    ...selectedAssetUnits
-      .filter((unit) => unit.status_key === 'assigned')
-      .map((unit) => ({
-        key: String(unit.id),
-        label: `${unit.asset_tag} · ${unit.current_location_name || 'Sin ubicación'}`
+    ...assignableUnits.map((unit) => ({
+      key: String(unit.id),
+      label: `${unit.asset_name || 'Activo'} · ${unit.asset_tag} · ${unit.current_location_name || 'Sin ubicación'}`
+    }))
+  ]), [assignableUnits]);
+
+  const globalAssignedAssetUnitFieldOptions = useMemo(() => ([
+    { key: '', label: 'Seleccionar' },
+    ...assignments
+      .filter((assignment) => assignment.status === 'active' && assignment.asset_unit?.id)
+      .map((assignment) => ({
+        key: String(assignment.asset_unit.id),
+        label: `${assignment.asset_unit.asset_tag} · ${assignment.asset?.asset_name || 'Activo'}`
       }))
-  ]), [selectedAssetUnits]);
+  ]), [assignments]);
 
   const selectedActiveAssignment = useMemo(() => (
     unitAssignments.find((assignment) => assignment.status === 'active') || null
   ), [unitAssignments]);
+
+  const resolveAssignableUnit = (assetUnitId) => {
+    const normalizedUnitId = normalizeOptionalNumber(assetUnitId);
+    if (!normalizedUnitId) {
+      return null;
+    }
+
+    return (
+      selectedAssetUnits.find((unit) => Number(unit.id) === normalizedUnitId)
+      || assignableUnits.find((unit) => Number(unit.id) === normalizedUnitId)
+      || null
+    );
+  };
+
+  const handleAssignmentUnitChange = (nextValue) => {
+    const resolvedUnit = resolveAssignableUnit(nextValue);
+    setAssignmentForm((current) => ({
+      ...current,
+      asset_unit_id: nextValue,
+      location_id: resolvedUnit?.current_location_id ? String(resolvedUnit.current_location_id) : current.location_id
+    }));
+  };
 
   useEffect(() => {
     if (!isAssetDetailPanelOpen || !shouldAutoFocusAssetDetailRef.current) {
@@ -1534,7 +1868,18 @@ const InventoryPage = () => {
   }, [isAssetDetailPanelOpen, selectedAssetId, activeDetailTab]);
 
   useEffect(() => {
-    if (!isAssetDetailPanelOpen || isCreateAssetOpen || isCreateMovementOpen || isCreateLocationOpen) {
+    if (
+      !isAssetDetailPanelOpen
+      || isCreateAssetOpen
+      || isEditAssetOpen
+      || isCreateMovementOpen
+      || isCreateLocationOpen
+      || isCatalogModalOpen
+      || isCreateUnitsOpen
+      || isCreateAssignmentOpen
+      || isCloseAssignmentOpen
+      || isUnitStatusOpen
+    ) {
       return undefined;
     }
 
@@ -1549,7 +1894,18 @@ const InventoryPage = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isAssetDetailPanelOpen, isCreateAssetOpen, isCreateMovementOpen, isCreateLocationOpen]);
+  }, [
+    isAssetDetailPanelOpen,
+    isCatalogModalOpen,
+    isCloseAssignmentOpen,
+    isCreateAssetOpen,
+    isCreateAssignmentOpen,
+    isCreateLocationOpen,
+    isCreateMovementOpen,
+    isCreateUnitsOpen,
+    isEditAssetOpen,
+    isUnitStatusOpen
+  ]);
 
   useEffect(() => {
     if (!actionSuccess && !actionError) return undefined;
@@ -1578,36 +1934,40 @@ const InventoryPage = () => {
               <span>Configurar catálogos</span>
             </button>
           ) : null}
-          <button
-            type="button"
-            className="tickets-page__ghost-action"
-            ref={createMovementTriggerRef}
-            onClick={() => {
-              resetActionFeedback();
-              setMovementForm((currentForm) => ({
-                ...currentForm,
-                lines: currentForm.lines.length > 0
-                  ? currentForm.lines
-                  : [{ ...defaultMovementLine, asset_id: selectedAssetId ? String(selectedAssetId) : '' }]
-              }));
-              setIsCreateMovementOpen(true);
-            }}
-          >
-            <ArrowRightLeft size={16} aria-hidden="true" />
-            <span>Registrar movimiento</span>
-          </button>
-          <button
-            type="button"
-            className="tickets-page__primary-action"
-            ref={createAssetTriggerRef}
-            onClick={() => {
-              resetActionFeedback();
-              setIsCreateAssetOpen(true);
-            }}
-          >
-            <PackagePlus size={16} aria-hidden="true" />
-            <span>Nuevo activo</span>
-          </button>
+          {canUpdateInventory ? (
+            <button
+              type="button"
+              className="tickets-page__ghost-action"
+              ref={createMovementTriggerRef}
+              onClick={() => {
+                resetActionFeedback();
+                setMovementForm((currentForm) => ({
+                  ...currentForm,
+                  lines: currentForm.lines.length > 0
+                    ? currentForm.lines
+                    : [{ ...defaultMovementLine, asset_id: selectedAssetId ? String(selectedAssetId) : '' }]
+                }));
+                setIsCreateMovementOpen(true);
+              }}
+            >
+              <ArrowRightLeft size={16} aria-hidden="true" />
+              <span>Registrar movimiento</span>
+            </button>
+          ) : null}
+          {canCreateInventory ? (
+            <button
+              type="button"
+              className="tickets-page__primary-action"
+              ref={createAssetTriggerRef}
+              onClick={() => {
+                resetActionFeedback();
+                setIsCreateAssetOpen(true);
+              }}
+            >
+              <PackagePlus size={16} aria-hidden="true" />
+              <span>Nuevo activo</span>
+            </button>
+          ) : null}
         </div>
       </header>
 
@@ -1651,7 +2011,7 @@ const InventoryPage = () => {
                 loadingRole="status"
                 loadingAriaLive="polite"
                 loadingAriaAtomic
-                className={`inventory-panel__workspace inventory-panel__workspace--${activeView === 'locations' ? 'locations' : activeView === 'movements' ? 'table' : 'assets'}`}
+                className={`inventory-panel__workspace inventory-panel__workspace--${activeView === 'locations' ? 'locations' : activeView === 'assets' ? 'assets' : 'table'}`}
                 content={null}
                 emptyTitle=""
                 emptyCopy=""
@@ -1708,9 +2068,11 @@ const InventoryPage = () => {
                   <div className="inventory-panel__workspace inventory-panel__workspace--assets inventory-panel__workspace--fixed">
                     {filteredAssets.length === 0 ? (
                       <EmptyState title="No encontramos activos con estos filtros" copy="Ajusta la búsqueda, el estado o el modo para recuperar resultados." id="inventory-assets-empty" role="region">
-                        <button type="button" className="tickets-page__primary-action" onClick={() => setIsCreateAssetOpen(true)}>
-                          Nuevo activo
-                        </button>
+                        {canCreateInventory ? (
+                          <button type="button" className="tickets-page__primary-action" onClick={() => setIsCreateAssetOpen(true)}>
+                            Nuevo activo
+                          </button>
+                        ) : null}
                       </EmptyState>
                     ) : (
                       <OperationalTable
@@ -1782,7 +2144,11 @@ const InventoryPage = () => {
                                     </button>
                                   </td>
                                   <td className="ticket-list__cell">{asset.tracking_mode_name}</td>
-                                  <td className="ticket-list__cell"><span className={`inventory-status-chip inventory-status-chip--${toStatusTone(asset.status)}`}>{toStatusLabel(asset.status)}</span></td>
+                                  <td className="ticket-list__cell">
+                                    <span className={`inventory-status-chip inventory-status-chip--${toOperationalStatusTone(asset.operational_status_key)}`}>
+                                      {asset.operational_status_name || toOperationalStatusLabel(asset.operational_status_key)}
+                                    </span>
+                                  </td>
                                   <td className="ticket-list__cell">{stockLabel}</td>
                                   <td className="ticket-list__cell">{formatDateTime(asset.updated_at)}</td>
                                 </tr>
@@ -1813,8 +2179,8 @@ const InventoryPage = () => {
                           <span className="ticket-detail__ticket-id">
                             {detailAsset.internal_code || `AST-${String(detailAsset.id).padStart(6, '0')}`}
                           </span>
-                          <span className={`inventory-status-chip inventory-status-chip--${toStatusTone(detailAsset.status)}`}>
-                            {toStatusLabel(detailAsset.status)}
+                          <span className={`inventory-status-chip inventory-status-chip--${toOperationalStatusTone(detailAsset.operational_status_key)}`}>
+                            {detailAsset.operational_status_name || toOperationalStatusLabel(detailAsset.operational_status_key)}
                           </span>
                         </div>
                         <div className="ticket-detail__header-actions inventory-asset-detail__header-actions">
@@ -1827,6 +2193,17 @@ const InventoryPage = () => {
                             >
                               Actualizando...
                             </span>
+                          ) : null}
+                          {canUpdateInventory ? (
+                            <button
+                              type="button"
+                              className="action-inline"
+                              onClick={openEditAssetModal}
+                              aria-label={`Editar activo ${detailAsset.asset_name}`}
+                            >
+                              <PencilLine size={14} aria-hidden="true" />
+                              <span>Editar activo</span>
+                            </button>
                           ) : null}
                           <button
                             type="button"
@@ -1885,8 +2262,8 @@ const InventoryPage = () => {
                               <div className="ticket-detail__meta-item">
                                 <dt className="ticket-detail__meta-label">Estado</dt>
                                 <dd>
-                                  <span className={`inventory-status-chip inventory-status-chip--${toStatusTone(detailAsset.status)}`}>
-                                    {toStatusLabel(detailAsset.status)}
+                                  <span className={`inventory-status-chip inventory-status-chip--${toOperationalStatusTone(detailAsset.operational_status_key)}`}>
+                                    {detailAsset.operational_status_name || toOperationalStatusLabel(detailAsset.operational_status_key)}
                                   </span>
                                 </dd>
                               </div>
@@ -1905,11 +2282,6 @@ const InventoryPage = () => {
                                 <dd>{formatDateTime(detailAsset.updated_at)}</dd>
                               </div>
                             </dl>
-                            {detailNextActionHint ? (
-                              <p className="inventory-asset-detail__status-caption inventory-asset-detail__status-caption--action">
-                                {detailNextActionHint}
-                              </p>
-                            ) : null}
                           </section>
 
                           {recentSummaryMovements.length > 0 ? (
@@ -1967,32 +2339,27 @@ const InventoryPage = () => {
                         >
                           {detailAsset.tracking_mode_key === 'unit' ? (
                             <div className="inventory-asset-detail__panel-header inventory-asset-detail__panel-header--units">
-                              <div className="inventory-asset-detail__panel-copy">
-                                <h3 className="inventory-asset-detail__panel-title">Unidades registradas</h3>
-                                <p className="inventory-asset-detail__panel-caption">
-                                  {selectedAssetUnits.length === 0
-                                    ? 'Registra la primera unidad serializada para empezar a asignarla y darle seguimiento.'
-                                    : 'Administra asignaciones y cierres de resguardo por unidad desde esta sección.'}
-                                </p>
-                              </div>
+                              <h3 className="inventory-asset-detail__panel-title">Unidades registradas</h3>
                               <div className="inventory-asset-detail__toolbar">
-                                <button type="button" className="tickets-page__primary-action" onClick={openCreateUnitsModal}>
-                                  <Tags size={14} aria-hidden="true" />
-                                  <span>Registrar unidades</span>
-                                </button>
+                                {canCreateInventory ? (
+                                  <button type="button" className="tickets-page__primary-action" onClick={openCreateUnitsModal}>
+                                    <Tags size={14} aria-hidden="true" />
+                                    <span>Registrar unidades</span>
+                                  </button>
+                                ) : null}
                                 {selectedAssetUnits.length > 0 && (hasAvailableAssetUnits || hasAssignedAssetUnits) ? (
                                   <div className="inventory-asset-detail__toolbar-secondary">
-                                    {hasAvailableAssetUnits ? (
+                                    {hasAvailableAssetUnits && canAssignInventory ? (
                                       <button
                                         type="button"
                                         className="inventory-asset-detail__toolbar-action"
-                                        onClick={openCreateAssignmentModal}
+                                        onClick={(event) => openCreateAssignmentModal(null, { triggerElement: event.currentTarget })}
                                       >
                                         <ShieldCheck size={14} aria-hidden="true" />
                                         <span>Asignar ({availableAssetUnitsCount})</span>
                                       </button>
                                     ) : null}
-                                    {hasAssignedAssetUnits ? (
+                                    {hasAssignedAssetUnits && canAssignInventory ? (
                                       <button
                                         type="button"
                                         className="inventory-asset-detail__toolbar-action"
@@ -2011,7 +2378,11 @@ const InventoryPage = () => {
                             <p className="inventory-asset-detail__empty-copy">Este activo no tiene unidades serializadas registradas.</p>
                           ) : (
                             <ul className="inventory-asset-detail__list">
-                              {selectedAssetUnits.map((unit) => (
+                              {selectedAssetUnits.map((unit) => {
+                                const canShowUnitSecondaryActions = canUpdateInventory
+                                  && (unit.status_key === 'available' || unit.status_key === 'in_repair');
+
+                                return (
                                 <li key={unit.id} className="inventory-asset-detail__unit-item">
                                   <div className="inventory-asset-detail__unit-head">
                                     <div className="inventory-asset-detail__unit-identity">
@@ -2023,10 +2394,68 @@ const InventoryPage = () => {
                                   </div>
                                   <div className="inventory-asset-detail__unit-meta">
                                     <span className="inventory-asset-detail__unit-location">{unit.current_location_name || 'Sin ubicación'}</span>
-                                    {unit.serial_number ? <span className="inventory-asset-detail__unit-serial">Serie: {unit.serial_number}</span> : null}
+                                    {unit.active_assignment?.collaborator_name || unit.serial_number ? (
+                                      <div className="inventory-asset-detail__unit-detail-row">
+                                        {unit.active_assignment?.collaborator_name ? (
+                                          <span className="inventory-asset-detail__unit-serial">
+                                            Resguardo activo: {unit.active_assignment.collaborator_name}
+                                          </span>
+                                        ) : null}
+                                        {unit.serial_number ? <span className="inventory-asset-detail__unit-serial">Serie: {unit.serial_number}</span> : null}
+                                      </div>
+                                    ) : null}
                                   </div>
+                                  {canShowUnitSecondaryActions ? (
+                                    <div className="inventory-asset-detail__unit-actions">
+                                      {unit.status_key === 'available' ? (
+                                        <>
+                                          <button
+                                            type="button"
+                                            className="action-inline action-inline--secondary"
+                                            onClick={() => openUnitStatusModal(unit, 'in_repair')}
+                                            aria-label={`Enviar ${unit.asset_tag} a reparación`}
+                                          >
+                                            <Wrench size={14} aria-hidden="true" />
+                                            <span>En reparación</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="action-inline action-inline--secondary"
+                                            onClick={() => openUnitStatusModal(unit, 'retired')}
+                                            aria-label={`Dar de baja ${unit.asset_tag}`}
+                                          >
+                                            <Archive size={14} aria-hidden="true" />
+                                            <span>Baja</span>
+                                          </button>
+                                        </>
+                                      ) : null}
+                                      {unit.status_key === 'in_repair' ? (
+                                        <>
+                                          <button
+                                            type="button"
+                                            className="action-inline action-inline--secondary"
+                                            onClick={() => openUnitStatusModal(unit, 'available')}
+                                            aria-label={`Marcar ${unit.asset_tag} como disponible`}
+                                          >
+                                            <Check size={14} aria-hidden="true" />
+                                            <span>Marcar disponible</span>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="action-inline action-inline--secondary"
+                                            onClick={() => openUnitStatusModal(unit, 'retired')}
+                                            aria-label={`Dar de baja ${unit.asset_tag}`}
+                                          >
+                                            <CircleOff size={14} aria-hidden="true" />
+                                            <span>Baja</span>
+                                          </button>
+                                        </>
+                                      ) : null}
+                                    </div>
+                                  ) : null}
                                 </li>
-                              ))}
+                                );
+                              })}
                             </ul>
                           )}
                         </section>
@@ -2091,7 +2520,9 @@ const InventoryPage = () => {
               <div className="inventory-panel__workspace inventory-panel__workspace--table inventory-panel__workspace--fixed">
                 {filteredMovements.length === 0 ? (
                   <EmptyState title="Aún no hay movimientos registrados" copy="Registra el primer movimiento para iniciar la trazabilidad del inventario." id="inventory-movements-empty" role="region">
-                    <button type="button" className="tickets-page__primary-action" onClick={() => setIsCreateMovementOpen(true)}>Registrar movimiento</button>
+                    {canUpdateInventory ? (
+                      <button type="button" className="tickets-page__primary-action" onClick={() => setIsCreateMovementOpen(true)}>Registrar movimiento</button>
+                    ) : null}
                   </EmptyState>
                 ) : (
                   <OperationalTable
@@ -2150,6 +2581,168 @@ const InventoryPage = () => {
               </div>
             </section>
 
+            <section id="inventory-panel-assignments" role="tabpanel" aria-labelledby="inventory-view-assignments" hidden={activeView !== 'assignments'} className="inventory-panel">
+              <div className="tickets-page__control-row inventory-assets__control-row">
+                <ToolbarSearchField
+                  id="inventory-assignments-search"
+                  name="inventory-assignments-search"
+                  value={assignmentsSearchTerm}
+                  onChange={setAssignmentsSearchTerm}
+                  placeholder="Buscar por activo, unidad, colaborador o ubicación..."
+                  srLabel="Buscar resguardos"
+                  className="inventory-assets__search"
+                />
+                <div className="tickets-page__filters inventory-assets__filters">
+                  <FilterChipGroup
+                    label="Filtro por estado de resguardo"
+                    options={assignmentStatusOptions}
+                    activeKey={assignmentStatusFilter}
+                    onSelect={setAssignmentStatusFilter}
+                    className="tickets-page__chip-group inventory-assets__chip-group"
+                    chipClassName="tickets-page__chip inventory-assets__chip"
+                    activeChipClassName="tickets-page__chip--active inventory-assets__chip--active"
+                  />
+                  <FilterSelect
+                    id="inventory-assignment-collaborator-filter"
+                    name="inventory_assignment_collaborator_filter"
+                    label="Colaborador"
+                    showLabel={false}
+                    value={assignmentCollaboratorFilter}
+                    options={collaboratorFilterOptions}
+                    onChange={setAssignmentCollaboratorFilter}
+                    className="filter-select inventory-assets__tracking-select"
+                  />
+                </div>
+                <div className="inventory-assets__actions">
+                  {canAssignInventory ? (
+                    <button
+                      type="button"
+                      className="tickets-page__ghost-action"
+                      ref={createAssignmentTriggerRef}
+                      onClick={(event) => openCreateAssignmentModal(null, { useGlobal: true, triggerElement: event.currentTarget })}
+                    >
+                      <ShieldCheck size={16} aria-hidden="true" />
+                      <span>Nuevo resguardo</span>
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+              <div className="inventory-panel__workspace inventory-panel__workspace--table inventory-panel__workspace--fixed">
+                {filteredAssignments.length === 0 ? (
+                  <EmptyState title="No encontramos resguardos con estos filtros" copy="Ajusta la búsqueda o los filtros para revisar asignaciones activas e historial." id="inventory-assignments-empty" role="region">
+                    {canAssignInventory ? (
+                      <button
+                        type="button"
+                        className="tickets-page__primary-action"
+                        onClick={(event) => openCreateAssignmentModal(null, { useGlobal: true, triggerElement: event.currentTarget })}
+                      >
+                        <ShieldCheck size={14} aria-hidden="true" />
+                        <span>Nuevo resguardo</span>
+                      </button>
+                    ) : null}
+                  </EmptyState>
+                ) : (
+                  <OperationalTable
+                    className="inventory-assignments-list"
+                    ariaLabel="Listado de resguardos"
+                    scrollClassName="ticket-list__scroll inventory-table-wrap inventory-table-wrap--workspace"
+                    pagination={(
+                      <PaginationBar
+                        ariaLabel="Paginación de resguardos"
+                        start={assignmentsPageStart + 1}
+                        end={Math.min(assignmentsPageStart + assignmentsItemsPerPage, filteredAssignments.length)}
+                        total={filteredAssignments.length}
+                        pageSize={assignmentsItemsPerPage}
+                        pageSizeOptions={INVENTORY_PAGE_SIZE_OPTIONS}
+                        pageSizeId="inventory-assignments-page-size"
+                        pageSizeName="inventory_assignments_page_size"
+                        currentPage={resolvedAssignmentsPage}
+                        totalPages={assignmentsTotalPages}
+                        onPageSizeChange={(nextSize) => {
+                          setAssignmentsItemsPerPage(nextSize);
+                          setAssignmentsCurrentPage(1);
+                        }}
+                        onPrev={() => setAssignmentsCurrentPage((page) => Math.max(1, page - 1))}
+                        onNext={() => setAssignmentsCurrentPage((page) => Math.min(assignmentsTotalPages, page + 1))}
+                      />
+                    )}
+                  >
+                    <table className="ticket-list__table inventory-table inventory-table--assignments">
+                      <thead>
+                        <tr>
+                          <th scope="col">Colaborador</th>
+                          <th scope="col">Activo</th>
+                          <th scope="col">Unidad</th>
+                          <th scope="col">Ubicación</th>
+                          <th scope="col">Estado</th>
+                          <th scope="col">Asignado</th>
+                          <th scope="col">Retorno</th>
+                          <th scope="col">Acción</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {paginatedAssignments.map((assignment) => (
+                          <tr key={assignment.id} className="ticket-list__row inventory-table__row">
+                            <td className="ticket-list__cell">
+                              <span className="data-table__item-title">{assignment.collaborator?.full_name || 'Sin colaborador'}</span>
+                              <span className="data-table__item-meta inventory-assignments__meta">{assignment.collaborator?.employee_id ? `ID ${assignment.collaborator.employee_id}` : 'Sin ID'}</span>
+                            </td>
+                            <td className="ticket-list__cell">
+                              <span className="data-table__item-title">{assignment.asset?.asset_name || 'Sin activo'}</span>
+                              <span className="data-table__item-meta inventory-assignments__meta">{assignment.asset?.internal_code || 'Sin código'}</span>
+                            </td>
+                            <td className="ticket-list__cell">
+                              <span className="data-table__item-title">{assignment.asset_unit?.asset_tag || 'Sin unidad'}</span>
+                              {assignment.asset_unit?.serial_number ? (
+                                <span className="data-table__item-meta inventory-assignments__meta">{assignment.asset_unit.serial_number}</span>
+                              ) : null}
+                            </td>
+                            <td className="ticket-list__cell">
+                              <span className="inventory-assignments__supporting">{assignment.location?.name || 'Sin ubicación'}</span>
+                            </td>
+                            <td className="ticket-list__cell">
+                              <span className={`inventory-status-chip inventory-status-chip--${assignment.status === 'active' ? 'accent' : 'neutral'}`}>
+                                {assignment.status === 'active' ? 'Activo' : 'Cerrado'}
+                              </span>
+                            </td>
+                            <td className="ticket-list__cell">
+                              <span className="inventory-assignments__supporting">{formatDateTime(assignment.assigned_at)}</span>
+                            </td>
+                            <td className="ticket-list__cell">
+                              <span className="inventory-assignments__supporting">{assignment.expected_return_at ? formatDateTime(assignment.expected_return_at) : 'Sin fecha'}</span>
+                            </td>
+                            <td className="ticket-list__cell">
+                              <div className="inventory-table__actions inventory-table__actions--assignments">
+                                {assignment.status === 'active' && canAssignInventory ? (
+                                  <button
+                                    type="button"
+                                    className="action-inline action-inline--primary"
+                                    onClick={() => void openCloseAssignmentModal(assignment.asset_unit?.id)}
+                                    aria-label={`Cerrar resguardo de ${assignment.asset_unit?.asset_tag || 'la unidad'}`}
+                                  >
+                                    <Undo2 size={14} aria-hidden="true" />
+                                    <span>Cerrar</span>
+                                  </button>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  className={`action-inline ${assignment.status === 'active' && canAssignInventory ? 'action-inline--secondary' : 'action-inline--primary'}`}
+                                  onClick={(event) => openAssetFromAssignment(assignment, event.currentTarget)}
+                                  aria-label={`Abrir activo ${assignment.asset?.asset_name || 'relacionado'}`}
+                                >
+                                  <span>Abrir activo</span>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </OperationalTable>
+                )}
+              </div>
+            </section>
+
             <section id="inventory-panel-locations" role="tabpanel" aria-labelledby="inventory-view-locations" hidden={activeView !== 'locations'} className="inventory-panel">
               <div className="tickets-page__control-row inventory-assets__control-row">
                 <ToolbarSearchField
@@ -2162,10 +2755,12 @@ const InventoryPage = () => {
                   className="inventory-assets__search"
                 />
                 <div className="tickets-page__filters inventory-assets__filters">
-                  <button type="button" className="tickets-page__ghost-action" ref={createLocationTriggerRef} onClick={openLocationCreate}>
-                    <Building2 size={16} aria-hidden="true" />
-                    <span>Nueva ubicación</span>
-                  </button>
+                  {canCreateInventory ? (
+                    <button type="button" className="tickets-page__ghost-action" ref={createLocationTriggerRef} onClick={openLocationCreate}>
+                      <Building2 size={16} aria-hidden="true" />
+                      <span>Nueva ubicación</span>
+                    </button>
+                  ) : null}
                 </div>
               </div>
               <div className="inventory-panel__workspace inventory-panel__workspace--locations inventory-panel__workspace--fixed">
@@ -2241,15 +2836,17 @@ const InventoryPage = () => {
                                 </span>
                               </td>
                               <td className="inventory-location-table__cell inventory-location-table__cell--actions">
-                                <button
-                                  type="button"
-                                  className="action-inline"
-                                  onClick={() => openLocationEdit(location)}
-                                  aria-label={`Editar ubicación ${location.name}`}
-                                >
-                                  <Settings2 size={14} aria-hidden="true" />
-                                  <span>Editar</span>
-                                </button>
+                                {canUpdateInventory ? (
+                                  <button
+                                    type="button"
+                                    className="action-inline"
+                                    onClick={() => openLocationEdit(location)}
+                                    aria-label={`Editar ubicación ${location.name}`}
+                                  >
+                                    <Settings2 size={14} aria-hidden="true" />
+                                    <span>Editar</span>
+                                  </button>
+                                ) : null}
                               </td>
                             </tr>
                           );
@@ -2261,9 +2858,9 @@ const InventoryPage = () => {
                   emptyCopy="Ajusta la búsqueda o registra una nueva ubicación para continuar."
                   emptyId="inventory-locations-empty"
                   emptyRole="region"
-                  emptyActions={(
+                  emptyActions={canCreateInventory ? (
                     <button type="button" className="tickets-page__primary-action" onClick={openLocationCreate}>Nueva ubicación</button>
-                  )}
+                  ) : null}
                 />
               </div>
             </section>
@@ -2532,6 +3129,93 @@ const InventoryPage = () => {
           <footer className="modal-dialog__actions">
             <button type="button" className="tickets-page__ghost-action" onClick={() => setIsCreateMovementOpen(false)}>Cancelar</button>
             <button type="submit" className="tickets-page__primary-action" disabled={isSubmittingMovement}>{isSubmittingMovement ? 'Guardando...' : 'Registrar movimiento'}</button>
+          </footer>
+        </form>
+      </ModalDialog>
+
+      <ModalDialog
+        open={isEditAssetOpen}
+        title="Editar activo"
+        onClose={() => setIsEditAssetOpen(false)}
+        returnFocusRef={assetDetailCloseButtonRef}
+        initialFocusRef={editAssetNameRef}
+        size="wide"
+      >
+        <form className="modal-dialog__form" onSubmit={handleUpdateAsset}>
+          <div className="modal-dialog__grid">
+            <label className="modal-dialog__field modal-dialog__field--full" htmlFor="inventory-asset-edit-name">
+              <span>Nombre del activo</span>
+              <input
+                ref={editAssetNameRef}
+                id="inventory-asset-edit-name"
+                name="inventory_asset_edit_name"
+                type="text"
+                value={assetEditForm.asset_name}
+                onChange={(event) => setAssetEditForm((current) => ({ ...current, asset_name: event.target.value }))}
+                required
+              />
+            </label>
+            <label className="modal-dialog__field" htmlFor="inventory-asset-edit-brand">
+              <span>Marca</span>
+              <input
+                id="inventory-asset-edit-brand"
+                name="inventory_asset_edit_brand"
+                type="text"
+                value={assetEditForm.brand}
+                onChange={(event) => setAssetEditForm((current) => ({ ...current, brand: event.target.value }))}
+              />
+            </label>
+            <label className="modal-dialog__field" htmlFor="inventory-asset-edit-model">
+              <span>Modelo</span>
+              <input
+                id="inventory-asset-edit-model"
+                name="inventory_asset_edit_model"
+                type="text"
+                value={assetEditForm.model}
+                onChange={(event) => setAssetEditForm((current) => ({ ...current, model: event.target.value }))}
+              />
+            </label>
+            {detailAsset?.tracking_mode_key === 'stock' ? (
+              <label className="modal-dialog__field" htmlFor="inventory-asset-edit-min-quantity">
+                <span>Stock mínimo</span>
+                <input
+                  id="inventory-asset-edit-min-quantity"
+                  name="inventory_asset_edit_min_quantity"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={assetEditForm.min_quantity}
+                  onChange={(event) => setAssetEditForm((current) => ({ ...current, min_quantity: event.target.value }))}
+                />
+              </label>
+            ) : null}
+            <label className="modal-dialog__field modal-dialog__field--full" htmlFor="inventory-asset-edit-description">
+              <span>Descripción</span>
+              <textarea
+                id="inventory-asset-edit-description"
+                name="inventory_asset_edit_description"
+                rows="3"
+                value={assetEditForm.description}
+                onChange={(event) => setAssetEditForm((current) => ({ ...current, description: event.target.value }))}
+              />
+            </label>
+            <label className="modal-dialog__field modal-dialog__field--full" htmlFor="inventory-asset-edit-reason">
+              <span>Motivo del cambio</span>
+              <input
+                id="inventory-asset-edit-reason"
+                name="inventory_asset_edit_reason"
+                type="text"
+                value={assetEditForm.reason}
+                onChange={(event) => setAssetEditForm((current) => ({ ...current, reason: event.target.value }))}
+                required
+              />
+            </label>
+          </div>
+          <footer className="modal-dialog__actions">
+            <button type="button" className="tickets-page__ghost-action" onClick={() => setIsEditAssetOpen(false)}>Cancelar</button>
+            <button type="submit" className="tickets-page__primary-action" disabled={isSubmittingAssetEdit}>
+              {isSubmittingAssetEdit ? 'Guardando...' : 'Guardar cambios'}
+            </button>
           </footer>
         </form>
       </ModalDialog>
@@ -3123,9 +3807,12 @@ const InventoryPage = () => {
 
       <ModalDialog
         open={isCreateAssignmentOpen}
-        title="Asignar activo"
-        onClose={() => setIsCreateAssignmentOpen(false)}
-        returnFocusRef={assetDetailCloseButtonRef}
+        title={isGlobalAssignmentFlow ? 'Nuevo resguardo' : 'Asignar activo'}
+        onClose={() => {
+          setIsCreateAssignmentOpen(false);
+          setIsGlobalAssignmentFlow(false);
+        }}
+        returnFocusRef={createAssignmentTriggerRef}
         initialFocusRef={createAssignmentUnitSelectRef}
         size="wide"
       >
@@ -3141,8 +3828,8 @@ const InventoryPage = () => {
                 labelId="inventory-assignment-unit-label"
                 variant="field"
                 value={assignmentForm.asset_unit_id}
-                options={availableAssetUnitFieldOptions}
-                onChange={(nextValue) => setAssignmentForm((current) => ({ ...current, asset_unit_id: nextValue }))}
+                options={isGlobalAssignmentFlow ? assignableAssetUnitFieldOptions : availableAssetUnitFieldOptions}
+                onChange={handleAssignmentUnitChange}
               />
             </div>
             <div className="modal-dialog__field">
@@ -3225,7 +3912,7 @@ const InventoryPage = () => {
                 labelId="inventory-assignment-close-unit-label"
                 variant="field"
                 value={assignmentCloseForm.asset_unit_id}
-                options={assignedAssetUnitFieldOptions}
+                options={globalAssignedAssetUnitFieldOptions}
                 onChange={(nextValue) => setAssignmentCloseForm((current) => ({ ...current, asset_unit_id: nextValue }))}
               />
             </div>
@@ -3268,6 +3955,98 @@ const InventoryPage = () => {
             <button type="button" className="tickets-page__ghost-action" onClick={() => setIsCloseAssignmentOpen(false)}>Cancelar</button>
             <button type="submit" className="tickets-page__primary-action" disabled={isSubmittingAssignmentClose}>
               {isSubmittingAssignmentClose ? 'Guardando...' : 'Cerrar resguardo'}
+            </button>
+          </footer>
+        </form>
+      </ModalDialog>
+
+      <ModalDialog
+        open={isUnitStatusOpen}
+        title="Actualizar estado de unidad"
+        onClose={() => {
+          setIsUnitStatusOpen(false);
+          setUnitStatusForm(defaultUnitStatusForm);
+        }}
+        returnFocusRef={assetDetailCloseButtonRef}
+        initialFocusRef={unitStatusForm.status_key === 'available' ? unitStatusLocationSelectRef : unitStatusReasonRef}
+        size="wide"
+      >
+        <form className="modal-dialog__form" onSubmit={handleUpdateUnitStatus}>
+          <div className="modal-dialog__grid">
+            <div className="modal-dialog__field">
+              <span id="inventory-unit-status-target-label">Nuevo estado</span>
+              <div className="inventory-form__read-only" aria-labelledby="inventory-unit-status-target-label">
+                {toOperationalStatusLabel(unitStatusForm.status_key)}
+              </div>
+            </div>
+            <div className="modal-dialog__field">
+              <span id="inventory-unit-status-unit-label">Unidad</span>
+              <div className="inventory-form__read-only" aria-labelledby="inventory-unit-status-unit-label">
+                {selectedAssetUnits.find((unit) => String(unit.id) === String(unitStatusForm.asset_unit_id))?.asset_tag || 'Sin unidad'}
+              </div>
+            </div>
+            {unitStatusForm.status_key === 'available' ? (
+              <div className="modal-dialog__field">
+                <span id="inventory-unit-status-location-label">Ubicación</span>
+                <FilterSelect
+                  ref={unitStatusLocationSelectRef}
+                  id="inventory-unit-status-location"
+                  name="inventory_unit_status_location_id"
+                  label="Ubicación"
+                  labelId="inventory-unit-status-location-label"
+                  variant="field"
+                  value={unitStatusForm.location_id}
+                  options={locationFieldOptions.filter((option) => option.key)}
+                  onChange={(nextValue) => setUnitStatusForm((current) => ({ ...current, location_id: nextValue }))}
+                />
+              </div>
+            ) : null}
+            <label className="modal-dialog__field" htmlFor="inventory-unit-status-happened-at">
+              <span>Fecha y hora</span>
+              <input
+                id="inventory-unit-status-happened-at"
+                name="inventory_unit_status_happened_at"
+                type="datetime-local"
+                value={unitStatusForm.happened_at}
+                onChange={(event) => setUnitStatusForm((current) => ({ ...current, happened_at: event.target.value }))}
+              />
+            </label>
+            <label className="modal-dialog__field modal-dialog__field--full" htmlFor="inventory-unit-status-reason">
+              <span>Motivo</span>
+              <input
+                ref={unitStatusReasonRef}
+                id="inventory-unit-status-reason"
+                name="inventory_unit_status_reason"
+                type="text"
+                value={unitStatusForm.reason}
+                onChange={(event) => setUnitStatusForm((current) => ({ ...current, reason: event.target.value }))}
+                required
+              />
+            </label>
+            <label className="modal-dialog__field modal-dialog__field--full" htmlFor="inventory-unit-status-notes">
+              <span>Notas</span>
+              <textarea
+                id="inventory-unit-status-notes"
+                name="inventory_unit_status_notes"
+                rows="3"
+                value={unitStatusForm.notes}
+                onChange={(event) => setUnitStatusForm((current) => ({ ...current, notes: event.target.value }))}
+              />
+            </label>
+          </div>
+          <footer className="modal-dialog__actions">
+            <button
+              type="button"
+              className="tickets-page__ghost-action"
+              onClick={() => {
+                setIsUnitStatusOpen(false);
+                setUnitStatusForm(defaultUnitStatusForm);
+              }}
+            >
+              Cancelar
+            </button>
+            <button type="submit" className="tickets-page__primary-action" disabled={isSubmittingUnitStatus}>
+              {isSubmittingUnitStatus ? 'Guardando...' : 'Aplicar cambio'}
             </button>
           </footer>
         </form>
