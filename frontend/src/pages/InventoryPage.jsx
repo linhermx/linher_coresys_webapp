@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Archive,
   ArrowRightLeft,
@@ -33,6 +33,7 @@ import { ToolbarSearchField } from '../components/primitives/ToolbarSearchField.
 import { WorkspaceSplitLayout } from '../components/primitives/WorkspaceSplitLayout.jsx';
 import { ModalDialog } from '../components/primitives/ModalDialog.jsx';
 import { useAuth } from '../hooks/useAuth.js';
+import { hasPermission } from '../utils/accessControl.js';
 import { getNextHorizontalTabIndex } from '../utils/tabNavigation.js';
 import {
   closeAssetAssignment,
@@ -71,6 +72,13 @@ const inventoryViewOptions = [
   { key: 'assignments', label: 'Resguardos', icon: ShieldCheck },
   { key: 'locations', label: 'Ubicaciones', icon: MapPin }
 ];
+
+const validInventoryViewKeys = new Set(inventoryViewOptions.map((option) => option.key));
+
+const resolveInventoryView = (value) => {
+  const normalizedValue = String(value || '').trim();
+  return validInventoryViewKeys.has(normalizedValue) ? normalizedValue : 'assets';
+};
 
 const assetStatusOptions = [
   { key: 'all', label: 'Todos' },
@@ -395,9 +403,14 @@ const toUnitStatusTone = (status) => {
 
 const InventoryPage = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { authUser, clearSession } = useAuth();
-
-  const [activeView, setActiveView] = useState('assets');
+  const requestedView = resolveInventoryView(searchParams.get('view'));
+  const canCreateInventory = hasPermission(authUser, 'inventory.create');
+  const canUpdateInventory = hasPermission(authUser, 'inventory.update');
+  const canAssignInventory = hasPermission(authUser, 'inventory.assign');
+  const canManageCatalog = canUpdateInventory;
+  const activeView = requestedView;
   const [activeDetailTab, setActiveDetailTab] = useState('summary');
   const [catalog, setCatalog] = useState({
     tracking_modes: [],
@@ -560,6 +573,18 @@ const InventoryPage = () => {
     return true;
   };
 
+  const handleViewChange = (nextView) => {
+    const resolvedView = resolveInventoryView(nextView);
+    const nextParams = new URLSearchParams(searchParams);
+    if (resolvedView === 'assets') {
+      nextParams.delete('view');
+    } else {
+      nextParams.set('view', resolvedView);
+    }
+
+    setSearchParams(nextParams, { replace: true });
+  };
+
   const loadCoreData = async () => {
     setIsLoadingScreen(true);
     setScreenError('');
@@ -570,10 +595,10 @@ const InventoryPage = () => {
         listLocations(),
         listInventoryMovements({ limit: 140 }),
         listAssetAssignments(),
-        listInventoryAssetUnits({ status: 'available' }),
-        listCollaborators({ status: 'active' }),
-        listCatalogAssetTypes({ includeInactive: true }),
-        listCatalogLocationTypes({ includeInactive: true })
+        canAssignInventory ? listInventoryAssetUnits({ status: 'available' }) : Promise.resolve([]),
+        canAssignInventory ? listCollaborators({ status: 'active' }) : Promise.resolve([]),
+        canManageCatalog ? listCatalogAssetTypes({ includeInactive: true }) : Promise.resolve([]),
+        canManageCatalog ? listCatalogLocationTypes({ includeInactive: true }) : Promise.resolve([])
       ]);
       setCatalog(catalogData);
       setAssets(Array.isArray(assetsData) ? assetsData : []);
@@ -594,9 +619,15 @@ const InventoryPage = () => {
 
   useEffect(() => {
     void loadCoreData();
-  }, []);
+  }, [canAssignInventory, canManageCatalog]);
 
   const reloadCatalogAdminData = async () => {
+    if (!canManageCatalog) {
+      setCatalogAssetTypes([]);
+      setCatalogLocationTypes([]);
+      return;
+    }
+
     const [assetTypesData, locationTypesData] = await Promise.all([
       listCatalogAssetTypes({ includeInactive: true }),
       listCatalogLocationTypes({ includeInactive: true })
@@ -927,15 +958,6 @@ const InventoryPage = () => {
     flattenLocationTree(visibleLocationTree, expandedLocationIds, Boolean(locationsSearchTerm.trim()))
   ), [expandedLocationIds, locationsSearchTerm, visibleLocationTree]);
 
-  const grantedPermissions = useMemo(() => (
-    new Set(Array.isArray(authUser?.permissions) ? authUser.permissions : [])
-  ), [authUser?.permissions]);
-
-  const canCreateInventory = grantedPermissions.has('inventory.create');
-  const canUpdateInventory = grantedPermissions.has('inventory.update');
-  const canAssignInventory = grantedPermissions.has('inventory.assign');
-  const canManageCatalog = canUpdateInventory;
-
   const assetsTotalPages = Math.max(1, Math.ceil(filteredAssets.length / assetsItemsPerPage));
   const resolvedAssetsPage = Math.min(assetsCurrentPage, assetsTotalPages);
   const assetsPageStart = (resolvedAssetsPage - 1) * assetsItemsPerPage;
@@ -1005,7 +1027,7 @@ const InventoryPage = () => {
     setSearchTerm('');
     setAssetStatusFilter('all');
     setTrackingModeFilter('all');
-    setActiveView('assets');
+    handleViewChange('assets');
     openAssetDetail(assetId, triggerElement);
   };
 
@@ -1049,6 +1071,11 @@ const InventoryPage = () => {
   };
 
   const reloadAssignableUnits = async () => {
+    if (!canAssignInventory) {
+      setAssignableUnits([]);
+      return;
+    }
+
     const unitsData = await listInventoryAssetUnits({ status: 'available' });
     setAssignableUnits(Array.isArray(unitsData) ? unitsData : []);
   };
@@ -1977,7 +2004,7 @@ const InventoryPage = () => {
             label="Vista operativa de inventario"
             options={inventoryViewOptions}
             activeKey={activeView}
-            onActivate={setActiveView}
+            onActivate={handleViewChange}
             className="tickets-page__segmented inventory-page__view-segmented"
             buttonClassName="tickets-page__segmented-button"
             activeButtonClassName="tickets-page__segmented-button--active"
