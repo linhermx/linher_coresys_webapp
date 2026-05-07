@@ -1761,38 +1761,6 @@ const TicketsPage = () => {
             onActivate={activateView}
             idPrefix="tickets-view-tab"
             panelIdByKey={(key) => (key === 'list' ? 'tickets-list-panel' : 'tickets-pipeline-panel')}
-            onKeyDown={(event) => {
-              if (!['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) {
-                return;
-              }
-
-              event.preventDefault();
-              const currentIndex = viewOptions.findIndex((option) => option.key === activeView);
-              if (currentIndex === -1) {
-                return;
-              }
-
-              let nextIndex = currentIndex;
-              if (event.key === 'ArrowRight') {
-                nextIndex = (currentIndex + 1) % viewOptions.length;
-              } else if (event.key === 'ArrowLeft') {
-                nextIndex = (currentIndex - 1 + viewOptions.length) % viewOptions.length;
-              } else if (event.key === 'Home') {
-                nextIndex = 0;
-              } else if (event.key === 'End') {
-                nextIndex = viewOptions.length - 1;
-              }
-
-              const nextView = viewOptions[nextIndex];
-              if (!nextView) {
-                return;
-              }
-
-              activateView(nextView.key);
-              window.requestAnimationFrame(() => {
-                document.getElementById(`tickets-view-tab-${nextView.key}`)?.focus();
-              });
-            }}
           />
         </div>
 
