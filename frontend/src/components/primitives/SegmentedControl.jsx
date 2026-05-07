@@ -55,7 +55,7 @@ export const SegmentedControl = ({
             role="tab"
             aria-selected={isActive}
             aria-controls={panelIdByKey(option.key)}
-            tabIndex={isActive ? 0 : -1}
+            tabIndex={0}
           >
             {Icon ? <Icon size={16} aria-hidden="true" /> : null}
             <span>{option.label}</span>

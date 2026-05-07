@@ -192,11 +192,6 @@ a {
   font-size: 0.9rem;
 }
 
-.auth-card__field input:focus-visible {
-  outline: none;
-  box-shadow: var(--shadow-focus);
-}
-
 .auth-card__field input:disabled {
   cursor: wait;
   opacity: 0.75;
@@ -591,6 +586,8 @@ a {
   width: 100%;
   min-width: 0;
   border: none;
+  appearance: none;
+  -webkit-appearance: none;
   background: transparent;
   color: var(--color-text-main);
   font-size: 0.95rem;
@@ -609,7 +606,8 @@ a {
 }
 
 .topbar__search-input:focus-visible,
-.tickets-page__search-input:focus-visible {
+.tickets-page__search-input:focus-visible,
+.toolbar-search__input:focus-visible {
   box-shadow: none;
 }
 
@@ -819,7 +817,10 @@ a {
 .topbar__profile:focus-visible,
 .topbar__profile-menu-action:focus-visible,
 .sidebar__link:focus-visible,
-input:focus-visible:not(.topbar__search-input):not(.tickets-page__search-input) {
+.auth-card__remember input:focus-visible,
+input:focus-visible:not([type='checkbox']):not([type='radio']):not(.topbar__search-input):not(.tickets-page__search-input):not(.toolbar-search__input),
+select:focus-visible,
+textarea:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus);
 }
@@ -827,8 +828,14 @@ input:focus-visible:not(.topbar__search-input):not(.tickets-page__search-input) 
 .topbar__search:focus-within,
 .tickets-page__search:focus-within {
   outline: none;
-  border-color: color-mix(in oklch, var(--color-border) 48%, var(--color-primary-outline) 52%);
+  border-color: var(--focus-border-color);
   box-shadow: var(--shadow-focus);
+}
+
+input:focus-visible:not([type='checkbox']):not([type='radio']):not(.topbar__search-input):not(.tickets-page__search-input):not(.toolbar-search__input),
+select:focus-visible,
+textarea:focus-visible {
+  border-color: var(--focus-border-color);
 }
 
 .workspace {
@@ -899,8 +906,6 @@ input:focus-visible:not(.topbar__search-input):not(.tickets-page__search-input) 
   --ticket-tone-success: var(--color-success);
   --ticket-tone-neutral: var(--color-border-strong);
   --ticket-tone-danger: var(--color-danger);
-  --ticket-focus-ring: color-mix(in oklch, var(--color-primary-outline) 36%, transparent);
-  --ticket-focus-shadow: 0 0 0 2px var(--ticket-focus-ring);
   --ticket-tone-soft-mix: 12%;
   --ticket-tone-soft-strong-mix: 20%;
   --ticket-tone-border-mix: 44%;
@@ -912,7 +917,6 @@ input:focus-visible:not(.topbar__search-input):not(.tickets-page__search-input) 
 }
 
 [data-theme='dark'] .tickets-page {
-  --ticket-focus-ring: color-mix(in oklch, var(--color-primary-outline) 58%, transparent);
   --ticket-tone-soft-mix: 18%;
   --ticket-tone-soft-strong-mix: 26%;
   --ticket-tone-border-mix: 56%;
@@ -1024,7 +1028,7 @@ input:focus-visible:not(.topbar__search-input):not(.tickets-page__search-input) 
 
 .action-inline:focus-visible {
   outline: none;
-  box-shadow: var(--ticket-focus-shadow);
+  box-shadow: var(--shadow-focus);
 }
 
 .action-inline:disabled {
@@ -1108,7 +1112,14 @@ input:focus-visible:not(.topbar__search-input):not(.tickets-page__search-input) 
 .tickets-empty-state__action:focus-visible,
 .ticket-card:focus-visible {
   outline: none;
-  box-shadow: var(--ticket-focus-shadow);
+  box-shadow: var(--shadow-focus);
+}
+
+.tickets-page__segmented-button:focus-visible,
+.tickets-page__ghost-action:focus-visible,
+.tickets-page__primary-action:focus-visible,
+.tickets-empty-state__action:focus-visible {
+  border-color: var(--focus-border-color);
 }
 
 .tickets-page__summary-card--active {
@@ -1220,8 +1231,8 @@ input:focus-visible:not(.topbar__search-input):not(.tickets-page__search-input) 
 
 .tickets-page__search:focus-within,
 .toolbar-search:focus-within {
-  border-color: color-mix(in oklch, var(--color-border) 46%, var(--color-primary-outline) 54%);
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--color-primary-outline) 24%, transparent);
+  border-color: var(--focus-border-color);
+  box-shadow: var(--shadow-focus);
 }
 
 .tickets-page__search input,
@@ -1229,10 +1240,32 @@ input:focus-visible:not(.topbar__search-input):not(.tickets-page__search-input) 
   width: 100%;
   min-width: 0;
   border: none;
+  appearance: none;
+  -webkit-appearance: none;
   background: transparent;
   color: var(--color-text-main);
   font-size: 0.88rem;
   outline: none;
+}
+
+.topbar__search input::-webkit-search-decoration,
+.topbar__search input::-webkit-search-cancel-button,
+.topbar__search input::-webkit-search-results-button,
+.topbar__search input::-webkit-search-results-decoration,
+.tickets-page__search input::-webkit-search-decoration,
+.tickets-page__search input::-webkit-search-cancel-button,
+.tickets-page__search input::-webkit-search-results-button,
+.tickets-page__search input::-webkit-search-results-decoration,
+.toolbar-search__input::-webkit-search-decoration,
+.toolbar-search__input::-webkit-search-cancel-button,
+.toolbar-search__input::-webkit-search-results-button,
+.toolbar-search__input::-webkit-search-results-decoration,
+.inventory-catalog__existing-search::-webkit-search-decoration,
+.inventory-catalog__existing-search::-webkit-search-cancel-button,
+.inventory-catalog__existing-search::-webkit-search-results-button,
+.inventory-catalog__existing-search::-webkit-search-results-decoration {
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .tickets-page__search input::placeholder,
@@ -4035,6 +4068,16 @@ input:focus-visible:not(.topbar__search-input):not(.tickets-page__search-input) 
 
 @media (forced-colors: active) {
 
+  .icon-button:focus-visible,
+  .topbar__profile:focus-visible,
+  .sidebar__link:focus-visible,
+  .auth-card__remember input:focus-visible,
+  input:focus-visible:not([type='checkbox']):not([type='radio']):not(.topbar__search-input):not(.tickets-page__search-input):not(.toolbar-search__input),
+  select:focus-visible,
+  textarea:focus-visible,
+  .topbar__search:focus-within,
+  .tickets-page__search:focus-within,
+  .toolbar-search:focus-within,
   .tickets-page__summary-card:focus-visible,
   .tickets-page__segmented-button:focus-visible,
   .tickets-page__chip:focus-visible,
@@ -5109,7 +5152,7 @@ input:focus-visible:not(.topbar__search-input):not(.tickets-page__search-input) 
 
 .inventory-location-table__toggle:focus-visible {
   outline: none;
-  box-shadow: var(--ticket-focus-shadow);
+  box-shadow: var(--shadow-focus);
 }
 
 .inventory-location-table__toggle--expanded svg {
@@ -5566,7 +5609,13 @@ input:focus-visible:not(.topbar__search-input):not(.tickets-page__search-input) 
   gap: 12px;
   padding: 10px 12px;
   border-bottom: 1px solid color-mix(in oklch, var(--color-border) 48%, transparent);
-  transition: background-color 180ms ease, border-color 180ms ease;
+  outline: 1px solid transparent;
+  outline-offset: -1px;
+  transition:
+    background-color 180ms ease,
+    border-color 180ms ease,
+    outline-color 180ms ease,
+    box-shadow 180ms ease;
 }
 
 .inventory-catalog__existing-row:last-child {
@@ -5580,6 +5629,8 @@ input:focus-visible:not(.topbar__search-input):not(.tickets-page__search-input) 
 .inventory-catalog__existing-row:focus-within {
   background: color-mix(in oklch, var(--color-primary-soft) 14%, var(--color-surface) 86%);
   border-color: color-mix(in oklch, var(--color-primary-outline) 32%, var(--color-border) 68%);
+  outline-color: var(--focus-border-color);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--focus-ring-color) 88%, transparent);
 }
 
 .inventory-catalog__existing-row--active {
@@ -5605,8 +5656,7 @@ input:focus-visible:not(.topbar__search-input):not(.tickets-page__search-input) 
 
 .inventory-catalog__existing-select:focus-visible {
   outline: none;
-  border-radius: calc(var(--radius-md) - 4px);
-  box-shadow: var(--ticket-focus-shadow);
+  box-shadow: none;
 }
 
 .inventory-catalog__existing-info {
@@ -5770,7 +5820,6 @@ input:focus-visible:not(.topbar__search-input):not(.tickets-page__search-input) 
 }
 
 .inventory-assets__chip:focus-visible,
-.inventory-assets__search input:focus-visible,
 .inventory-assets__tracking-select select:focus-visible,
 .inventory-asset-detail__close:focus-visible,
 .inventory-modal__close:focus-visible,

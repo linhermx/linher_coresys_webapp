@@ -55,9 +55,12 @@
   --color-text-dim: oklch(0.61 0.015 304);
   --color-text-inverse: oklch(0.98 0.004 304);
 
+  --focus-ring-color: color-mix(in oklch, var(--color-primary-outline) 36%, transparent);
+  --focus-ring-glow: color-mix(in oklch, var(--color-primary-outline) 18%, transparent);
+  --focus-border-color: color-mix(in oklch, var(--color-border) 42%, var(--color-primary-outline) 58%);
   --shadow-sm: 0 10px 24px rgba(38, 24, 74, 0.06);
   --shadow-md: 0 22px 50px rgba(38, 24, 74, 0.08);
-  --shadow-focus: 0 0 0 3px rgba(146, 84, 255, 0.2);
+  --shadow-focus: 0 0 0 2px var(--focus-ring-color), 0 0 0 5px var(--focus-ring-glow);
   --shadow-xs: 0 3px 10px rgba(38, 24, 74, 0.035);
   --shadow-subtle: 0 2px 10px rgba(38, 24, 74, 0.03);
   --shadow-soft: 0 8px 18px rgba(38, 24, 74, 0.035);
@@ -114,9 +117,12 @@
   --color-text-dim: oklch(0.64 0.012 304);
   --color-text-inverse: oklch(0.18 0.015 304);
 
+  --focus-ring-color: color-mix(in oklch, var(--color-primary-outline) 58%, transparent);
+  --focus-ring-glow: color-mix(in oklch, var(--color-primary) 22%, transparent);
+  --focus-border-color: color-mix(in oklch, var(--color-border-strong) 28%, var(--color-primary-outline) 72%);
   --shadow-sm: 0 12px 32px rgba(0, 0, 0, 0.24);
   --shadow-md: 0 24px 60px rgba(0, 0, 0, 0.34);
-  --shadow-focus: 0 0 0 3px rgba(185, 138, 255, 0.24);
+  --shadow-focus: 0 0 0 2px var(--focus-ring-color), 0 0 0 5px var(--focus-ring-glow);
   --shadow-xs: 0 3px 10px rgba(0, 0, 0, 0.26);
   --shadow-subtle: 0 2px 10px rgba(0, 0, 0, 0.24);
   --shadow-soft: 0 8px 18px rgba(0, 0, 0, 0.3);
