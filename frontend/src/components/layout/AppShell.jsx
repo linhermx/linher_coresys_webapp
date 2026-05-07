@@ -1,14 +1,20 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 
-import { navigationGroups } from '../../utils/appNavigation.js';
+import { useAuth } from '../../hooks/useAuth.js';
+import { filterNavigationGroupsByAccess, navigationGroups } from '../../utils/appNavigation.js';
 import { Sidebar } from './Sidebar.jsx';
 import { Topbar } from './Topbar.jsx';
 
 export const AppShell = () => {
   const location = useLocation();
+  const { authUser } = useAuth();
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const sidebarId = 'app-sidebar';
+  const visibleNavigationGroups = useMemo(
+    () => filterNavigationGroupsByAccess(navigationGroups, authUser),
+    [authUser]
+  );
 
   useEffect(() => {
     if (!isMobileSidebarOpen) {
@@ -59,7 +65,7 @@ export const AppShell = () => {
       <Sidebar
         currentPath={location.pathname}
         isMobileOpen={isMobileSidebarOpen}
-        navigationGroups={navigationGroups}
+        navigationGroups={visibleNavigationGroups}
         onNavigate={() => setIsMobileSidebarOpen(false)}
         sidebarId={sidebarId}
       />
