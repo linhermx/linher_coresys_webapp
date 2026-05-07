@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { LifeBuoy, LogIn } from 'lucide-react';
+import { LogIn } from 'lucide-react';
 
 import logoVerticalLight from '../assets/logo-coresys-vertical-positivo.svg';
 import logoVerticalDark from '../assets/logo-coresys-vertical-negativo.svg';
+import { InlineNotice } from '../components/primitives/InlineNotice.jsx';
 import { ThemeToggle } from '../components/primitives/ThemeToggle.jsx';
 import { useAuth } from '../hooks/useAuth.js';
 import { useTheme } from '../hooks/useTheme.js';
@@ -12,7 +13,7 @@ const DEFAULT_EMAIL = 'programador@linher.com.mx';
 const FALLBACK_LOGIN_ERROR = 'No pudimos iniciar sesión. Intenta nuevamente.';
 const EMPTY_CREDENTIALS_ERROR = 'Ingresa tu correo y contraseña para continuar.';
 const MAX_EMAIL_LENGTH = 254;
-const RECOVERY_PANEL_ID = 'auth-recovery-panel';
+const SUPPORT_PANEL_ID = 'auth-support-panel';
 
 const resolveLoginErrorMessage = (error) => {
   const status = Number(error?.status || 0);
@@ -45,36 +46,16 @@ const resolveLoginErrorMessage = (error) => {
   return rawMessage;
 };
 
-const resolveRedirectHint = (path) => {
-  if (path === '/' || path === '/tickets') {
-    return '';
-  }
-
-  const routeNameByPath = {
-    '/inventario': 'Inventario',
-    '/resguardos': 'Resguardos',
-    '/accesos': 'Accesos',
-    '/telefonia': 'Telefonía',
-    '/servicios': 'Servicios',
-    '/infraestructura': 'Infraestructura'
-  };
-
-  const cleanPath = path.split('?')[0].split('#')[0];
-  const routeName = routeNameByPath[cleanPath] || 'la vista solicitada';
-  return `Después de iniciar sesión te llevaremos a ${routeName}.`;
-};
-
 export const LoginPage = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAuthenticated, login } = useAuth();
   const { theme } = useTheme();
-  const isMountedRef = useRef(true);
   const [logoSrc, setLogoSrc] = useState(theme === 'dark' ? logoVerticalDark : logoVerticalLight);
   const [email, setEmail] = useState(DEFAULT_EMAIL);
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
-  const [showRecoveryInfo, setShowRecoveryInfo] = useState(false);
+  const [showSupportInfo, setShowSupportInfo] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
@@ -87,15 +68,9 @@ export const LoginPage = () => {
     return candidate.startsWith('/') ? candidate : '/tickets';
   }, [location.state]);
 
-  const contextualHint = useMemo(() => resolveRedirectHint(redirectPath), [redirectPath]);
-
   useEffect(() => {
     setLogoSrc(theme === 'dark' ? logoVerticalDark : logoVerticalLight);
   }, [theme]);
-
-  useEffect(() => () => {
-    isMountedRef.current = false;
-  }, []);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -131,7 +106,6 @@ export const LoginPage = () => {
           <p id="auth-subtitle" className="auth-card__subtitle">
             Accede con tu cuenta corporativa.
           </p>
-          {contextualHint ? <p className="auth-card__context">{contextualHint}</p> : null}
         </header>
 
         <form
@@ -160,13 +134,9 @@ export const LoginPage = () => {
                 rememberMe
               });
             } catch (error) {
-              if (isMountedRef.current) {
-                setSubmitError(resolveLoginErrorMessage(error));
-              }
+              setSubmitError(resolveLoginErrorMessage(error));
             } finally {
-              if (isMountedRef.current) {
-                setIsSubmitting(false);
-              }
+              setIsSubmitting(false);
             }
           }}
         >
@@ -228,35 +198,36 @@ export const LoginPage = () => {
                 onChange={(event) => setRememberMe(event.target.checked)}
                 disabled={isSubmitting}
               />
-              <span>Mantener sesión iniciada en este equipo</span>
+              <span>Recordarme en este equipo</span>
             </label>
 
             <button
               type="button"
               className="auth-card__forgot"
-              aria-controls={RECOVERY_PANEL_ID}
-              aria-expanded={showRecoveryInfo}
-              onClick={() => setShowRecoveryInfo((currentState) => !currentState)}
+              aria-controls={SUPPORT_PANEL_ID}
+              aria-expanded={showSupportInfo}
+              onClick={() => setShowSupportInfo((currentState) => !currentState)}
               disabled={isSubmitting}
             >
-              <LifeBuoy size={14} aria-hidden="true" />
-              <span>Recuperar acceso</span>
+              <span>¿Olvidaste tu contraseña?</span>
             </button>
           </div>
 
-          {showRecoveryInfo ? (
+          {showSupportInfo ? (
             <aside
-              id={RECOVERY_PANEL_ID}
+              id={SUPPORT_PANEL_ID}
               className="auth-card__recovery"
               aria-live="polite"
             >
-              <strong>Recuperación de acceso</strong>
-              <p>Si olvidaste tu contraseña, solicita apoyo al área de Sistemas.</p>
+              <strong>Recuperar acceso</strong>
+              <p>La recuperación de acceso se realiza con el área de Sistemas. Si olvidaste tu contraseña o no puedes iniciar sesión, contáctalos para recibir ayuda.</p>
             </aside>
           ) : null}
 
           {submitError ? (
-            <p className="auth-card__error" role="alert">{submitError}</p>
+            <InlineNotice tone="error" className="auth-card__notice">
+              {submitError}
+            </InlineNotice>
           ) : null}
 
           <button
