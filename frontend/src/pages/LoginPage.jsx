@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
-import { LifeBuoy, LogIn } from 'lucide-react';
+import { LogIn } from 'lucide-react';
 
 import logoVerticalLight from '../assets/logo-coresys-vertical-positivo.svg';
 import logoVerticalDark from '../assets/logo-coresys-vertical-negativo.svg';
@@ -13,7 +13,7 @@ const DEFAULT_EMAIL = 'programador@linher.com.mx';
 const FALLBACK_LOGIN_ERROR = 'No pudimos iniciar sesión. Intenta nuevamente.';
 const EMPTY_CREDENTIALS_ERROR = 'Ingresa tu correo y contraseña para continuar.';
 const MAX_EMAIL_LENGTH = 254;
-const RECOVERY_PANEL_ID = 'auth-recovery-panel';
+const SUPPORT_PANEL_ID = 'auth-support-panel';
 
 const resolveLoginErrorMessage = (error) => {
   const status = Number(error?.status || 0);
@@ -55,7 +55,7 @@ export const LoginPage = () => {
   const [email, setEmail] = useState(DEFAULT_EMAIL);
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
-  const [showRecoveryInfo, setShowRecoveryInfo] = useState(false);
+  const [showSupportInfo, setShowSupportInfo] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
@@ -198,30 +198,29 @@ export const LoginPage = () => {
                 onChange={(event) => setRememberMe(event.target.checked)}
                 disabled={isSubmitting}
               />
-              <span>Mantener sesión iniciada en este equipo</span>
+              <span>Recordarme en este equipo</span>
             </label>
 
             <button
               type="button"
               className="auth-card__forgot"
-              aria-controls={RECOVERY_PANEL_ID}
-              aria-expanded={showRecoveryInfo}
-              onClick={() => setShowRecoveryInfo((currentState) => !currentState)}
+              aria-controls={SUPPORT_PANEL_ID}
+              aria-expanded={showSupportInfo}
+              onClick={() => setShowSupportInfo((currentState) => !currentState)}
               disabled={isSubmitting}
             >
-              <LifeBuoy size={14} aria-hidden="true" />
-              <span>Recuperar acceso</span>
+              <span>¿Olvidaste tu contraseña?</span>
             </button>
           </div>
 
-          {showRecoveryInfo ? (
+          {showSupportInfo ? (
             <aside
-              id={RECOVERY_PANEL_ID}
+              id={SUPPORT_PANEL_ID}
               className="auth-card__recovery"
               aria-live="polite"
             >
-              <strong>Recuperación de acceso</strong>
-              <p>Si olvidaste tu contraseña, solicita apoyo al área de Sistemas.</p>
+              <strong>Recuperar acceso</strong>
+              <p>La recuperación de acceso se realiza con el área de Sistemas. Si olvidaste tu contraseña o no puedes iniciar sesión, contáctalos para recibir ayuda.</p>
             </aside>
           ) : null}
 
