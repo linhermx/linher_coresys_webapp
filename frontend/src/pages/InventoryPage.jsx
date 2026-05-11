@@ -3396,7 +3396,7 @@ const InventoryPage = () => {
                     </div>
                     <p className="inventory-catalog__existing-note">Selecciona un tipo para cargarlo en el editor.</p>
                     <p id="inventory-catalog-asset-existing-help" className="sr-only">
-                      Usa Editar para cargar un tipo en el formulario superior. Desactivar cambia su disponibilidad sin borrarlo.
+                      Usa Editar para cargar un tipo en el formulario superior. Cuando un registro esté cargado, verás la marca Cargado en el editor. Desactivar cambia su disponibilidad sin borrarlo.
                     </p>
                   </div>
                   <div className="inventory-catalog__existing-toolbar">
@@ -3430,18 +3430,17 @@ const InventoryPage = () => {
                       <li
                         key={assetType.id}
                         className={`inventory-catalog__existing-row${isEditing ? ' inventory-catalog__existing-row--active' : ''}`}
-                        aria-current={isEditing ? 'true' : undefined}
                       >
                         <button
                           type="button"
                           className="inventory-catalog__existing-select"
                           onClick={() => openAssetTypeEdit(assetType)}
-                          aria-label={`Editar tipo de activo ${assetType.name}`}
+                          aria-label={isEditing ? `Volver al editor del tipo de activo ${assetType.name}` : `Cargar tipo de activo ${assetType.name} en el editor`}
                           aria-controls="inventory-catalog-asset-editor"
                           aria-describedby={isEditing ? `${metaId} ${statusId}` : metaId}
                         >
                           <span className="inventory-catalog__existing-info">
-                            {isEditing ? <span id={statusId} className="inventory-catalog__existing-flag">Editando</span> : null}
+                            {isEditing ? <span id={statusId} className="inventory-catalog__existing-flag">Cargado en el editor</span> : null}
                             <span className="inventory-catalog__existing-name">{assetType.name}</span>
                             <span id={metaId} className="inventory-catalog__existing-meta">
                               <span>{assetType.code_prefix}</span>
@@ -3450,7 +3449,7 @@ const InventoryPage = () => {
                             </span>
                           </span>
                           <span className="inventory-catalog__existing-edit" aria-hidden="true">
-                            <span>{isEditing ? 'En edición' : 'Editar'}</span>
+                            <span>{isEditing ? 'Volver al editor' : 'Editar'}</span>
                             <ChevronRight size={16} strokeWidth={1.9} />
                           </span>
                         </button>
@@ -3566,7 +3565,7 @@ const InventoryPage = () => {
                     </div>
                     <p className="inventory-catalog__existing-note">Selecciona un tipo para cargarlo en el editor.</p>
                     <p id="inventory-catalog-location-existing-help" className="sr-only">
-                      Usa Editar para cargar un tipo en el formulario superior. Desactivar cambia su disponibilidad sin borrarlo.
+                      Usa Editar para cargar un tipo en el formulario superior. Cuando un registro esté cargado, verás la marca Cargado en el editor. Desactivar cambia su disponibilidad sin borrarlo.
                     </p>
                   </div>
                   <div className="inventory-catalog__existing-toolbar">
@@ -3600,18 +3599,17 @@ const InventoryPage = () => {
                       <li
                         key={locationType.id}
                         className={`inventory-catalog__existing-row${isEditing ? ' inventory-catalog__existing-row--active' : ''}`}
-                        aria-current={isEditing ? 'true' : undefined}
                       >
                         <button
                           type="button"
                           className="inventory-catalog__existing-select"
                           onClick={() => openLocationTypeEdit(locationType)}
-                          aria-label={`Editar tipo de ubicación ${locationType.name}`}
+                          aria-label={isEditing ? `Volver al editor del tipo de ubicación ${locationType.name}` : `Cargar tipo de ubicación ${locationType.name} en el editor`}
                           aria-controls="inventory-catalog-location-editor"
                           aria-describedby={isEditing ? `${metaId} ${statusId}` : metaId}
                         >
                           <span className="inventory-catalog__existing-info">
-                            {isEditing ? <span id={statusId} className="inventory-catalog__existing-flag">Editando</span> : null}
+                            {isEditing ? <span id={statusId} className="inventory-catalog__existing-flag">Cargado en el editor</span> : null}
                             <span className="inventory-catalog__existing-name">{locationType.name}</span>
                             <span id={metaId} className="inventory-catalog__existing-meta">
                               <span>{locationType.code_prefix}</span>
@@ -3619,7 +3617,7 @@ const InventoryPage = () => {
                             </span>
                           </span>
                           <span className="inventory-catalog__existing-edit" aria-hidden="true">
-                            <span>{isEditing ? 'En edición' : 'Editar'}</span>
+                            <span>{isEditing ? 'Volver al editor' : 'Editar'}</span>
                             <ChevronRight size={16} strokeWidth={1.9} />
                           </span>
                         </button>
