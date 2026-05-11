@@ -30,7 +30,9 @@ export const Sidebar = ({
   isMobileOpen,
   navigationGroups,
   onNavigate,
-  sidebarId
+  onKeyDown,
+  sidebarId,
+  sidebarRef
 }) => {
   const { theme } = useTheme();
   const brandLogo = theme === 'dark' ? logoVerticalNegative : logoVerticalPositive;
@@ -40,6 +42,11 @@ export const Sidebar = ({
       id={sidebarId}
       className={`sidebar${isMobileOpen ? ' sidebar--open' : ''}`}
       aria-label="Navegación principal del sistema"
+      aria-modal={isMobileOpen ? 'true' : undefined}
+      onKeyDown={onKeyDown}
+      ref={sidebarRef}
+      role={isMobileOpen ? 'dialog' : undefined}
+      tabIndex={isMobileOpen ? -1 : undefined}
     >
       <div className="sidebar__brand">
         <img
@@ -98,5 +105,7 @@ Sidebar.propTypes = {
   isMobileOpen: PropTypes.bool.isRequired,
   navigationGroups: PropTypes.arrayOf(navigationGroupShape).isRequired,
   onNavigate: PropTypes.func.isRequired,
-  sidebarId: PropTypes.string.isRequired
+  onKeyDown: PropTypes.func.isRequired,
+  sidebarId: PropTypes.string.isRequired,
+  sidebarRef: PropTypes.shape({ current: PropTypes.any }).isRequired
 };

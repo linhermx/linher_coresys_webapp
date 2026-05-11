@@ -17,7 +17,7 @@ export const ThemeToggle = ({ className = '' }) => {
       aria-label={isLightTheme ? 'Activar modo oscuro' : 'Activar modo claro'}
       title={isLightTheme ? 'Activar modo oscuro' : 'Activar modo claro'}
     >
-      {isLightTheme ? <MoonStar size={18} /> : <SunMedium size={18} />}
+      {isLightTheme ? <MoonStar size={18} aria-hidden="true" /> : <SunMedium size={18} aria-hidden="true" />}
     </button>
   );
 };
