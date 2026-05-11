@@ -30,14 +30,6 @@ const AppRoutes = () => {
       <Route element={<ProtectedRoute />}>
         <Route element={<AppShell />}>
           <Route index element={<Navigate to={firstAccessiblePath} replace />} />
-          <Route
-            path="/assignments"
-            element={(
-              <ProtectedRoute requiredPermission="inventory.view">
-                <Navigate to="/inventory?view=assignments" replace />
-              </ProtectedRoute>
-            )}
-          />
 
           {flatNavigation.map((item) => (
             <Route
