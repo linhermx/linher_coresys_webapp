@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import PropTypes from 'prop-types';
 import { Bell, ChevronDown, LogOut, Menu, Search } from 'lucide-react';
 
@@ -14,11 +14,15 @@ const getInitials = (fullName) => (
     .join('') || '??'
 );
 
-export const Topbar = ({ isSidebarOpen, onOpenSidebar, sidebarId }) => {
+export const Topbar = ({ isSidebarOpen, onOpenSidebar, sidebarId, sidebarTriggerRef }) => {
   const { authUser, logout } = useAuth();
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isLogoutSubmitting, setIsLogoutSubmitting] = useState(false);
-  const profileMenuRef = useRef(null);
+  const profilePanelRef = useRef(null);
+  const profileTriggerRef = useRef(null);
+  const logoutActionRef = useRef(null);
+  const generatedId = useId().replace(/:/g, '');
+  const profilePanelId = `topbar-profile-panel-${generatedId}`;
   const displayName = String(authUser?.name || '').trim() || 'Usuario';
   const displayEmail = String(authUser?.email || '').trim() || 'Cuenta activa';
 
@@ -27,8 +31,12 @@ export const Topbar = ({ isSidebarOpen, onOpenSidebar, sidebarId }) => {
       return undefined;
     }
 
+    const frame = window.requestAnimationFrame(() => {
+      logoutActionRef.current?.focus?.();
+    });
+
     const handlePointerDown = (event) => {
-      if (!profileMenuRef.current || profileMenuRef.current.contains(event.target)) {
+      if (!profilePanelRef.current || profilePanelRef.current.contains(event.target) || profileTriggerRef.current?.contains(event.target)) {
         return;
       }
 
@@ -37,7 +45,9 @@ export const Topbar = ({ isSidebarOpen, onOpenSidebar, sidebarId }) => {
 
     const handleEscape = (event) => {
       if (event.key === 'Escape') {
+        event.preventDefault();
         setIsProfileMenuOpen(false);
+        profileTriggerRef.current?.focus?.();
       }
     };
 
@@ -46,6 +56,7 @@ export const Topbar = ({ isSidebarOpen, onOpenSidebar, sidebarId }) => {
     document.addEventListener('keydown', handleEscape);
 
     return () => {
+      window.cancelAnimationFrame(frame);
       document.removeEventListener('mousedown', handlePointerDown);
       document.removeEventListener('touchstart', handlePointerDown);
       document.removeEventListener('keydown', handleEscape);
@@ -72,8 +83,9 @@ export const Topbar = ({ isSidebarOpen, onOpenSidebar, sidebarId }) => {
           aria-controls={sidebarId}
           aria-expanded={isSidebarOpen}
           aria-label={isSidebarOpen ? 'Cerrar navegación' : 'Abrir navegación'}
+          ref={sidebarTriggerRef}
         >
-          <Menu size={18} />
+          <Menu size={18} aria-hidden="true" />
         </button>
       </div>
 
@@ -100,20 +112,21 @@ export const Topbar = ({ isSidebarOpen, onOpenSidebar, sidebarId }) => {
           title="Notificaciones"
           disabled
         >
-          <Bell size={18} />
+          <Bell size={18} aria-hidden="true" />
         </button>
 
         <ThemeToggle className="topbar__theme-button" />
 
-        <div className="topbar__profile-wrap" ref={profileMenuRef}>
+        <div className="topbar__profile-wrap">
           <button
             type="button"
             className="topbar__profile"
+            aria-controls={profilePanelId}
             aria-expanded={isProfileMenuOpen}
-            aria-haspopup="menu"
-            aria-label="Abrir menú de cuenta"
+            aria-label={isProfileMenuOpen ? 'Cerrar opciones de cuenta' : 'Abrir opciones de cuenta'}
             title="Cuenta"
             onClick={() => setIsProfileMenuOpen((currentState) => !currentState)}
+            ref={profileTriggerRef}
           >
             <span className="topbar__profile-avatar" aria-hidden="true">{getInitials(displayName)}</span>
             <span className="topbar__profile-name">{displayName}</span>
@@ -121,7 +134,11 @@ export const Topbar = ({ isSidebarOpen, onOpenSidebar, sidebarId }) => {
           </button>
 
           {isProfileMenuOpen ? (
-            <div className="topbar__profile-menu" role="menu" aria-label="Opciones de cuenta">
+            <div
+              id={profilePanelId}
+              className="topbar__profile-menu"
+              ref={profilePanelRef}
+            >
               <div className="topbar__profile-menu-head">
                 <strong className="topbar__profile-menu-name">{displayName}</strong>
                 <span className="topbar__profile-menu-email">{displayEmail}</span>
@@ -129,9 +146,9 @@ export const Topbar = ({ isSidebarOpen, onOpenSidebar, sidebarId }) => {
               <button
                 type="button"
                 className="topbar__profile-menu-action"
-                role="menuitem"
                 onClick={handleLogout}
                 disabled={isLogoutSubmitting}
+                ref={logoutActionRef}
               >
                 <LogOut size={16} aria-hidden="true" />
                 <span>{isLogoutSubmitting ? 'Cerrando sesión...' : 'Cerrar sesión'}</span>
@@ -147,5 +164,6 @@ export const Topbar = ({ isSidebarOpen, onOpenSidebar, sidebarId }) => {
 Topbar.propTypes = {
   isSidebarOpen: PropTypes.bool.isRequired,
   onOpenSidebar: PropTypes.func.isRequired,
-  sidebarId: PropTypes.string.isRequired
+  sidebarId: PropTypes.string.isRequired,
+  sidebarTriggerRef: PropTypes.shape({ current: PropTypes.any }).isRequired
 };

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 
 import { useAuth } from '../../hooks/useAuth.js';
+import { getFocusableElements, trapFocusInContainer } from '../../utils/focusTrap.js';
 import { filterNavigationGroupsByAccess, navigationGroups } from '../../utils/appNavigation.js';
 import { Sidebar } from './Sidebar.jsx';
 import { Topbar } from './Topbar.jsx';
@@ -10,6 +11,9 @@ export const AppShell = () => {
   const location = useLocation();
   const { authUser } = useAuth();
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const sidebarRef = useRef(null);
+  const sidebarTriggerRef = useRef(null);
+  const wasMobileSidebarOpenRef = useRef(false);
   const sidebarId = 'app-sidebar';
   const visibleNavigationGroups = useMemo(
     () => filterNavigationGroupsByAccess(navigationGroups, authUser),
@@ -18,17 +22,21 @@ export const AppShell = () => {
 
   useEffect(() => {
     if (!isMobileSidebarOpen) {
+      if (wasMobileSidebarOpenRef.current) {
+        sidebarTriggerRef.current?.focus?.();
+      }
+      wasMobileSidebarOpenRef.current = false;
       return undefined;
     }
 
-    const handleEscape = (event) => {
-      if (event.key === 'Escape') {
-        setIsMobileSidebarOpen(false);
-      }
-    };
+    wasMobileSidebarOpenRef.current = true;
+    const frame = window.requestAnimationFrame(() => {
+      const currentLink = sidebarRef.current?.querySelector('.sidebar__link--active');
+      const fallbackTarget = getFocusableElements(sidebarRef.current)[0] || sidebarRef.current;
+      (currentLink || fallbackTarget)?.focus?.();
+    });
 
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
+    return () => window.cancelAnimationFrame(frame);
   }, [isMobileSidebarOpen]);
 
   useEffect(() => {
@@ -51,23 +59,34 @@ export const AppShell = () => {
     return () => document.body.classList.remove('body--locked');
   }, [isMobileSidebarOpen]);
 
+  const closeMobileSidebar = () => setIsMobileSidebarOpen(false);
+
   return (
     <div className="shell">
       <button
         type="button"
         className={`shell__backdrop${isMobileSidebarOpen ? ' shell__backdrop--visible' : ''}`}
-        aria-hidden={!isMobileSidebarOpen}
-        aria-label="Cerrar navegación"
-        onClick={() => setIsMobileSidebarOpen(false)}
-        tabIndex={isMobileSidebarOpen ? 0 : -1}
+        aria-hidden="true"
+        onClick={closeMobileSidebar}
+        tabIndex={-1}
       />
 
       <Sidebar
         currentPath={location.pathname}
         isMobileOpen={isMobileSidebarOpen}
         navigationGroups={visibleNavigationGroups}
-        onNavigate={() => setIsMobileSidebarOpen(false)}
+        onNavigate={closeMobileSidebar}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            closeMobileSidebar();
+            return;
+          }
+
+          trapFocusInContainer(event, sidebarRef.current);
+        }}
         sidebarId={sidebarId}
+        sidebarRef={sidebarRef}
       />
 
       <div className="shell__main">
@@ -75,6 +94,7 @@ export const AppShell = () => {
           isSidebarOpen={isMobileSidebarOpen}
           onOpenSidebar={() => setIsMobileSidebarOpen(true)}
           sidebarId={sidebarId}
+          sidebarTriggerRef={sidebarTriggerRef}
         />
 
         <main className="shell__content">
