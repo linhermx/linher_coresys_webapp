@@ -810,5 +810,470 @@ export const AccessService = {
     }
   },
 
+  async listAccessMediaAssignments({ query = {} } = {}) {
+    const rows = await accessModel.listAccessMediaAssignments({
+      collaboratorId: normalizeId(query.collaborator_id),
+      accessMediaId: normalizeId(query.access_media_id),
+      statusKey: query.status_key,
+      search: query.search,
+      limit: query.limit
+    });
+
+    return rows.map((row) => ({
+      id: Number(row.id),
+      access_media_id: Number(row.access_media_id),
+      collaborator_id: Number(row.collaborator_id),
+      status_id: Number(row.status_id),
+      status_key: row.status_key,
+      status_name: row.status_name,
+      assigned_by_user_id: row.assigned_by_user_id ? Number(row.assigned_by_user_id) : null,
+      received_by_user_id: row.received_by_user_id ? Number(row.received_by_user_id) : null,
+      assigned_at: row.assigned_at,
+      expected_return_at: row.expected_return_at,
+      returned_at: row.returned_at,
+      assignment_note: row.assignment_note || null,
+      closure_note: row.closure_note || null,
+      media: {
+        id: Number(row.access_media_id),
+        tag_code: row.tag_code,
+        asset_unit_id: Number(row.asset_unit_id),
+        asset_tag: row.asset_tag || null
+      },
+      collaborator: {
+        id: Number(row.collaborator_id),
+        employee_id: Number(row.employee_id),
+        full_name: row.collaborator_name || null
+      }
+    }));
+  },
+
+  async assignAccessMedia({ payload, authUser = null, requestContext = {} }) {
+    const accessMediaId = normalizeId(payload?.access_media_id);
+    const collaboratorId = normalizeId(payload?.collaborator_id);
+
+    if (!accessMediaId || !collaboratorId) {
+      throw new AppError('Debes indicar el medio de acceso y el colaborador.', {
+        statusCode: 400,
+        code: 'INVALID_ACCESS_MEDIA_ASSIGNMENT_PAYLOAD'
+      });
+    }
+
+    const assignedAt = assertDateTime(
+      payload?.assigned_at,
+      'La fecha de asignacion no tiene un formato valido.',
+      'INVALID_ACCESS_MEDIA_ASSIGNMENT_DATE'
+    );
+    const expectedReturnAt = assertDateTime(
+      payload?.expected_return_at,
+      'La fecha esperada de devolucion no tiene un formato valido.',
+      'INVALID_ACCESS_MEDIA_EXPECTED_RETURN_DATE'
+    );
+
+    const [media, collaborator, activeAssignment, assignmentStatus, mediaStatus] = await Promise.all([
+      assertAccessMediaExists(accessMediaId),
+      assertCollaboratorExists(collaboratorId),
+      accessModel.findActiveAccessMediaAssignmentByMediaId(accessMediaId),
+      accessModel.getAssignmentStatusByKey(ACTIVE_ASSIGNMENT_STATUS_KEY),
+      accessModel.getMediaStatusByKey('assigned')
+    ]);
+
+    if (collaborator.status !== 'active') {
+      throw new AppError('Solo puedes asignar medios de acceso a colaboradores activos.', {
+        statusCode: 409,
+        code: 'COLLABORATOR_INACTIVE'
+      });
+    }
+
+    if (activeAssignment) {
+      throw new AppError('El medio de acceso ya cuenta con una asignacion activa.', {
+        statusCode: 409,
+        code: 'ACCESS_MEDIA_ALREADY_ASSIGNED'
+      });
+    }
+
+    if (TERMINAL_MEDIA_STATUS_KEYS.has(media.status_key)) {
+      throw new AppError('El medio de acceso ya se encuentra fuera del ciclo operativo reutilizable.', {
+        statusCode: 409,
+        code: 'ACCESS_MEDIA_TERMINAL_STATUS'
+      });
+    }
+
+    if (media.status_key !== 'available') {
+      throw new AppError('Solo puedes asignar medios que actualmente esten disponibles.', {
+        statusCode: 409,
+        code: 'ACCESS_MEDIA_NOT_AVAILABLE'
+      });
+    }
+
+    if (!assignmentStatus || !mediaStatus) {
+      throw new AppError('El catalogo base de asignaciones de Access no esta configurado correctamente.', {
+        statusCode: 500,
+        code: 'ACCESS_BASE_CATALOG_MISSING'
+      });
+    }
+
+    const { assetUnit, asset } = await assertRfidInventoryUnit(Number(media.asset_unit_id));
+
+    if (assetUnit.status_key === 'retired') {
+      throw new AppError('La unidad fisica ya se encuentra en baja y no puede reasignarse.', {
+        statusCode: 409,
+        code: 'ACCESS_MEDIA_UNIT_RETIRED'
+      });
+    }
+
+    if (assetUnit.status_key !== 'available') {
+      throw new AppError('La unidad fisica asociada no esta disponible para asignacion.', {
+        statusCode: 409,
+        code: 'ACCESS_MEDIA_UNIT_NOT_AVAILABLE'
+      });
+    }
+
+    const inventoryAssignment = await inventoryModel.getActiveAssetAssignmentByUnitId(Number(media.asset_unit_id));
+    if (inventoryAssignment) {
+      throw new AppError('La unidad fisica ya cuenta con un resguardo activo en Inventario.', {
+        statusCode: 409,
+        code: 'ACCESS_MEDIA_UNIT_ALREADY_ASSIGNED_IN_INVENTORY'
+      });
+    }
+
+    const nextLocationId = normalizeId(payload?.location_id) || (assetUnit.current_location_id ? Number(assetUnit.current_location_id) : null);
+    if (payload?.location_id) {
+      await assertLocationExists(payload.location_id);
+    }
+
+    const assignmentNote = normalizeText(payload?.assignment_note || payload?.notes) || null;
+    const reason = assignmentNote || 'Salida por asignacion de medio de acceso.';
+
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+      const txAccessModel = new AccessModel(connection);
+      const txInventoryModel = new InventoryModel(connection);
+
+      const accessMediaAssignmentId = await txAccessModel.createAccessMediaAssignment(connection, {
+        accessMediaId,
+        collaboratorId,
+        statusId: Number(assignmentStatus.id),
+        assignedByUserId: authUser?.id || null,
+        assignedAt,
+        expectedReturnAt,
+        assignmentNote
+      });
+
+      await txAccessModel.updateAccessMediaStatus(connection, {
+        accessMediaId,
+        statusId: Number(mediaStatus.id),
+        notes: assignmentNote
+      });
+
+      await syncInventoryForAccessLifecycle({
+        txInventoryModel,
+        accessMedia: media,
+        assetUnit,
+        asset,
+        operatorId: authUser?.id || null,
+        requestReason: reason,
+        movementTypeKey: 'assignment_out',
+        targetUnitStatusKey: 'assigned',
+        referenceId: accessMediaAssignmentId,
+        happenedAt: assignedAt,
+        nextLocationId,
+        eventActionKey: 'access_media_assigned',
+        beforeSnapshot: {
+          status_key: assetUnit.status_key,
+          current_location_id: assetUnit.current_location_id
+        },
+        afterSnapshot: {
+          status_key: 'assigned',
+          current_location_id: nextLocationId,
+          collaborator_id: collaboratorId
+        }
+      });
+
+      await txAccessModel.createAccessEvent(connection, {
+        eventType: 'media_assigned',
+        operatorId: authUser?.id || null,
+        collaboratorId,
+        accessMediaId,
+        accessMediaAssignmentId,
+        notes: reason,
+        happenedAt: assignedAt
+      });
+
+      await connection.commit();
+
+      const context = await loadAssignmentContext(accessMediaAssignmentId);
+
+      await AuditService.record({
+        operatorId: authUser?.id || null,
+        action: 'access.assign_media',
+        entityType: 'access_media_assignments',
+        entityId: accessMediaAssignmentId,
+        beforeSnapshot: null,
+        afterSnapshot: context?.assignment || null,
+        details: {
+          access_media_id: accessMediaId,
+          collaborator_id: collaboratorId
+        },
+        requestContext
+      });
+
+      return buildAccessMediaAssignmentResponse(context);
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  },
+
+  async returnAccessMediaAssignment({ accessMediaAssignmentId, payload, authUser = null, requestContext = {} }) {
+    const normalizedAssignmentId = normalizeId(accessMediaAssignmentId);
+    if (!normalizedAssignmentId) {
+      throw new AppError('El identificador de la asignacion no es valido.', {
+        statusCode: 400,
+        code: 'INVALID_ACCESS_MEDIA_ASSIGNMENT_ID'
+      });
+    }
+
+    const currentAssignment = await assertMediaAssignmentExists(normalizedAssignmentId);
+    if (currentAssignment.status_key !== ACTIVE_ASSIGNMENT_STATUS_KEY) {
+      throw new AppError('La asignacion indicada ya no se encuentra activa.', {
+        statusCode: 409,
+        code: 'ACCESS_MEDIA_ASSIGNMENT_NOT_ACTIVE'
+      });
+    }
+
+    const returnLocation = await assertLocationExists(payload?.location_id, {
+      requiredMessage: 'Debes indicar la ubicacion donde regresara el medio.',
+      invalidCode: 'INVALID_RETURN_LOCATION'
+    });
+
+    const returnedAt = assertDateTime(
+      payload?.returned_at,
+      'La fecha de devolucion no tiene un formato valido.',
+      'INVALID_ACCESS_MEDIA_RETURN_DATE'
+    ) || toCurrentDateTimeSql();
+
+    const [{ media, collaborator, assetUnit, asset }, closedStatus, availableStatus] = await Promise.all([
+      loadAssignmentContext(normalizedAssignmentId),
+      accessModel.getAssignmentStatusByKey(RETURNED_ASSIGNMENT_STATUS_KEY),
+      accessModel.getMediaStatusByKey('available')
+    ]);
+
+    if (!media || !assetUnit || !asset) {
+      throw new AppError('La asignacion activa quedo sin contexto fisico valido.', {
+        statusCode: 409,
+        code: 'ACCESS_MEDIA_ASSIGNMENT_CONTEXT_INVALID'
+      });
+    }
+
+    if (!closedStatus || !availableStatus) {
+      throw new AppError('El catalogo base de devoluciones de Access no esta configurado correctamente.', {
+        statusCode: 500,
+        code: 'ACCESS_BASE_CATALOG_MISSING'
+      });
+    }
+
+    const closureNote = normalizeText(payload?.closure_note || payload?.notes) || 'Medio devuelto y reintegrado al inventario disponible.';
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+      const txAccessModel = new AccessModel(connection);
+      const txInventoryModel = new InventoryModel(connection);
+
+      await txAccessModel.closeAccessMediaAssignment(connection, {
+        accessMediaAssignmentId: normalizedAssignmentId,
+        statusId: Number(closedStatus.id),
+        receivedByUserId: authUser?.id || null,
+        returnedAt,
+        closureNote
+      });
+
+      await txAccessModel.updateAccessMediaStatus(connection, {
+        accessMediaId: Number(media.id),
+        statusId: Number(availableStatus.id),
+        notes: closureNote
+      });
+
+      await syncInventoryForAccessLifecycle({
+        txInventoryModel,
+        accessMedia: media,
+        assetUnit,
+        asset,
+        operatorId: authUser?.id || null,
+        requestReason: closureNote,
+        movementTypeKey: 'return_in',
+        targetUnitStatusKey: 'available',
+        referenceId: normalizedAssignmentId,
+        happenedAt: returnedAt,
+        nextLocationId: Number(returnLocation.id),
+        eventActionKey: 'access_media_returned',
+        beforeSnapshot: currentAssignment,
+        afterSnapshot: {
+          status_key: RETURNED_ASSIGNMENT_STATUS_KEY,
+          returned_at: returnedAt,
+          return_location_id: Number(returnLocation.id)
+        }
+      });
+
+      await txAccessModel.createAccessEvent(connection, {
+        eventType: 'media_returned',
+        operatorId: authUser?.id || null,
+        collaboratorId: collaborator?.id || Number(currentAssignment.collaborator_id),
+        accessMediaId: Number(media.id),
+        accessMediaAssignmentId: normalizedAssignmentId,
+        notes: closureNote,
+        happenedAt: returnedAt
+      });
+
+      await connection.commit();
+
+      const updatedContext = await loadAssignmentContext(normalizedAssignmentId);
+
+      await AuditService.record({
+        operatorId: authUser?.id || null,
+        action: 'access.return_media',
+        entityType: 'access_media_assignments',
+        entityId: normalizedAssignmentId,
+        beforeSnapshot: currentAssignment,
+        afterSnapshot: updatedContext?.assignment || null,
+        requestContext
+      });
+
+      return buildAccessMediaAssignmentResponse(updatedContext);
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  },
+
+  async markAccessMediaAssignmentNotReturned({ accessMediaAssignmentId, payload, authUser = null, requestContext = {} }) {
+    const normalizedAssignmentId = normalizeId(accessMediaAssignmentId);
+    if (!normalizedAssignmentId) {
+      throw new AppError('El identificador de la asignacion no es valido.', {
+        statusCode: 400,
+        code: 'INVALID_ACCESS_MEDIA_ASSIGNMENT_ID'
+      });
+    }
+
+    const currentAssignment = await assertMediaAssignmentExists(normalizedAssignmentId);
+    if (currentAssignment.status_key !== ACTIVE_ASSIGNMENT_STATUS_KEY) {
+      throw new AppError('La asignacion indicada ya no se encuentra activa.', {
+        statusCode: 409,
+        code: 'ACCESS_MEDIA_ASSIGNMENT_NOT_ACTIVE'
+      });
+    }
+
+    const resolvedAt = assertDateTime(
+      payload?.resolved_at || payload?.returned_at,
+      'La fecha del cierre por no devolucion no tiene un formato valido.',
+      'INVALID_ACCESS_MEDIA_NOT_RETURNED_DATE'
+    ) || toCurrentDateTimeSql();
+
+    const [{ media, collaborator, assetUnit, asset }, closedStatus, terminalMediaStatus] = await Promise.all([
+      loadAssignmentContext(normalizedAssignmentId),
+      accessModel.getAssignmentStatusByKey(NOT_RETURNED_ASSIGNMENT_STATUS_KEY),
+      accessModel.getMediaStatusByKey(NOT_RETURNED_ASSIGNMENT_STATUS_KEY)
+    ]);
+
+    if (!media || !assetUnit || !asset) {
+      throw new AppError('La asignacion activa quedo sin contexto fisico valido.', {
+        statusCode: 409,
+        code: 'ACCESS_MEDIA_ASSIGNMENT_CONTEXT_INVALID'
+      });
+    }
+
+    if (!closedStatus || !terminalMediaStatus) {
+      throw new AppError('El catalogo base de no devolucion de Access no esta configurado correctamente.', {
+        statusCode: 500,
+        code: 'ACCESS_BASE_CATALOG_MISSING'
+      });
+    }
+
+    const closureNote = assertRequiredText(
+      payload?.closure_note || payload?.notes,
+      'Debes indicar el motivo de no devolucion del medio.',
+      'INVALID_ACCESS_MEDIA_NOT_RETURNED_NOTE'
+    );
+
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+      const txAccessModel = new AccessModel(connection);
+      const txInventoryModel = new InventoryModel(connection);
+
+      await txAccessModel.closeAccessMediaAssignment(connection, {
+        accessMediaAssignmentId: normalizedAssignmentId,
+        statusId: Number(closedStatus.id),
+        receivedByUserId: authUser?.id || null,
+        returnedAt: resolvedAt,
+        closureNote
+      });
+
+      await txAccessModel.updateAccessMediaStatus(connection, {
+        accessMediaId: Number(media.id),
+        statusId: Number(terminalMediaStatus.id),
+        notes: closureNote
+      });
+
+      await syncInventoryForAccessLifecycle({
+        txInventoryModel,
+        accessMedia: media,
+        assetUnit,
+        asset,
+        operatorId: authUser?.id || null,
+        requestReason: closureNote,
+        movementTypeKey: 'retire_out',
+        targetUnitStatusKey: 'retired',
+        referenceId: normalizedAssignmentId,
+        happenedAt: resolvedAt,
+        nextLocationId: null,
+        eventActionKey: 'access_media_marked_not_returned',
+        beforeSnapshot: currentAssignment,
+        afterSnapshot: {
+          status_key: NOT_RETURNED_ASSIGNMENT_STATUS_KEY,
+          resolved_at: resolvedAt
+        }
+      });
+
+      await txAccessModel.createAccessEvent(connection, {
+        eventType: 'media_marked_not_returned',
+        operatorId: authUser?.id || null,
+        collaboratorId: collaborator?.id || Number(currentAssignment.collaborator_id),
+        accessMediaId: Number(media.id),
+        accessMediaAssignmentId: normalizedAssignmentId,
+        notes: closureNote,
+        happenedAt: resolvedAt
+      });
+
+      await connection.commit();
+
+      const updatedContext = await loadAssignmentContext(normalizedAssignmentId);
+
+      await AuditService.record({
+        operatorId: authUser?.id || null,
+        action: 'access.mark_media_not_returned',
+        entityType: 'access_media_assignments',
+        entityId: normalizedAssignmentId,
+        beforeSnapshot: currentAssignment,
+        afterSnapshot: updatedContext?.assignment || null,
+        requestContext
+      });
+
+      return buildAccessMediaAssignmentResponse(updatedContext);
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  },
+
 };
 
