@@ -35,6 +35,12 @@ router.patch(
   requirePermission('access.update'),
   AccessController.updateEnrollmentStatus
 );
+router.post(
+  '/collaborators/:collaboratorId/offboard',
+  requireAuth,
+  requirePermission('access.assign'),
+  AccessController.offboardCollaborator
+);
 
 router.get('/events', requireAuth, requirePermission('access.view'), AccessController.listEvents);
 
