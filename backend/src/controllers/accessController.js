@@ -149,5 +149,76 @@ export const AccessController = {
     }
   },
 
+  async listEnrollments(req, res, next) {
+    try {
+      const data = await AccessService.listAccessEnrollments({
+        query: req.query
+      });
+
+      res.success({
+        message: 'Enrollments de acceso obtenidos correctamente.',
+        data,
+        meta: {
+          total: data.length
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async createEnrollment(req, res, next) {
+    try {
+      const data = await AccessService.createAccessEnrollment({
+        payload: req.body,
+        authUser: req.authUser,
+        requestContext: AuditService.buildRequestContext(req)
+      });
+
+      res.success({
+        statusCode: 201,
+        message: 'Enrollment de acceso creado correctamente.',
+        data
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async updateEnrollmentStatus(req, res, next) {
+    try {
+      const data = await AccessService.updateAccessEnrollmentStatus({
+        accessEnrollmentId: req.params.accessEnrollmentId,
+        payload: req.body,
+        authUser: req.authUser,
+        requestContext: AuditService.buildRequestContext(req)
+      });
+
+      res.success({
+        message: 'Estado del enrollment actualizado correctamente.',
+        data
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async listEvents(req, res, next) {
+    try {
+      const data = await AccessService.listAccessEvents({
+        query: req.query
+      });
+
+      res.success({
+        message: 'Eventos de Access obtenidos correctamente.',
+        data,
+        meta: {
+          total: data.length
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 };
 
