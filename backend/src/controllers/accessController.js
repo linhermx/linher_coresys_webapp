@@ -203,6 +203,24 @@ export const AccessController = {
     }
   },
 
+  async offboardCollaborator(req, res, next) {
+    try {
+      const data = await AccessService.offboardCollaboratorAccess({
+        collaboratorId: req.params.collaboratorId,
+        payload: req.body,
+        authUser: req.authUser,
+        requestContext: AuditService.buildRequestContext(req)
+      });
+
+      res.success({
+        message: 'Baja de accesos procesada correctamente.',
+        data
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async listEvents(req, res, next) {
     try {
       const data = await AccessService.listAccessEvents({
