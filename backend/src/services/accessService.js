@@ -571,6 +571,63 @@ const resolveEnrollmentEventType = (statusKey) => {
 };
 
 export const AccessService = {
+  getMap() {
+    return {
+      module_key: 'access',
+      phase_key: '10A',
+      name: 'Access',
+      purpose: 'Gestionar medios de acceso fisico y enrollments operativos controlados por Sistemas.',
+      operational_problem: 'Centralizar chips, tarjetas y altas/bajas de acceso con trazabilidad operativa y sincronizacion fisica con Inventario.',
+      root_entities: [
+        'access_media',
+        'access_media_assignments',
+        'access_enrollments'
+      ],
+      lifecycle: {
+        media_statuses: [
+          'available',
+          'assigned',
+          'not_returned',
+          'blocked',
+          'retired'
+        ],
+        assignment_statuses: [
+          'active',
+          'returned',
+          'not_returned',
+          'cancelled'
+        ],
+        enrollment_statuses: [
+          'pending',
+          'active',
+          'suspended',
+          'deactivated'
+        ]
+      },
+      key_actions: [
+        'register_media',
+        'assign_media',
+        'return_media',
+        'mark_media_not_returned',
+        'create_enrollment',
+        'update_enrollment_status',
+        'review_history'
+      ],
+      related_modules: [
+        'collaborators',
+        'inventory',
+        'tickets',
+        'notifications'
+      ],
+      traceability: [
+        'access_events',
+        'inventory_movements',
+        'asset_events',
+        'audit_logs'
+      ]
+    };
+  },
+
   async getCatalog() {
     const [systems, mediumTypes, mediaStatuses, assignmentStatuses, enrollmentStatuses] = await Promise.all([
       accessModel.listAccessSystems(),
