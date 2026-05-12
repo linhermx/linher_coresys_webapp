@@ -77,5 +77,77 @@ export const AccessController = {
     }
   },
 
+  async listMediaAssignments(req, res, next) {
+    try {
+      const data = await AccessService.listAccessMediaAssignments({
+        query: req.query
+      });
+
+      res.success({
+        message: 'Asignaciones de medios de acceso obtenidas correctamente.',
+        data,
+        meta: {
+          total: data.length
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async assignMedia(req, res, next) {
+    try {
+      const data = await AccessService.assignAccessMedia({
+        payload: req.body,
+        authUser: req.authUser,
+        requestContext: AuditService.buildRequestContext(req)
+      });
+
+      res.success({
+        statusCode: 201,
+        message: 'Medio de acceso asignado correctamente.',
+        data
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async returnMediaAssignment(req, res, next) {
+    try {
+      const data = await AccessService.returnAccessMediaAssignment({
+        accessMediaAssignmentId: req.params.accessMediaAssignmentId,
+        payload: req.body,
+        authUser: req.authUser,
+        requestContext: AuditService.buildRequestContext(req)
+      });
+
+      res.success({
+        message: 'Asignacion del medio de acceso cerrada con devolucion correctamente.',
+        data
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  async markMediaAssignmentNotReturned(req, res, next) {
+    try {
+      const data = await AccessService.markAccessMediaAssignmentNotReturned({
+        accessMediaAssignmentId: req.params.accessMediaAssignmentId,
+        payload: req.body,
+        authUser: req.authUser,
+        requestContext: AuditService.buildRequestContext(req)
+      });
+
+      res.success({
+        message: 'Asignacion del medio marcada como no devuelta correctamente.',
+        data
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
 };
 
