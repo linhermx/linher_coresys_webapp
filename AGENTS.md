@@ -149,6 +149,10 @@ Reglas:
 - los commits deben ser pequeños y trazables; no agrupar demasiados archivos ni cambios de naturaleza distinta si pueden separarse con claridad
 - cada commit debe representar un estado coherente al que se pueda regresar sin arrastrar trabajo no relacionado
 - preferir varios commits por fase cuando mejoren la trazabilidad: por ejemplo scaffold raíz, backend base, frontend base, database base o documentación
+- si un solo archivo contiene varios cambios lógicos, dividirlo en múltiples commits por intención aunque el archivo sea el mismo
+- la separación de commits debe hacerse por responsabilidad o subflujo, no por cantidad de líneas
+- cuando un archivo crezca mucho, preferir `split commits` o `partial staging` (`hunk staging`) para preservar revisabilidad y reversión segura
+- evitar commits monolíticos de archivos grandes si sus bloques pueden aislarse sin romper coherencia
 - `AGENTS.md` debe mantenerse versionado porque define el contrato técnico y operativo del proyecto
 
 ### 4.1 Flujo Git (one-dev)
