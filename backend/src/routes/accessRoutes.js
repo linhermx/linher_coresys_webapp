@@ -27,6 +27,16 @@ router.post(
   AccessController.markMediaAssignmentNotReturned
 );
 
+router.get('/enrollments', requireAuth, requirePermission('access.view'), AccessController.listEnrollments);
+router.post('/enrollments', requireAuth, requirePermission('access.create'), AccessController.createEnrollment);
+router.patch(
+  '/enrollments/:accessEnrollmentId/status',
+  requireAuth,
+  requirePermission('access.update'),
+  AccessController.updateEnrollmentStatus
+);
+
+router.get('/events', requireAuth, requirePermission('access.view'), AccessController.listEvents);
 
 export default router;
 
