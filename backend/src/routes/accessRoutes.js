@@ -12,6 +12,21 @@ router.get('/media', requireAuth, requirePermission('access.view'), AccessContro
 router.get('/media/:accessMediaId', requireAuth, requirePermission('access.view'), AccessController.getMediaDetail);
 router.post('/media', requireAuth, requirePermission('access.create'), AccessController.createMedia);
 
+router.get('/media-assignments', requireAuth, requirePermission('access.view'), AccessController.listMediaAssignments);
+router.post('/media-assignments', requireAuth, requirePermission('access.assign'), AccessController.assignMedia);
+router.post(
+  '/media-assignments/:accessMediaAssignmentId/return',
+  requireAuth,
+  requirePermission('access.assign'),
+  AccessController.returnMediaAssignment
+);
+router.post(
+  '/media-assignments/:accessMediaAssignmentId/not-returned',
+  requireAuth,
+  requirePermission('access.assign'),
+  AccessController.markMediaAssignmentNotReturned
+);
+
 
 export default router;
 
