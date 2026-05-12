@@ -1,4 +1,4 @@
-﻿import { BaseModel } from './BaseModel.js';
+import { BaseModel } from './BaseModel.js';
 
 const normalizeLimit = (value, fallback = 50, max = 200) => {
   const parsed = Number.parseInt(value, 10);
@@ -720,4 +720,322 @@ export class AccessModel extends BaseModel {
     return result.affectedRows > 0;
   }
 
+  async getAccessEnrollmentById(accessEnrollmentId) {
+    const [rows] = await this.db.query(`
+      SELECT
+        ae.id,
+        ae.collaborator_id,
+        ae.access_system_id,
+        ae.media_assignment_id,
+        ae.status_id,
+        aes.status_key,
+        aes.name AS status_name,
+        ae.activated_at,
+        ae.deactivated_at,
+        ae.notes,
+        ae.created_at,
+        ae.updated_at
+      FROM access_enrollments ae
+      INNER JOIN access_enrollment_statuses aes
+        ON aes.id = ae.status_id
+      WHERE ae.id = ?
+        AND ae.deleted_at IS NULL
+      LIMIT 1
+    `, [accessEnrollmentId]);
+
+    return rows[0] || null;
+  }
+
+  async findActiveAccessEnrollment({ collaboratorId, accessSystemId }) {
+    const [rows] = await this.db.query(`
+      SELECT
+        ae.id,
+        ae.collaborator_id,
+        ae.access_system_id,
+        ae.media_assignment_id,
+        ae.status_id,
+        aes.status_key,
+        aes.name AS status_name,
+        ae.activated_at,
+        ae.deactivated_at,
+        ae.notes,
+        ae.created_at,
+        ae.updated_at
+      FROM access_enrollments ae
+      INNER JOIN access_enrollment_statuses aes
+        ON aes.id = ae.status_id
+      WHERE ae.collaborator_id = ?
+        AND ae.access_system_id = ?
+        AND aes.status_key = 'active'
+        AND ae.deleted_at IS NULL
+      ORDER BY ae.created_at DESC, ae.id DESC
+      LIMIT 1
+    `, [
+      collaboratorId,
+      accessSystemId
+    ]);
+
+    return rows[0] || null;
+  }
+
+  async listAccessEnrollments({
+    collaboratorId = null,
+    accessSystemId = null,
+    statusKey = '',
+    search = '',
+    limit = 100
+  } = {}) {
+    const normalizedStatusKey = normalizeSearch(statusKey).toLowerCase();
+    const normalizedSearch = normalizeSearch(search);
+    const normalizedLimit = normalizeLimit(limit, 100);
+    const params = [];
+
+    let whereClause = 'WHERE ae.deleted_at IS NULL';
+
+    if (collaboratorId) {
+      whereClause += ' AND ae.collaborator_id = ?';
+      params.push(collaboratorId);
+    }
+
+    if (accessSystemId) {
+      whereClause += ' AND ae.access_system_id = ?';
+      params.push(accessSystemId);
+    }
+
+    if (normalizedStatusKey) {
+      whereClause += ' AND aes.status_key = ?';
+      params.push(normalizedStatusKey);
+    }
+
+    if (normalizedSearch) {
+      whereClause += `
+        AND (
+          CAST(c.employee_id AS CHAR) LIKE ?
+          OR c.first_name LIKE ?
+          OR c.last_name LIKE ?
+          OR CONCAT(c.first_name, ' ', c.last_name) LIKE ?
+          OR asy.name LIKE ?
+          OR COALESCE(am.tag_code, '') LIKE ?
+        )
+      `;
+      params.push(
+        `%${normalizedSearch}%`,
+        `%${normalizedSearch}%`,
+        `%${normalizedSearch}%`,
+        `%${normalizedSearch}%`,
+        `%${normalizedSearch}%`,
+        `%${normalizedSearch}%`
+      );
+    }
+
+    params.push(normalizedLimit);
+
+    const [rows] = await this.db.query(`
+      SELECT
+        ae.id,
+        ae.collaborator_id,
+        c.employee_id,
+        CONCAT(c.first_name, ' ', c.last_name) AS collaborator_name,
+        ae.access_system_id,
+        asy.system_key,
+        asy.name AS access_system_name,
+        ae.media_assignment_id,
+        ama.access_media_id,
+        am.tag_code,
+        ae.status_id,
+        aes.status_key,
+        aes.name AS status_name,
+        ae.activated_at,
+        ae.deactivated_at,
+        ae.notes,
+        ae.created_at,
+        ae.updated_at
+      FROM access_enrollments ae
+      INNER JOIN collaborators c
+        ON c.id = ae.collaborator_id
+      INNER JOIN access_systems asy
+        ON asy.id = ae.access_system_id
+      INNER JOIN access_enrollment_statuses aes
+        ON aes.id = ae.status_id
+      LEFT JOIN access_media_assignments ama
+        ON ama.id = ae.media_assignment_id
+      LEFT JOIN access_media am
+        ON am.id = ama.access_media_id
+      ${whereClause}
+      ORDER BY ae.created_at DESC, ae.id DESC
+      LIMIT ?
+    `, params);
+
+    return rows;
+  }
+
+  async createAccessEnrollment(db, {
+    collaboratorId,
+    accessSystemId,
+    mediaAssignmentId = null,
+    statusId,
+    activatedAt = null,
+    deactivatedAt = null,
+    notes = null
+  }) {
+    const [result] = await db.query(`
+      INSERT INTO access_enrollments (
+        collaborator_id,
+        access_system_id,
+        media_assignment_id,
+        status_id,
+        activated_at,
+        deactivated_at,
+        notes
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [
+      collaboratorId,
+      accessSystemId,
+      mediaAssignmentId,
+      statusId,
+      activatedAt,
+      deactivatedAt,
+      notes
+    ]);
+
+    return Number(result.insertId);
+  }
+
+  async updateAccessEnrollmentStatus(db, {
+    accessEnrollmentId,
+    statusId,
+    mediaAssignmentId,
+    activatedAt,
+    deactivatedAt,
+    notes
+  }) {
+    const nextMediaAssignmentId = mediaAssignmentId === undefined ? undefined : mediaAssignmentId;
+    const nextActivatedAt = activatedAt === undefined ? undefined : activatedAt;
+    const nextDeactivatedAt = deactivatedAt === undefined ? undefined : deactivatedAt;
+    const nextNotes = notes === undefined ? undefined : notes;
+
+    const [result] = await db.query(`
+      UPDATE access_enrollments
+      SET
+        status_id = ?,
+        media_assignment_id = COALESCE(?, media_assignment_id),
+        activated_at = COALESCE(?, activated_at),
+        deactivated_at = COALESCE(?, deactivated_at),
+        notes = COALESCE(?, notes),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+        AND deleted_at IS NULL
+    `, [
+      statusId,
+      nextMediaAssignmentId,
+      nextActivatedAt,
+      nextDeactivatedAt,
+      nextNotes,
+      accessEnrollmentId
+    ]);
+
+    return result.affectedRows > 0;
+  }
+
+  async listAccessEvents({
+    collaboratorId = null,
+    accessMediaId = null,
+    accessEnrollmentId = null,
+    limit = 100
+  } = {}) {
+    const normalizedLimit = normalizeLimit(limit, 100);
+    const params = [];
+
+    let whereClause = 'WHERE 1 = 1';
+
+    if (collaboratorId) {
+      whereClause += ' AND ae.collaborator_id = ?';
+      params.push(collaboratorId);
+    }
+
+    if (accessMediaId) {
+      whereClause += ' AND ae.access_media_id = ?';
+      params.push(accessMediaId);
+    }
+
+    if (accessEnrollmentId) {
+      whereClause += ' AND ae.access_enrollment_id = ?';
+      params.push(accessEnrollmentId);
+    }
+
+    params.push(normalizedLimit);
+
+    const [rows] = await this.db.query(`
+      SELECT
+        ae.id,
+        ae.event_type,
+        ae.operator_id,
+        u.name AS operator_name,
+        ae.collaborator_id,
+        c.employee_id,
+        CONCAT(c.first_name, ' ', c.last_name) AS collaborator_name,
+        ae.access_system_id,
+        asy.system_key,
+        asy.name AS access_system_name,
+        ae.access_media_id,
+        am.tag_code,
+        ae.access_media_assignment_id,
+        ae.access_enrollment_id,
+        ae.notes,
+        ae.happened_at,
+        ae.created_at
+      FROM access_events ae
+      LEFT JOIN users u
+        ON u.id = ae.operator_id
+      LEFT JOIN collaborators c
+        ON c.id = ae.collaborator_id
+      LEFT JOIN access_systems asy
+        ON asy.id = ae.access_system_id
+      LEFT JOIN access_media am
+        ON am.id = ae.access_media_id
+      ${whereClause}
+      ORDER BY ae.happened_at DESC, ae.id DESC
+      LIMIT ?
+    `, params);
+
+    return rows;
+  }
+
+  async createAccessEvent(db, {
+    eventType,
+    operatorId = null,
+    collaboratorId = null,
+    accessSystemId = null,
+    accessMediaId = null,
+    accessMediaAssignmentId = null,
+    accessEnrollmentId = null,
+    notes = null,
+    happenedAt = null
+  }) {
+    const [result] = await db.query(`
+      INSERT INTO access_events (
+        event_type,
+        operator_id,
+        collaborator_id,
+        access_system_id,
+        access_media_id,
+        access_media_assignment_id,
+        access_enrollment_id,
+        notes,
+        happened_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+    `, [
+      eventType,
+      operatorId,
+      collaboratorId,
+      accessSystemId,
+      accessMediaId,
+      accessMediaAssignmentId,
+      accessEnrollmentId,
+      notes,
+      happenedAt
+    ]);
+
+    return Number(result.insertId);
+  }
 }
