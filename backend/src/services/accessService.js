@@ -570,6 +570,153 @@ const resolveEnrollmentEventType = (statusKey) => {
   return 'enrollment_pending';
 };
 
+const deactivateEnrollmentInTransaction = async ({
+  connection,
+  txAccessModel,
+  currentEnrollment,
+  operatorId = null,
+  deactivatedAt,
+  notes = null
+}) => {
+  const targetStatus = await txAccessModel.getEnrollmentStatusByKey('deactivated');
+  if (!targetStatus) {
+    throw new AppError('El catalogo base de baja de enrollments no esta configurado correctamente.', {
+      statusCode: 500,
+      code: 'ACCESS_BASE_CATALOG_MISSING'
+    });
+  }
+
+  await txAccessModel.updateAccessEnrollmentStatus(connection, {
+    accessEnrollmentId: Number(currentEnrollment.id),
+    statusId: Number(targetStatus.id),
+    deactivatedAt,
+    notes
+  });
+
+  await txAccessModel.createAccessEvent(connection, {
+    eventType: 'enrollment_deactivated',
+    operatorId,
+    collaboratorId: Number(currentEnrollment.collaborator_id),
+    accessSystemId: Number(currentEnrollment.access_system_id),
+    accessMediaAssignmentId: currentEnrollment.media_assignment_id ? Number(currentEnrollment.media_assignment_id) : null,
+    accessEnrollmentId: Number(currentEnrollment.id),
+    notes: notes || 'Enrollment desactivado por baja de acceso.',
+    happenedAt: deactivatedAt
+  });
+
+  return Number(currentEnrollment.id);
+};
+
+const closeMediaAssignmentInTransaction = async ({
+  connection,
+  txAccessModel,
+  txInventoryModel,
+  currentAssignment,
+  resolutionKey,
+  operatorId = null,
+  happenedAt,
+  closureNote,
+  returnLocationId = null
+}) => {
+  const media = await txAccessModel.getAccessMediaById(currentAssignment.access_media_id);
+  if (!media) {
+    throw new AppError('La asignacion de acceso quedo sin un medio valido asociado.', {
+      statusCode: 409,
+      code: 'ACCESS_MEDIA_ASSIGNMENT_CONTEXT_INVALID'
+    });
+  }
+
+  const assetUnit = await txInventoryModel.getAssetUnitById(media.asset_unit_id);
+  const asset = assetUnit ? await txInventoryModel.getAssetById(assetUnit.asset_id) : null;
+
+  if (!assetUnit || !asset) {
+    throw new AppError('La asignacion de acceso quedo sin contexto fisico valido.', {
+      statusCode: 409,
+      code: 'ACCESS_MEDIA_ASSIGNMENT_CONTEXT_INVALID'
+    });
+  }
+
+  const assignmentStatusKey = resolutionKey === RETURNED_ASSIGNMENT_STATUS_KEY
+    ? RETURNED_ASSIGNMENT_STATUS_KEY
+    : NOT_RETURNED_ASSIGNMENT_STATUS_KEY;
+  const mediaStatusKey = resolutionKey === RETURNED_ASSIGNMENT_STATUS_KEY
+    ? 'available'
+    : NOT_RETURNED_ASSIGNMENT_STATUS_KEY;
+
+  const [closedStatus, nextMediaStatus] = await Promise.all([
+    txAccessModel.getAssignmentStatusByKey(assignmentStatusKey),
+    txAccessModel.getMediaStatusByKey(mediaStatusKey)
+  ]);
+
+  if (!closedStatus || !nextMediaStatus) {
+    throw new AppError('El catalogo base de cierre de medios no esta configurado correctamente.', {
+      statusCode: 500,
+      code: 'ACCESS_BASE_CATALOG_MISSING'
+    });
+  }
+
+  await txAccessModel.closeAccessMediaAssignment(connection, {
+    accessMediaAssignmentId: Number(currentAssignment.id),
+    statusId: Number(closedStatus.id),
+    receivedByUserId: operatorId,
+    returnedAt: happenedAt,
+    closureNote
+  });
+
+  await txAccessModel.updateAccessMediaStatus(connection, {
+    accessMediaId: Number(media.id),
+    statusId: Number(nextMediaStatus.id),
+    notes: closureNote
+  });
+
+  await syncInventoryForAccessLifecycle({
+    txInventoryModel,
+    accessMedia: media,
+    assetUnit,
+    asset,
+    operatorId,
+    requestReason: closureNote,
+    movementTypeKey: resolutionKey === RETURNED_ASSIGNMENT_STATUS_KEY ? 'return_in' : 'retire_out',
+    targetUnitStatusKey: resolutionKey === RETURNED_ASSIGNMENT_STATUS_KEY ? 'available' : 'retired',
+    referenceId: Number(currentAssignment.id),
+    happenedAt,
+    nextLocationId: resolutionKey === RETURNED_ASSIGNMENT_STATUS_KEY ? returnLocationId : null,
+    eventActionKey: resolutionKey === RETURNED_ASSIGNMENT_STATUS_KEY
+      ? 'access_media_returned'
+      : 'access_media_marked_not_returned',
+    beforeSnapshot: currentAssignment,
+    afterSnapshot: resolutionKey === RETURNED_ASSIGNMENT_STATUS_KEY
+      ? {
+        status_key: RETURNED_ASSIGNMENT_STATUS_KEY,
+        returned_at: happenedAt,
+        return_location_id: returnLocationId
+      }
+      : {
+        status_key: NOT_RETURNED_ASSIGNMENT_STATUS_KEY,
+        resolved_at: happenedAt
+      }
+  });
+
+  await txAccessModel.createAccessEvent(connection, {
+    eventType: resolutionKey === RETURNED_ASSIGNMENT_STATUS_KEY
+      ? 'media_returned'
+      : 'media_marked_not_returned',
+    operatorId,
+    collaboratorId: Number(currentAssignment.collaborator_id),
+    accessMediaId: Number(media.id),
+    accessMediaAssignmentId: Number(currentAssignment.id),
+    notes: closureNote,
+    happenedAt
+  });
+
+  return {
+    assignmentId: Number(currentAssignment.id),
+    accessMediaId: Number(media.id),
+    assetUnitId: Number(media.asset_unit_id),
+    resolution: resolutionKey
+  };
+};
+
 export const AccessService = {
   getMap() {
     return {
@@ -1666,6 +1813,157 @@ export const AccessService = {
       });
 
       return buildAccessEnrollmentResponse(context);
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  },
+
+  async offboardCollaboratorAccess({ collaboratorId, payload, authUser = null, requestContext = {} }) {
+    const normalizedCollaboratorId = normalizeId(collaboratorId);
+    if (!normalizedCollaboratorId) {
+      throw new AppError('El identificador del colaborador no es valido.', {
+        statusCode: 400,
+        code: 'INVALID_COLLABORATOR_ID'
+      });
+    }
+
+    const collaborator = await assertCollaboratorExists(normalizedCollaboratorId);
+    const mediaResolution = normalizeStatusKey(payload?.media_resolution);
+    if (mediaResolution && ![RETURNED_ASSIGNMENT_STATUS_KEY, NOT_RETURNED_ASSIGNMENT_STATUS_KEY].includes(mediaResolution)) {
+      throw new AppError('Debes indicar una resolucion valida del medio: returned o not_returned.', {
+        statusCode: 400,
+        code: 'INVALID_ACCESS_OFFBOARD_MEDIA_RESOLUTION'
+      });
+    }
+
+    const offboardedAt = assertDateTime(
+      payload?.offboarded_at || payload?.happened_at,
+      'La fecha de baja del acceso no tiene un formato valido.',
+      'INVALID_ACCESS_OFFBOARD_DATE'
+    ) || toCurrentDateTimeSql();
+    const notes = normalizeText(payload?.notes) || 'Baja operativa del colaborador en Access.';
+
+    let returnLocation = null;
+    if (mediaResolution === RETURNED_ASSIGNMENT_STATUS_KEY) {
+      returnLocation = await assertLocationExists(payload?.location_id, {
+        requiredMessage: 'Debes indicar la ubicacion donde se reintegrara el medio devuelto.',
+        invalidCode: 'INVALID_ACCESS_OFFBOARD_RETURN_LOCATION'
+      });
+    }
+
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+      const txAccessModel = new AccessModel(connection);
+      const txInventoryModel = new InventoryModel(connection);
+
+      const [enrollmentRows, assignmentRows] = await Promise.all([
+        txAccessModel.listAccessEnrollments({
+          collaboratorId: normalizedCollaboratorId,
+          limit: 500
+        }),
+        txAccessModel.listAccessMediaAssignments({
+          collaboratorId: normalizedCollaboratorId,
+          statusKey: ACTIVE_ASSIGNMENT_STATUS_KEY,
+          limit: 500
+        })
+      ]);
+
+      const activeEnrollments = enrollmentRows.filter((row) => row.status_key !== 'deactivated');
+      const activeAssignments = assignmentRows.filter((row) => row.status_key === ACTIVE_ASSIGNMENT_STATUS_KEY);
+
+      if (!activeEnrollments.length && !activeAssignments.length) {
+        throw new AppError('El colaborador no cuenta con accesos activos para dar de baja.', {
+          statusCode: 409,
+          code: 'ACCESS_OFFBOARD_NOTHING_ACTIVE'
+        });
+      }
+
+      if (activeAssignments.length && !mediaResolution) {
+        throw new AppError('Debes indicar si el medio fue devuelto o no devuelto para completar la baja.', {
+          statusCode: 400,
+          code: 'ACCESS_OFFBOARD_MEDIA_RESOLUTION_REQUIRED'
+        });
+      }
+
+      const deactivatedEnrollmentIds = [];
+      for (const enrollment of activeEnrollments) {
+        const enrollmentId = await deactivateEnrollmentInTransaction({
+          connection,
+          txAccessModel,
+          currentEnrollment: enrollment,
+          operatorId: authUser?.id || null,
+          deactivatedAt: offboardedAt,
+          notes
+        });
+        deactivatedEnrollmentIds.push(enrollmentId);
+      }
+
+      const closedAssignments = [];
+      for (const assignment of activeAssignments) {
+        const closedAssignment = await closeMediaAssignmentInTransaction({
+          connection,
+          txAccessModel,
+          txInventoryModel,
+          currentAssignment: assignment,
+          resolutionKey: mediaResolution,
+          operatorId: authUser?.id || null,
+          happenedAt: offboardedAt,
+          closureNote: notes,
+          returnLocationId: returnLocation ? Number(returnLocation.id) : null
+        });
+        closedAssignments.push(closedAssignment);
+      }
+
+      const offboardingSummary = {
+        collaborator_id: normalizedCollaboratorId,
+        deactivated_enrollment_ids: deactivatedEnrollmentIds,
+        closed_assignment_ids: closedAssignments.map((row) => row.assignmentId),
+        media_resolution: activeAssignments.length ? mediaResolution : null
+      };
+
+      await txAccessModel.createAccessEvent(connection, {
+        eventType: 'collaborator_offboarded',
+        operatorId: authUser?.id || null,
+        collaboratorId: normalizedCollaboratorId,
+        notes,
+        happenedAt: offboardedAt
+      });
+
+      await connection.commit();
+
+      await AuditService.record({
+        operatorId: authUser?.id || null,
+        action: 'access.offboard_collaborator',
+        entityType: 'collaborators',
+        entityId: normalizedCollaboratorId,
+        beforeSnapshot: {
+          active_enrollment_ids: activeEnrollments.map((row) => Number(row.id)),
+          active_assignment_ids: activeAssignments.map((row) => Number(row.id))
+        },
+        afterSnapshot: offboardingSummary,
+        requestContext
+      });
+
+      return {
+        collaborator: toCollaboratorSummary(collaborator),
+        offboarded_at: offboardedAt,
+        media_resolution: offboardingSummary.media_resolution,
+        processed_enrollments: deactivatedEnrollmentIds.length,
+        processed_assignments: closedAssignments.length,
+        deactivated_enrollment_ids: deactivatedEnrollmentIds,
+        closed_assignments: closedAssignments.map((row) => ({
+          assignment_id: row.assignmentId,
+          access_media_id: row.accessMediaId,
+          asset_unit_id: row.assetUnitId,
+          resolution: row.resolution
+        })),
+        return_location_id: returnLocation ? Number(returnLocation.id) : null
+      };
     } catch (error) {
       await connection.rollback();
       throw error;
