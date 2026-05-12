@@ -1275,5 +1275,357 @@ export const AccessService = {
     }
   },
 
+  async listAccessEnrollments({ query = {} } = {}) {
+    const rows = await accessModel.listAccessEnrollments({
+      collaboratorId: normalizeId(query.collaborator_id),
+      accessSystemId: normalizeId(query.access_system_id),
+      statusKey: query.status_key,
+      search: query.search,
+      limit: query.limit
+    });
+
+    return rows.map((row) => ({
+      id: Number(row.id),
+      collaborator_id: Number(row.collaborator_id),
+      access_system_id: Number(row.access_system_id),
+      media_assignment_id: row.media_assignment_id ? Number(row.media_assignment_id) : null,
+      status_id: Number(row.status_id),
+      status_key: row.status_key,
+      status_name: row.status_name,
+      activated_at: row.activated_at,
+      deactivated_at: row.deactivated_at,
+      notes: row.notes || null,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      collaborator: {
+        id: Number(row.collaborator_id),
+        employee_id: Number(row.employee_id),
+        full_name: row.collaborator_name || null
+      },
+      access_system: {
+        id: Number(row.access_system_id),
+        system_key: row.system_key,
+        name: row.access_system_name
+      },
+      media: row.access_media_id ? {
+        id: Number(row.access_media_id),
+        tag_code: row.tag_code || null
+      } : null
+    }));
+  },
+
+  async createAccessEnrollment({ payload, authUser = null, requestContext = {} }) {
+    const collaboratorId = normalizeId(payload?.collaborator_id);
+    if (!collaboratorId) {
+      throw new AppError('Debes indicar el colaborador para el enrollment.', {
+        statusCode: 400,
+        code: 'INVALID_ACCESS_ENROLLMENT_COLLABORATOR'
+      });
+    }
+
+    const collaborator = await assertCollaboratorExists(collaboratorId);
+    if (collaborator.status !== 'active') {
+      throw new AppError('Solo puedes crear enrollments para colaboradores activos.', {
+        statusCode: 409,
+        code: 'COLLABORATOR_INACTIVE'
+      });
+    }
+
+    const accessSystem = await assertAccessSystemExists({
+      accessSystemId: normalizeId(payload?.access_system_id),
+      accessSystemKey: payload?.access_system_key
+    });
+
+    const statusKey = normalizeStatusKey(payload?.status_key, ACTIVE_ENROLLMENT_STATUS_KEY);
+    if (!ALLOWED_ENROLLMENT_STATUS_KEYS.has(statusKey)) {
+      throw new AppError('Debes indicar un estado valido para el enrollment.', {
+        statusCode: 400,
+        code: 'INVALID_ACCESS_ENROLLMENT_STATUS'
+      });
+    }
+
+    const enrollmentStatus = await accessModel.getEnrollmentStatusByKey(statusKey);
+    if (!enrollmentStatus) {
+      throw new AppError('El estado solicitado para el enrollment no existe.', {
+        statusCode: 404,
+        code: 'ACCESS_ENROLLMENT_STATUS_NOT_FOUND'
+      });
+    }
+
+    let mediaAssignment = null;
+    const mediaAssignmentId = normalizeId(payload?.media_assignment_id);
+    if (mediaAssignmentId) {
+      mediaAssignment = await assertMediaAssignmentExists(mediaAssignmentId);
+      if (Number(mediaAssignment.collaborator_id) !== collaboratorId) {
+        throw new AppError('La asignacion del medio no pertenece al colaborador indicado.', {
+          statusCode: 409,
+          code: 'ACCESS_MEDIA_ASSIGNMENT_COLLABORATOR_MISMATCH'
+        });
+      }
+
+      if (statusKey === ACTIVE_ENROLLMENT_STATUS_KEY && mediaAssignment.status_key !== ACTIVE_ASSIGNMENT_STATUS_KEY) {
+        throw new AppError('Solo puedes ligar enrollments activos a una asignacion activa del medio.', {
+          statusCode: 409,
+          code: 'ACCESS_ENROLLMENT_REQUIRES_ACTIVE_MEDIA_ASSIGNMENT'
+        });
+      }
+    }
+
+    const existingActiveEnrollment = await accessModel.findActiveAccessEnrollment({
+      collaboratorId,
+      accessSystemId: Number(accessSystem.id)
+    });
+
+    if (statusKey === ACTIVE_ENROLLMENT_STATUS_KEY && existingActiveEnrollment) {
+      throw new AppError('El colaborador ya cuenta con un enrollment activo en ese sistema.', {
+        statusCode: 409,
+        code: 'ACCESS_ENROLLMENT_ALREADY_ACTIVE'
+      });
+    }
+
+    const activatedAt = statusKey === ACTIVE_ENROLLMENT_STATUS_KEY
+      ? assertDateTime(
+        payload?.activated_at,
+        'La fecha de activacion no tiene un formato valido.',
+        'INVALID_ACCESS_ENROLLMENT_ACTIVATED_AT'
+      )
+      : null;
+    const deactivatedAt = statusKey === 'deactivated'
+      ? assertDateTime(
+        payload?.deactivated_at,
+        'La fecha de baja del enrollment no tiene un formato valido.',
+        'INVALID_ACCESS_ENROLLMENT_DEACTIVATED_AT'
+      )
+      : null;
+    const notes = normalizeText(payload?.notes) || null;
+
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+      const txAccessModel = new AccessModel(connection);
+
+      const accessEnrollmentId = await txAccessModel.createAccessEnrollment(connection, {
+        collaboratorId,
+        accessSystemId: Number(accessSystem.id),
+        mediaAssignmentId,
+        statusId: Number(enrollmentStatus.id),
+        activatedAt,
+        deactivatedAt,
+        notes
+      });
+
+      await txAccessModel.createAccessEvent(connection, {
+        eventType: 'enrollment_created',
+        operatorId: authUser?.id || null,
+        collaboratorId,
+        accessSystemId: Number(accessSystem.id),
+        accessMediaAssignmentId: mediaAssignmentId,
+        accessEnrollmentId,
+        notes: notes || `Enrollment creado para ${accessSystem.name}.`,
+        happenedAt: activatedAt || deactivatedAt || null
+      });
+
+      if (statusKey !== 'pending') {
+        await txAccessModel.createAccessEvent(connection, {
+          eventType: resolveEnrollmentEventType(statusKey),
+          operatorId: authUser?.id || null,
+          collaboratorId,
+          accessSystemId: Number(accessSystem.id),
+          accessMediaAssignmentId: mediaAssignmentId,
+          accessEnrollmentId,
+          notes: notes || `Enrollment marcado como ${statusKey}.`,
+          happenedAt: activatedAt || deactivatedAt || null
+        });
+      }
+
+      await connection.commit();
+
+      const context = await loadEnrollmentContext(accessEnrollmentId);
+
+      await AuditService.record({
+        operatorId: authUser?.id || null,
+        action: 'access.create_enrollment',
+        entityType: 'access_enrollments',
+        entityId: accessEnrollmentId,
+        beforeSnapshot: null,
+        afterSnapshot: context?.enrollment || null,
+        requestContext
+      });
+
+      return buildAccessEnrollmentResponse(context);
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  },
+
+  async updateAccessEnrollmentStatus({ accessEnrollmentId, payload, authUser = null, requestContext = {} }) {
+    const normalizedEnrollmentId = normalizeId(accessEnrollmentId);
+    if (!normalizedEnrollmentId) {
+      throw new AppError('El identificador del enrollment no es valido.', {
+        statusCode: 400,
+        code: 'INVALID_ACCESS_ENROLLMENT_ID'
+      });
+    }
+
+    const currentEnrollment = await assertEnrollmentExists(normalizedEnrollmentId);
+    const targetStatusKey = normalizeStatusKey(payload?.status_key);
+
+    if (!ALLOWED_ENROLLMENT_STATUS_KEYS.has(targetStatusKey)) {
+      throw new AppError('Debes indicar un estado valido para el enrollment.', {
+        statusCode: 400,
+        code: 'INVALID_ACCESS_ENROLLMENT_STATUS'
+      });
+    }
+
+    if (currentEnrollment.status_key === targetStatusKey) {
+      throw new AppError('El enrollment ya se encuentra en ese estado.', {
+        statusCode: 409,
+        code: 'ACCESS_ENROLLMENT_STATUS_UNCHANGED'
+      });
+    }
+
+    const currentStatus = await accessModel.getEnrollmentStatusById(currentEnrollment.status_id);
+    if (currentStatus?.is_terminal) {
+      throw new AppError('El enrollment ya se encuentra en un estado terminal y no puede cambiarse desde este flujo.', {
+        statusCode: 409,
+        code: 'ACCESS_ENROLLMENT_TERMINAL_STATUS'
+      });
+    }
+
+    const targetStatus = await accessModel.getEnrollmentStatusByKey(targetStatusKey);
+    if (!targetStatus) {
+      throw new AppError('El estado objetivo del enrollment no existe.', {
+        statusCode: 404,
+        code: 'ACCESS_ENROLLMENT_STATUS_NOT_FOUND'
+      });
+    }
+
+    const collaborator = await assertCollaboratorExists(currentEnrollment.collaborator_id);
+    const accessSystem = await assertAccessSystemExists({
+      accessSystemId: currentEnrollment.access_system_id
+    });
+
+    let mediaAssignmentId;
+    if (payload?.media_assignment_id !== undefined) {
+      mediaAssignmentId = normalizeId(payload.media_assignment_id);
+      if (mediaAssignmentId) {
+        const mediaAssignment = await assertMediaAssignmentExists(mediaAssignmentId);
+        if (Number(mediaAssignment.collaborator_id) !== Number(currentEnrollment.collaborator_id)) {
+          throw new AppError('La asignacion del medio no pertenece al colaborador del enrollment.', {
+            statusCode: 409,
+            code: 'ACCESS_ENROLLMENT_MEDIA_ASSIGNMENT_MISMATCH'
+          });
+        }
+      }
+    }
+
+    if (targetStatusKey === ACTIVE_ENROLLMENT_STATUS_KEY) {
+      if (collaborator.status !== 'active') {
+        throw new AppError('No puedes activar enrollments para colaboradores inactivos.', {
+          statusCode: 409,
+          code: 'COLLABORATOR_INACTIVE'
+        });
+      }
+
+      const existingActiveEnrollment = await accessModel.findActiveAccessEnrollment({
+        collaboratorId: Number(currentEnrollment.collaborator_id),
+        accessSystemId: Number(currentEnrollment.access_system_id)
+      });
+
+      if (existingActiveEnrollment && Number(existingActiveEnrollment.id) !== normalizedEnrollmentId) {
+        throw new AppError('Ya existe otro enrollment activo para ese colaborador y sistema.', {
+          statusCode: 409,
+          code: 'ACCESS_ENROLLMENT_ALREADY_ACTIVE'
+        });
+      }
+    }
+
+    const activatedAt = targetStatusKey === ACTIVE_ENROLLMENT_STATUS_KEY
+      ? assertDateTime(
+        payload?.activated_at,
+        'La fecha de activacion no tiene un formato valido.',
+        'INVALID_ACCESS_ENROLLMENT_ACTIVATED_AT'
+      )
+      : undefined;
+    const deactivatedAt = targetStatusKey === 'deactivated'
+      ? assertDateTime(
+        payload?.deactivated_at,
+        'La fecha de baja del enrollment no tiene un formato valido.',
+        'INVALID_ACCESS_ENROLLMENT_DEACTIVATED_AT'
+      )
+      : undefined;
+    const notes = normalizeText(payload?.notes) || undefined;
+    const eventNotes = normalizeText(payload?.notes) || `Enrollment marcado como ${targetStatusKey}.`;
+
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+      const txAccessModel = new AccessModel(connection);
+
+      await txAccessModel.updateAccessEnrollmentStatus(connection, {
+        accessEnrollmentId: normalizedEnrollmentId,
+        statusId: Number(targetStatus.id),
+        mediaAssignmentId,
+        activatedAt,
+        deactivatedAt,
+        notes
+      });
+
+      await txAccessModel.createAccessEvent(connection, {
+        eventType: resolveEnrollmentEventType(targetStatusKey),
+        operatorId: authUser?.id || null,
+        collaboratorId: Number(currentEnrollment.collaborator_id),
+        accessSystemId: Number(currentEnrollment.access_system_id),
+        accessMediaAssignmentId: mediaAssignmentId || currentEnrollment.media_assignment_id || null,
+        accessEnrollmentId: normalizedEnrollmentId,
+        notes: eventNotes,
+        happenedAt: targetStatusKey === 'deactivated'
+          ? (deactivatedAt || null)
+          : (activatedAt || null)
+      });
+
+      await connection.commit();
+
+      const context = await loadEnrollmentContext(normalizedEnrollmentId);
+
+      await AuditService.record({
+        operatorId: authUser?.id || null,
+        action: 'access.update_enrollment_status',
+        entityType: 'access_enrollments',
+        entityId: normalizedEnrollmentId,
+        beforeSnapshot: currentEnrollment,
+        afterSnapshot: context?.enrollment || null,
+        details: {
+          access_system_key: accessSystem.system_key,
+          collaborator_id: Number(currentEnrollment.collaborator_id),
+          next_status_key: targetStatusKey
+        },
+        requestContext
+      });
+
+      return buildAccessEnrollmentResponse(context);
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  },
+
+  async listAccessEvents({ query = {} } = {}) {
+    const rows = await accessModel.listAccessEvents({
+      collaboratorId: normalizeId(query.collaborator_id),
+      accessMediaId: normalizeId(query.access_media_id),
+      accessEnrollmentId: normalizeId(query.access_enrollment_id),
+      limit: query.limit
+    });
+
+    return rows.map(buildAccessEventResponse);
+  }
 };
 
