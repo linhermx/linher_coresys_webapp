@@ -36,6 +36,11 @@ import {
   updateTicketStatus
 } from '../services/ticketsService.js';
 import { useAuth } from '../hooks/useAuth.js';
+import {
+  createWorkspaceErrorTitle,
+  createWorkspaceLoadingState,
+  createWorkspaceNoResultsState
+} from '../utils/workspaceStateCopy.js';
 
 const statusMeta = {
   nuevo: { label: 'Nuevo', tone: 'info' },
@@ -68,6 +73,10 @@ const categoryLabels = {
   telefonia_soporte: 'Telefonía y soporte',
   otro: 'Otro'
 };
+
+const ticketsLoadingState = createWorkspaceLoadingState('tickets');
+const ticketsLoadErrorTitle = createWorkspaceErrorTitle('los tickets');
+const ticketsNoResultsState = createWorkspaceNoResultsState('tickets');
 
 const channelOptions = ['Portal', 'Captura interna'];
 
@@ -1844,15 +1853,15 @@ const TicketsPage = () => {
             <>
               {isTicketsLoading ? (
                 <EmptyState
-                  title="Cargando tickets"
-                  copy="Estamos obteniendo la bandeja operativa desde base de datos."
+                  title={ticketsLoadingState.title}
+                  copy={ticketsLoadingState.copy}
                   role="status"
                   ariaLive="polite"
                   ariaAtomic
                 />
               ) : ticketsError ? (
                 <EmptyState
-                  title="No fue posible cargar los tickets"
+                  title={ticketsLoadErrorTitle}
                   copy={ticketsError}
                   role="alert"
                   ariaLive="assertive"
@@ -1872,7 +1881,7 @@ const TicketsPage = () => {
                       </button>
                     ) : null}
                     <button type="button" className="tickets-empty-state__action" onClick={loadWorkspaceData}>
-                      Reintentar carga
+                      Reintentar
                     </button>
                   </div>
                 </EmptyState>
@@ -1884,8 +1893,8 @@ const TicketsPage = () => {
                   role="tabpanel"
                   ariaLabelledBy="tickets-view-tab-list"
                   hidden={activeView !== 'list'}
-                  emptyTitle="No encontramos tickets con estos filtros"
-                  emptyCopy="Ajusta la búsqueda, el alcance o el tipo para recuperar resultados."
+                  emptyTitle={ticketsNoResultsState.title}
+                  emptyCopy={ticketsNoResultsState.copy}
                   emptyId="tickets-list-panel"
                   emptyRole="tabpanel"
                   emptyAriaLabelledBy="tickets-view-tab-list"
@@ -2123,8 +2132,8 @@ const TicketsPage = () => {
                 </div>
               ) : (
                 <EmptyState
-                  title="No encontramos tickets en este pipeline"
-                  copy="Ajusta los filtros o cambia a vista lista para revisar más resultados."
+                  title={ticketsNoResultsState.title}
+                  copy={ticketsNoResultsState.copy}
                   id="tickets-pipeline-panel"
                   role="tabpanel"
                   ariaLabelledBy="tickets-view-tab-pipeline"

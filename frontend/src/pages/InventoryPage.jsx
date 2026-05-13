@@ -36,6 +36,12 @@ import { useAuth } from '../hooks/useAuth.js';
 import { hasPermission } from '../utils/accessControl.js';
 import { getNextHorizontalTabIndex } from '../utils/tabNavigation.js';
 import {
+  createWorkspaceErrorTitle,
+  createWorkspaceLoadingState,
+  createWorkspaceNoRecordsState,
+  createWorkspaceNoResultsState
+} from '../utils/workspaceStateCopy.js';
+import {
   closeAssetAssignment,
   createAssetAssignment,
   createAsset,
@@ -72,6 +78,16 @@ const inventoryViewOptions = [
   { key: 'assignments', label: 'Resguardos', icon: ShieldCheck },
   { key: 'locations', label: 'Ubicaciones', icon: MapPin }
 ];
+
+const inventoryLoadingState = createWorkspaceLoadingState('inventario');
+const inventoryLoadErrorTitle = createWorkspaceErrorTitle('el inventario');
+const inventoryAssetsNoResultsState = createWorkspaceNoResultsState('activos');
+const inventoryMovementsNoRecordsState = createWorkspaceNoRecordsState(
+  'movimientos',
+  'Registra el primer movimiento para iniciar la trazabilidad del inventario.'
+);
+const inventoryAssignmentsNoResultsState = createWorkspaceNoResultsState('resguardos');
+const inventoryLocationsNoResultsState = createWorkspaceNoResultsState('ubicaciones');
 
 const validInventoryViewKeys = new Set(inventoryViewOptions.map((option) => option.key));
 
@@ -611,7 +627,7 @@ const InventoryPage = () => {
       setCatalogLocationTypes(Array.isArray(locationTypesData) ? locationTypesData : []);
     } catch (error) {
       if (applyAuthFallback(error)) return;
-      setScreenError(normalizeErrorMessage(error, 'No fue posible cargar el inventario.'));
+      setScreenError(normalizeErrorMessage(error, `${inventoryLoadErrorTitle}.`));
     } finally {
       setIsLoadingScreen(false);
     }
@@ -2014,7 +2030,7 @@ const InventoryPage = () => {
         </div>
 
         {screenError ? (
-          <EmptyState title="No fue posible cargar el inventario" copy={screenError} id="inventory-state-error" role="region">
+          <EmptyState title={inventoryLoadErrorTitle} copy={screenError} id="inventory-state-error" role="region">
             <button type="button" className="tickets-page__primary-action" onClick={() => void loadCoreData()}>
               Reintentar
             </button>
@@ -2033,8 +2049,8 @@ const InventoryPage = () => {
                 isLoading
                 hasData={false}
                 tone="neutral"
-                loadingTitle="Cargando inventario"
-                loadingCopy="Estamos preparando la vista operativa del módulo."
+                loadingTitle={inventoryLoadingState.title}
+                loadingCopy={inventoryLoadingState.copy}
                 loadingRole="status"
                 loadingAriaLive="polite"
                 loadingAriaAtomic
@@ -2094,7 +2110,7 @@ const InventoryPage = () => {
                 main={(
                   <div className="inventory-panel__workspace inventory-panel__workspace--assets inventory-panel__workspace--fixed">
                     {filteredAssets.length === 0 ? (
-                      <EmptyState title="No encontramos activos con estos filtros" copy="Ajusta la búsqueda, el estado o el modo para recuperar resultados." id="inventory-assets-empty" role="region">
+                      <EmptyState title={inventoryAssetsNoResultsState.title} copy={inventoryAssetsNoResultsState.copy} id="inventory-assets-empty" role="region">
                         {canCreateInventory ? (
                           <button type="button" className="tickets-page__primary-action" onClick={() => setIsCreateAssetOpen(true)}>
                             Nuevo activo
@@ -2546,7 +2562,7 @@ const InventoryPage = () => {
               </div>
               <div className="inventory-panel__workspace inventory-panel__workspace--table inventory-panel__workspace--fixed">
                 {filteredMovements.length === 0 ? (
-                  <EmptyState title="Aún no hay movimientos registrados" copy="Registra el primer movimiento para iniciar la trazabilidad del inventario." id="inventory-movements-empty" role="region">
+                  <EmptyState title={inventoryMovementsNoRecordsState.title} copy={inventoryMovementsNoRecordsState.copy} id="inventory-movements-empty" role="region">
                     {canUpdateInventory ? (
                       <button type="button" className="tickets-page__primary-action" onClick={() => setIsCreateMovementOpen(true)}>Registrar movimiento</button>
                     ) : null}
@@ -2656,7 +2672,7 @@ const InventoryPage = () => {
               </div>
               <div className="inventory-panel__workspace inventory-panel__workspace--table inventory-panel__workspace--fixed">
                 {filteredAssignments.length === 0 ? (
-                  <EmptyState title="No encontramos resguardos con estos filtros" copy="Ajusta la búsqueda o los filtros para revisar asignaciones activas e historial." id="inventory-assignments-empty" role="region">
+                  <EmptyState title={inventoryAssignmentsNoResultsState.title} copy={inventoryAssignmentsNoResultsState.copy} id="inventory-assignments-empty" role="region">
                     {canAssignInventory ? (
                       <button
                         type="button"
@@ -2881,8 +2897,8 @@ const InventoryPage = () => {
                       </tbody>
                     </table>
                   )}
-                  emptyTitle="No encontramos ubicaciones con estos filtros"
-                  emptyCopy="Ajusta la búsqueda o registra una nueva ubicación para continuar."
+                  emptyTitle={inventoryLocationsNoResultsState.title}
+                  emptyCopy={inventoryLocationsNoResultsState.copy}
                   emptyId="inventory-locations-empty"
                   emptyRole="region"
                   emptyActions={canCreateInventory ? (
