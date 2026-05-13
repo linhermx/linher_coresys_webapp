@@ -5,6 +5,7 @@ import { ProtectedRoute } from './components/primitives/ProtectedRoute.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { ThemeProvider } from './context/ThemeContext.jsx';
 import { useAuth } from './hooks/useAuth.js';
+import AccessPage from './pages/AccessPage.jsx';
 import InventoryPage from './pages/InventoryPage.jsx';
 import { LoginPage } from './pages/LoginPage.jsx';
 import { ShellCanvasPage } from './pages/ShellCanvasPage.jsx';
@@ -16,6 +17,8 @@ const renderWorkspaceRoute = (item) => (
     ? <TicketsPage />
     : item.path === '/inventory'
       ? <InventoryPage />
+      : item.path === '/access'
+        ? <AccessPage />
       : <ShellCanvasPage item={item} />
 );
 
