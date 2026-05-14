@@ -10,7 +10,6 @@ import {
   MessageSquareMore,
   Paperclip,
   Plus,
-  Search,
   SlidersHorizontal,
   Upload,
   X
@@ -24,6 +23,7 @@ import { ModalDialog } from '../components/primitives/ModalDialog.jsx';
 import { OperationalTablePanel } from '../components/primitives/OperationalTablePanel.jsx';
 import { PaginationBar } from '../components/primitives/PaginationBar.jsx';
 import { SegmentedControl } from '../components/primitives/SegmentedControl.jsx';
+import { ToolbarSearchField } from '../components/primitives/ToolbarSearchField.jsx';
 import { WorkspaceSplitLayout } from '../components/primitives/WorkspaceSplitLayout.jsx';
 import {
   addTicketComment,
@@ -520,12 +520,12 @@ const TicketEditorModal = ({
         <footer className="modal-dialog__actions">
           <button
             type="button"
-            className="tickets-empty-state__action tickets-empty-state__action--ghost"
+            className="workspace-empty-state__action workspace-empty-state__action--ghost"
             onClick={onClose}
           >
             Cancelar
           </button>
-          <button type="submit" className="tickets-page__primary-action" disabled={isSubmitting}>
+          <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmitting}>
             {isSubmitting ? 'Guardando...' : submitLabel}
           </button>
         </footer>
@@ -646,15 +646,15 @@ const AdvancedFiltersModal = ({
         <footer className="modal-dialog__actions">
           <button
             type="button"
-            className="tickets-empty-state__action tickets-empty-state__action--ghost"
+            className="workspace-empty-state__action workspace-empty-state__action--ghost"
             onClick={onClear}
           >
             Limpiar
           </button>
-          <button type="button" className="tickets-empty-state__action" onClick={onClose}>
+          <button type="button" className="workspace-empty-state__action" onClick={onClose}>
             Cancelar
           </button>
-          <button type="button" className="tickets-page__primary-action" onClick={onApply}>
+          <button type="button" className="workspace-action workspace-action--primary" onClick={onApply}>
             Aplicar filtros
           </button>
         </footer>
@@ -1093,18 +1093,18 @@ const TicketDetailContextState = ({
     </p>
     <div className="ticket-detail__empty-actions">
       {reason === 'page' && targetPage ? (
-        <button type="button" className="tickets-empty-state__action" onClick={onGoToPage}>
+        <button type="button" className="workspace-empty-state__action" onClick={onGoToPage}>
           Ir a la página {targetPage}
         </button>
       ) : null}
       {reason === 'filters' ? (
-        <button type="button" className="tickets-empty-state__action" onClick={onResetFilters}>
+        <button type="button" className="workspace-empty-state__action" onClick={onResetFilters}>
           Limpiar filtros
         </button>
       ) : null}
       <button
         type="button"
-        className="tickets-empty-state__action tickets-empty-state__action--ghost"
+        className="workspace-empty-state__action workspace-empty-state__action--ghost"
         onClick={onClose}
         ref={closeButtonRef}
       >
@@ -1712,16 +1712,16 @@ const TicketsPage = () => {
   };
 
   return (
-    <section className="tickets-page" aria-label="Área de trabajo de Tickets">
-      <header className="tickets-page__header">
-        <div className="tickets-page__heading">
-          <h1 className="tickets-page__title">Tickets</h1>
+    <section className="workspace-page tickets-page" aria-label="Área de trabajo de Tickets">
+      <header className="workspace-page__header">
+        <div className="workspace-page__heading">
+          <h1 className="workspace-page__title">Tickets</h1>
         </div>
 
-        <div className="tickets-page__header-actions">
+        <div className="workspace-page__header-actions">
           <button
             type="button"
-            className="tickets-page__ghost-action"
+            className="workspace-action workspace-action--ghost"
             ref={advancedFiltersTriggerRef}
             onClick={handleOpenAdvancedFilters}
           >
@@ -1733,7 +1733,7 @@ const TicketsPage = () => {
           </button>
           <button
             type="button"
-            className="tickets-page__primary-action"
+            className="workspace-action workspace-action--primary"
             ref={createTicketTriggerRef}
             onClick={handleOpenCreateModal}
           >
@@ -1743,25 +1743,20 @@ const TicketsPage = () => {
         </div>
       </header>
 
-      <section className="tickets-page__surface">
-        <div className="tickets-page__toolbar">
-          <label className="tickets-page__search" htmlFor="ticket-search">
-            <Search size={16} aria-hidden="true" />
-            <span className="sr-only">Buscar en tickets</span>
-            <input
-              className="tickets-page__search-input"
-              id="ticket-search"
-              name="ticket_search"
-              type="search"
-              value={searchTerm}
-              onChange={(event) => {
-                closeTicketDetail(false);
-                setSearchTerm(event.target.value);
-                resetVolumeViews();
-              }}
-              placeholder="Buscar tickets por folio, título o solicitante"
-            />
-          </label>
+      <section className="workspace-page__surface">
+        <div className="workspace-page__toolbar">
+          <ToolbarSearchField
+            id="ticket-search"
+            name="ticket_search"
+            value={searchTerm}
+            onChange={(value) => {
+              closeTicketDetail(false);
+              setSearchTerm(value);
+              resetVolumeViews();
+            }}
+            placeholder="Buscar tickets por folio, título o solicitante"
+            srLabel="Buscar en tickets"
+          />
 
           <SegmentedControl
             label="Vistas de tickets"
@@ -1773,7 +1768,7 @@ const TicketsPage = () => {
           />
         </div>
 
-        <div className="tickets-page__control-row">
+        <div className="workspace-page__control-row">
           <div
             className={`tickets-page__summary-slot${activeView !== 'list' ? ' tickets-page__summary-slot--placeholder' : ''}`}
             aria-hidden={activeView !== 'list'}
@@ -1816,7 +1811,7 @@ const TicketsPage = () => {
             ) : null}
           </div>
 
-          <div className="tickets-page__filters" aria-label="Filtros de tickets">
+          <div className="workspace-page__filters" aria-label="Filtros de tickets">
             <FilterChipGroup
               label="Alcance de tickets"
               options={scopeOptions}
@@ -1867,11 +1862,11 @@ const TicketsPage = () => {
                   ariaLive="assertive"
                   ariaAtomic
                 >
-                  <div className="tickets-empty-state__actions">
+                  <div className="workspace-empty-state__actions">
                     {isAuthRequiredError ? (
                       <button
                         type="button"
-                        className="tickets-page__primary-action"
+                        className="workspace-action workspace-action--primary"
                         onClick={() => {
                           clearSession();
                           navigate('/login', { replace: true, state: { from: '/tickets' } });
@@ -1880,7 +1875,7 @@ const TicketsPage = () => {
                         Iniciar sesión
                       </button>
                     ) : null}
-                    <button type="button" className="tickets-empty-state__action" onClick={loadWorkspaceData}>
+                    <button type="button" className="workspace-empty-state__action" onClick={loadWorkspaceData}>
                       Reintentar
                     </button>
                   </div>
@@ -1900,7 +1895,7 @@ const TicketsPage = () => {
                   emptyAriaLabelledBy="tickets-view-tab-list"
                   emptyHidden={activeView !== 'list'}
                   emptyActions={(
-                    <button type="button" className="tickets-empty-state__action" onClick={clearFilters}>
+                    <button type="button" className="workspace-empty-state__action" onClick={clearFilters}>
                       Limpiar filtros
                     </button>
                   )}
@@ -2139,7 +2134,7 @@ const TicketsPage = () => {
                   ariaLabelledBy="tickets-view-tab-pipeline"
                   hidden={activeView !== 'pipeline'}
                 >
-                  <button type="button" className="tickets-empty-state__action" onClick={clearFilters}>
+                  <button type="button" className="workspace-empty-state__action" onClick={clearFilters}>
                     Limpiar filtros
                   </button>
                 </EmptyState>

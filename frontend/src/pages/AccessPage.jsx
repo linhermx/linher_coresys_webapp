@@ -967,19 +967,19 @@ const AccessPage = () => {
   const activeHeaderActions = (
     <>
       {activeView === 'enrollments' && canCreateAccess ? (
-        <button type="button" className="tickets-page__ghost-action" ref={createEnrollmentTriggerRef} onClick={() => openCreateEnrollmentModal()}>
+        <button type="button" className="workspace-action workspace-action--ghost" ref={createEnrollmentTriggerRef} onClick={() => openCreateEnrollmentModal()}>
           <UserCog size={16} aria-hidden="true" />
           <span>Nueva alta</span>
         </button>
       ) : null}
       {activeView === 'media' && canCreateAccess ? (
-        <button type="button" className="tickets-page__ghost-action" ref={createMediaTriggerRef} onClick={() => void openCreateMediaModal()}>
+        <button type="button" className="workspace-action workspace-action--ghost" ref={createMediaTriggerRef} onClick={() => void openCreateMediaModal()}>
           <IdCard size={16} aria-hidden="true" />
           <span>Registrar medio</span>
         </button>
       ) : null}
       {activeView === 'assignments' && canAssignAccess ? (
-        <button type="button" className="tickets-page__primary-action" ref={createAssignmentTriggerRef} onClick={() => openAssignModal()}>
+        <button type="button" className="workspace-action workspace-action--primary" ref={createAssignmentTriggerRef} onClick={() => openAssignModal()}>
           <Plus size={16} aria-hidden="true" />
           <span>Asignar medio</span>
         </button>
@@ -988,7 +988,7 @@ const AccessPage = () => {
   );
 
   const renderAssignmentTable = () => (
-    <table className="ticket-list__table inventory-table inventory-table--assignments">
+    <table className="data-table__table inventory-table inventory-table--assignments">
       <thead>
         <tr>
           <th scope="col">Colaborador</th>
@@ -1006,7 +1006,7 @@ const AccessPage = () => {
           return (
             <tr
               key={assignment.id}
-              className={`ticket-list__row inventory-table__row${isActiveRow ? ' data-table__row--active' : ''}`}
+              className={`data-table__row inventory-table__row${isActiveRow ? ' data-table__row--active' : ''}`}
               tabIndex={0}
               onClick={() => setSelectedAssignmentId(assignment.id)}
               onKeyDown={(event) => {
@@ -1016,24 +1016,24 @@ const AccessPage = () => {
                 }
               }}
             >
-              <td className="ticket-list__cell">
+              <td className="data-table__cell">
                 <span className="data-table__item-title">{assignment.collaborator?.full_name || 'Sin colaborador'}</span>
                 <span className="data-table__item-meta access-table__meta">{assignment.collaborator?.employee_id ? `ID ${assignment.collaborator.employee_id}` : 'Sin ID'}</span>
               </td>
-              <td className="ticket-list__cell">
+              <td className="data-table__cell">
                 <span className="data-table__item-title">{assignment.media?.tag_code || 'Sin tag'}</span>
                 <span className="data-table__item-meta access-table__meta">{assignment.media?.asset_tag || 'Sin unidad física'}</span>
               </td>
-              <td className="ticket-list__cell">
+              <td className="data-table__cell">
                 <span className={getAssignmentStatusToneClass(assignment.status_key)}>{assignment.status_name}</span>
               </td>
-              <td className="ticket-list__cell">
+              <td className="data-table__cell">
                 <span className="access-table__supporting">{formatDateTime(assignment.assigned_at)}</span>
               </td>
-              <td className="ticket-list__cell">
+              <td className="data-table__cell">
                 <span className="access-table__supporting">{assignment.expected_return_at ? formatDateOnly(assignment.expected_return_at) : 'Sin fecha'}</span>
               </td>
-              <td className="ticket-list__cell">
+              <td className="data-table__cell">
                 <div className="inventory-table__actions access-table__actions">
                   {assignment.status_key === 'active' && canAssignAccess ? (
                     <button type="button" className="action-inline action-inline--primary" onClick={(event) => {
@@ -1063,7 +1063,7 @@ const AccessPage = () => {
   );
 
   const renderMediaTable = () => (
-    <table className="ticket-list__table inventory-table inventory-table--assignments">
+    <table className="data-table__table inventory-table inventory-table--assignments">
       <thead>
         <tr>
           <th scope="col">Tag</th>
@@ -1081,7 +1081,7 @@ const AccessPage = () => {
           return (
             <tr
               key={item.id}
-              className={`ticket-list__row inventory-table__row${isActiveRow ? ' data-table__row--active' : ''}`}
+              className={`data-table__row inventory-table__row${isActiveRow ? ' data-table__row--active' : ''}`}
               tabIndex={0}
               onClick={() => setSelectedMediaId(item.id)}
               onKeyDown={(event) => {
@@ -1091,22 +1091,22 @@ const AccessPage = () => {
                 }
               }}
             >
-              <td className="ticket-list__cell">
+              <td className="data-table__cell">
                 <span className="data-table__item-title">{item.tag_code}</span>
                 <span className="data-table__item-meta access-table__meta">{item.notes || 'Sin observaciones'}</span>
               </td>
-              <td className="ticket-list__cell">{item.medium_type_name}</td>
-              <td className="ticket-list__cell">
+              <td className="data-table__cell">{item.medium_type_name}</td>
+              <td className="data-table__cell">
                 <span className="data-table__item-title">{item.asset_unit?.asset_tag || 'Sin unidad'}</span>
                 <span className="data-table__item-meta access-table__meta">{item.asset_unit?.serial_number || 'Sin serie'}</span>
               </td>
-              <td className="ticket-list__cell">
+              <td className="data-table__cell">
                 <span className={getMediumStatusToneClass(item.status_key)}>{item.status_name}</span>
               </td>
-              <td className="ticket-list__cell">
+              <td className="data-table__cell">
                 <span className="access-table__supporting">{item.active_assignment?.collaborator?.full_name || 'Disponible'}</span>
               </td>
-              <td className="ticket-list__cell">
+              <td className="data-table__cell">
                 <div className="inventory-table__actions access-table__actions">
                   {item.status_key === 'available' && canAssignAccess ? (
                     <button type="button" className="action-inline action-inline--primary" onClick={(event) => {
@@ -1127,7 +1127,7 @@ const AccessPage = () => {
   );
 
   const renderEnrollmentTable = () => (
-    <table className="ticket-list__table inventory-table inventory-table--assignments">
+    <table className="data-table__table inventory-table inventory-table--assignments">
       <thead>
         <tr>
           <th scope="col">Colaborador</th>
@@ -1145,7 +1145,7 @@ const AccessPage = () => {
           return (
             <tr
               key={enrollment.id}
-              className={`ticket-list__row inventory-table__row${isActiveRow ? ' data-table__row--active' : ''}`}
+              className={`data-table__row inventory-table__row${isActiveRow ? ' data-table__row--active' : ''}`}
               tabIndex={0}
               onClick={() => setSelectedEnrollmentId(enrollment.id)}
               onKeyDown={(event) => {
@@ -1155,19 +1155,19 @@ const AccessPage = () => {
                 }
               }}
             >
-              <td className="ticket-list__cell">
+              <td className="data-table__cell">
                 <span className="data-table__item-title">{enrollment.collaborator?.full_name || 'Sin colaborador'}</span>
                 <span className="data-table__item-meta access-table__meta">{enrollment.collaborator?.employee_id ? `ID ${enrollment.collaborator.employee_id}` : 'Sin ID'}</span>
               </td>
-              <td className="ticket-list__cell">{enrollment.access_system?.name || 'Sin sistema'}</td>
-              <td className="ticket-list__cell">{enrollment.media?.tag_code || 'Sin medio ligado'}</td>
-              <td className="ticket-list__cell">
+              <td className="data-table__cell">{enrollment.access_system?.name || 'Sin sistema'}</td>
+              <td className="data-table__cell">{enrollment.media?.tag_code || 'Sin medio ligado'}</td>
+              <td className="data-table__cell">
                 <span className={getEnrollmentStatusToneClass(enrollment.status_key)}>{enrollment.status_name}</span>
               </td>
-              <td className="ticket-list__cell">
+              <td className="data-table__cell">
                 <span className="access-table__supporting">{enrollment.activated_at ? formatDateTime(enrollment.activated_at) : 'Sin fecha'}</span>
               </td>
-              <td className="ticket-list__cell">
+              <td className="data-table__cell">
                 <div className="inventory-table__actions access-table__actions">
                   {enrollment.status_key !== 'deactivated' && canUpdateAccess ? (
                     <button type="button" className="action-inline action-inline--primary" onClick={(event) => {
@@ -1188,7 +1188,7 @@ const AccessPage = () => {
   );
 
   const renderEventTable = () => (
-    <table className="ticket-list__table inventory-table inventory-table--assignments">
+    <table className="data-table__table inventory-table inventory-table--assignments">
       <thead>
         <tr>
           <th scope="col">Evento</th>
@@ -1206,7 +1206,7 @@ const AccessPage = () => {
           return (
             <tr
               key={eventRow.id}
-              className={`ticket-list__row inventory-table__row${isActiveRow ? ' data-table__row--active' : ''}`}
+              className={`data-table__row inventory-table__row${isActiveRow ? ' data-table__row--active' : ''}`}
               tabIndex={0}
               onClick={() => setSelectedEventId(eventRow.id)}
               onKeyDown={(event) => {
@@ -1216,15 +1216,15 @@ const AccessPage = () => {
                 }
               }}
             >
-              <td className="ticket-list__cell">
+              <td className="data-table__cell">
                 <span className="data-table__item-title">{toEventLabel(eventRow.event_type)}</span>
                 <span className="data-table__item-meta access-table__meta">{eventRow.notes || 'Sin observaciones'}</span>
               </td>
-              <td className="ticket-list__cell">{eventRow.collaborator_name || 'Sin colaborador'}</td>
-              <td className="ticket-list__cell">{eventRow.access_system_name || 'Sin sistema'}</td>
-              <td className="ticket-list__cell">{eventRow.tag_code || 'Sin medio'}</td>
-              <td className="ticket-list__cell"><span className="access-table__supporting">{formatDateTime(eventRow.happened_at)}</span></td>
-              <td className="ticket-list__cell">{eventRow.operator_name || 'Sistema'}</td>
+              <td className="data-table__cell">{eventRow.collaborator_name || 'Sin colaborador'}</td>
+              <td className="data-table__cell">{eventRow.access_system_name || 'Sin sistema'}</td>
+              <td className="data-table__cell">{eventRow.tag_code || 'Sin medio'}</td>
+              <td className="data-table__cell"><span className="access-table__supporting">{formatDateTime(eventRow.happened_at)}</span></td>
+              <td className="data-table__cell">{eventRow.operator_name || 'Sistema'}</td>
             </tr>
           );
         })}
@@ -1238,26 +1238,26 @@ const AccessPage = () => {
     && (detailContext?.enrollments?.some((enrollment) => enrollment.status_key !== 'deactivated') || activeAssignmentsForDetail.length > 0);
 
   return (
-    <section className="access-page" aria-label="Área de trabajo de accesos">
-      <header className="tickets-page__header">
-        <div className="tickets-page__heading">
-          <h1 className="tickets-page__title">Accesos</h1>
+    <section className="workspace-page access-page" aria-label="Área de trabajo de accesos">
+      <header className="workspace-page__header">
+        <div className="workspace-page__heading">
+          <h1 className="workspace-page__title">Accesos</h1>
         </div>
-        <div className="tickets-page__header-actions">
+        <div className="workspace-page__header-actions">
           {activeHeaderActions}
         </div>
       </header>
 
-      <section className="tickets-page__surface inventory-page__surface">
-        <div className="tickets-page__toolbar inventory-page__toolbar">
+      <section className="workspace-page__surface workspace-page__surface--operational">
+        <div className="workspace-page__toolbar workspace-page__toolbar--operational">
           <SegmentedControl
             label="Vista operativa de accesos"
             options={accessViewOptions}
             activeKey={activeView}
             onActivate={handleViewChange}
-            className="tickets-page__segmented inventory-page__view-segmented"
-            buttonClassName="tickets-page__segmented-button"
-            activeButtonClassName="tickets-page__segmented-button--active"
+            className="workspace-segmented workspace-page__view-segmented"
+            buttonClassName="workspace-segmented__button"
+            activeButtonClassName="workspace-segmented__button--active"
             idPrefix="access-view"
             panelIdByKey={(key) => `access-panel-${key}`}
           />
@@ -1268,7 +1268,7 @@ const AccessPage = () => {
 
         {screenError ? (
           <EmptyState title={accessLoadErrorTitle} copy={screenError} id="access-state-error" role="region">
-            <button type="button" className="tickets-page__primary-action" onClick={() => void loadCoreData()}>Reintentar</button>
+            <button type="button" className="workspace-action workspace-action--primary" onClick={() => void loadCoreData()}>Reintentar</button>
           </EmptyState>
         ) : (
           <WorkspaceSplitLayout
@@ -1281,7 +1281,7 @@ const AccessPage = () => {
             main={(
               <>
                 <section id="access-panel-assignments" role="tabpanel" aria-labelledby="access-view-assignments" hidden={activeView !== 'assignments'} className="access-panel">
-                  <div className="tickets-page__control-row inventory-assets__control-row">
+                  <div className="workspace-page__control-row workspace-page__control-row--operational">
                     <ToolbarSearchField
                       id="access-assignments-search"
                       name="access-assignments-search"
@@ -1289,22 +1289,22 @@ const AccessPage = () => {
                       onChange={setAssignmentSearchTerm}
                       placeholder="Buscar por colaborador, tag o unidad..."
                       srLabel="Buscar asignaciones de acceso"
-                      className="inventory-assets__search"
+                      className="workspace-search--operational"
                     />
-                    <div className="tickets-page__filters inventory-assets__filters">
+                    <div className="workspace-page__filters workspace-page__filters--operational">
                       <FilterChipGroup
                         label="Filtro por estado de asignación"
                         options={assignmentStatusOptions}
                         activeKey={assignmentStatusFilter}
                         onSelect={setAssignmentStatusFilter}
-                        className="tickets-page__chip-group inventory-assets__chip-group"
-                        chipClassName="tickets-page__chip inventory-assets__chip"
-                        activeChipClassName="tickets-page__chip--active inventory-assets__chip--active"
+                        className="workspace-chip-group workspace-chip-group--compact"
+                        chipClassName="workspace-chip"
+                        activeChipClassName="workspace-chip--active"
                       />
                     </div>
                   </div>
 
-                  <div className="inventory-panel__workspace inventory-panel__workspace--table inventory-panel__workspace--fixed">
+                  <div className="workspace-panel__viewport workspace-panel__viewport--flush workspace-panel__viewport--fixed">
                     <OperationalTablePanel
                       preserveShell
                       isLoading={screenLoading}
@@ -1312,7 +1312,7 @@ const AccessPage = () => {
                       tone="primary"
                       className="access-panel__table"
                       ariaLabel="Listado de asignaciones de acceso"
-                      scrollClassName="ticket-list__scroll inventory-table-wrap inventory-table-wrap--workspace"
+                      scrollClassName="data-table__scroll workspace-scroll-wrap--fill"
                       loadingTitle={accessLoadingState.title}
                       loadingCopy={accessLoadingState.copy}
                       table={renderAssignmentTable()}
@@ -1339,7 +1339,7 @@ const AccessPage = () => {
                       emptyTitle={accessAssignmentsNoRecordsState.title}
                       emptyCopy={accessAssignmentsNoRecordsState.copy}
                       emptyActions={canAssignAccess ? (
-                        <button type="button" className="tickets-page__primary-action" onClick={() => openAssignModal()}>
+                        <button type="button" className="workspace-action workspace-action--primary" onClick={() => openAssignModal()}>
                           <Plus size={14} aria-hidden="true" />
                           <span>Asignar medio</span>
                         </button>
@@ -1349,7 +1349,7 @@ const AccessPage = () => {
                 </section>
 
                 <section id="access-panel-media" role="tabpanel" aria-labelledby="access-view-media" hidden={activeView !== 'media'} className="access-panel">
-                  <div className="tickets-page__control-row inventory-assets__control-row">
+                  <div className="workspace-page__control-row workspace-page__control-row--operational">
                     <ToolbarSearchField
                       id="access-media-search"
                       name="access-media-search"
@@ -1357,9 +1357,9 @@ const AccessPage = () => {
                       onChange={setMediaSearchTerm}
                       placeholder="Buscar por tag, tipo, unidad o colaborador..."
                       srLabel="Buscar medios de acceso"
-                      className="inventory-assets__search"
+                      className="workspace-search--operational"
                     />
-                    <div className="tickets-page__filters inventory-assets__filters">
+                    <div className="workspace-page__filters workspace-page__filters--operational">
                       <FilterSelect
                         id="access-media-status-filter"
                         name="access_media_status_filter"
@@ -1368,7 +1368,7 @@ const AccessPage = () => {
                         value={mediaStatusFilter}
                         options={mediaStatusFilterOptions}
                         onChange={setMediaStatusFilter}
-                        className="filter-select inventory-assets__tracking-select"
+                        className="filter-select filter-select--operational"
                       />
                       <FilterSelect
                         id="access-media-type-filter"
@@ -1378,12 +1378,12 @@ const AccessPage = () => {
                         value={mediumTypeFilter}
                         options={mediumTypeFilterOptions}
                         onChange={setMediumTypeFilter}
-                        className="filter-select inventory-assets__tracking-select"
+                        className="filter-select filter-select--operational"
                       />
                     </div>
                   </div>
 
-                  <div className="inventory-panel__workspace inventory-panel__workspace--table inventory-panel__workspace--fixed">
+                  <div className="workspace-panel__viewport workspace-panel__viewport--flush workspace-panel__viewport--fixed">
                     <OperationalTablePanel
                       preserveShell
                       isLoading={screenLoading}
@@ -1391,7 +1391,7 @@ const AccessPage = () => {
                       tone="info"
                       className="access-panel__table"
                       ariaLabel="Listado de medios de acceso"
-                      scrollClassName="ticket-list__scroll inventory-table-wrap inventory-table-wrap--workspace"
+                      scrollClassName="data-table__scroll workspace-scroll-wrap--fill"
                       loadingTitle={accessLoadingState.title}
                       loadingCopy={accessLoadingState.copy}
                       table={renderMediaTable()}
@@ -1418,7 +1418,7 @@ const AccessPage = () => {
                       emptyTitle={accessMediaNoRecordsState.title}
                       emptyCopy={accessMediaNoRecordsState.copy}
                       emptyActions={canCreateAccess ? (
-                        <button type="button" className="tickets-page__primary-action" onClick={() => void openCreateMediaModal()}>
+                        <button type="button" className="workspace-action workspace-action--primary" onClick={() => void openCreateMediaModal()}>
                           <Plus size={14} aria-hidden="true" />
                           <span>Registrar medio</span>
                         </button>
@@ -1428,7 +1428,7 @@ const AccessPage = () => {
                 </section>
 
                 <section id="access-panel-enrollments" role="tabpanel" aria-labelledby="access-view-enrollments" hidden={activeView !== 'enrollments'} className="access-panel">
-                  <div className="tickets-page__control-row inventory-assets__control-row">
+                  <div className="workspace-page__control-row workspace-page__control-row--operational">
                     <ToolbarSearchField
                       id="access-enrollments-search"
                       name="access-enrollments-search"
@@ -1436,17 +1436,17 @@ const AccessPage = () => {
                       onChange={setEnrollmentSearchTerm}
                       placeholder="Buscar por colaborador, sistema o tag..."
                       srLabel="Buscar altas"
-                      className="inventory-assets__search"
+                      className="workspace-search--operational"
                     />
-                    <div className="tickets-page__filters inventory-assets__filters">
+                    <div className="workspace-page__filters workspace-page__filters--operational">
                       <FilterChipGroup
                         label="Filtro por estado de alta"
                         options={enrollmentStatusOptions}
                         activeKey={enrollmentStatusFilter}
                         onSelect={setEnrollmentStatusFilter}
-                        className="tickets-page__chip-group inventory-assets__chip-group"
-                        chipClassName="tickets-page__chip inventory-assets__chip"
-                        activeChipClassName="tickets-page__chip--active inventory-assets__chip--active"
+                        className="workspace-chip-group workspace-chip-group--compact"
+                        chipClassName="workspace-chip"
+                        activeChipClassName="workspace-chip--active"
                       />
                       <FilterSelect
                         id="access-enrollment-system-filter"
@@ -1456,12 +1456,12 @@ const AccessPage = () => {
                         value={enrollmentSystemFilter}
                         options={systemFilterOptions}
                         onChange={setEnrollmentSystemFilter}
-                        className="filter-select inventory-assets__tracking-select"
+                        className="filter-select filter-select--operational"
                       />
                     </div>
                   </div>
 
-                  <div className="inventory-panel__workspace inventory-panel__workspace--table inventory-panel__workspace--fixed">
+                  <div className="workspace-panel__viewport workspace-panel__viewport--flush workspace-panel__viewport--fixed">
                     <OperationalTablePanel
                       preserveShell
                       isLoading={screenLoading}
@@ -1469,7 +1469,7 @@ const AccessPage = () => {
                       tone="neutral"
                       className="access-panel__table"
                       ariaLabel="Listado de altas de acceso"
-                      scrollClassName="ticket-list__scroll inventory-table-wrap inventory-table-wrap--workspace"
+                      scrollClassName="data-table__scroll workspace-scroll-wrap--fill"
                       loadingTitle={accessLoadingState.title}
                       loadingCopy={accessLoadingState.copy}
                       table={renderEnrollmentTable()}
@@ -1496,7 +1496,7 @@ const AccessPage = () => {
                       emptyTitle={accessEnrollmentsNoRecordsState.title}
                       emptyCopy={accessEnrollmentsNoRecordsState.copy}
                       emptyActions={canCreateAccess ? (
-                        <button type="button" className="tickets-page__primary-action" onClick={() => openCreateEnrollmentModal()}>
+                        <button type="button" className="workspace-action workspace-action--primary" onClick={() => openCreateEnrollmentModal()}>
                           <Plus size={14} aria-hidden="true" />
                           <span>Nueva alta</span>
                         </button>
@@ -1506,7 +1506,7 @@ const AccessPage = () => {
                 </section>
 
                 <section id="access-panel-history" role="tabpanel" aria-labelledby="access-view-history" hidden={activeView !== 'history'} className="access-panel">
-                  <div className="tickets-page__control-row inventory-assets__control-row">
+                  <div className="workspace-page__control-row workspace-page__control-row--operational">
                     <ToolbarSearchField
                       id="access-events-search"
                       name="access-events-search"
@@ -1514,11 +1514,11 @@ const AccessPage = () => {
                       onChange={setEventSearchTerm}
                       placeholder="Buscar por evento, colaborador, sistema o tag..."
                       srLabel="Buscar historial de accesos"
-                      className="inventory-assets__search"
+                      className="workspace-search--operational"
                     />
                   </div>
 
-                  <div className="inventory-panel__workspace inventory-panel__workspace--table inventory-panel__workspace--fixed">
+                  <div className="workspace-panel__viewport workspace-panel__viewport--flush workspace-panel__viewport--fixed">
                     <OperationalTablePanel
                       preserveShell
                       isLoading={screenLoading}
@@ -1526,7 +1526,7 @@ const AccessPage = () => {
                       tone="warning"
                       className="access-panel__table"
                       ariaLabel="Historial de eventos de acceso"
-                      scrollClassName="ticket-list__scroll inventory-table-wrap inventory-table-wrap--workspace"
+                      scrollClassName="data-table__scroll workspace-scroll-wrap--fill"
                       loadingTitle={accessLoadingState.title}
                       loadingCopy={accessLoadingState.copy}
                       table={renderEventTable()}
@@ -1795,8 +1795,8 @@ const AccessPage = () => {
           </div>
           {modalError ? <InlineNotice tone="error">{modalError}</InlineNotice> : null}
           <div className="modal-dialog__actions">
-            <button type="button" className="tickets-page__ghost-action" onClick={closeAllModals}>Cancelar</button>
-            <button type="submit" className="tickets-page__primary-action" disabled={isSubmitting}>{isSubmitting ? 'Registrando...' : 'Registrar medio'}</button>
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={closeAllModals}>Cancelar</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmitting}>{isSubmitting ? 'Registrando...' : 'Registrar medio'}</button>
           </div>
         </form>
       </ModalDialog>
@@ -1861,8 +1861,8 @@ const AccessPage = () => {
           </div>
           {modalError ? <InlineNotice tone="error">{modalError}</InlineNotice> : null}
           <div className="modal-dialog__actions">
-            <button type="button" className="tickets-page__ghost-action" onClick={closeAllModals}>Cancelar</button>
-            <button type="submit" className="tickets-page__primary-action" disabled={isSubmitting}>{isSubmitting ? 'Asignando...' : 'Confirmar asignación'}</button>
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={closeAllModals}>Cancelar</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmitting}>{isSubmitting ? 'Asignando...' : 'Confirmar asignación'}</button>
           </div>
         </form>
       </ModalDialog>
@@ -1937,8 +1937,8 @@ const AccessPage = () => {
           </div>
           {modalError ? <InlineNotice tone="error">{modalError}</InlineNotice> : null}
           <div className="modal-dialog__actions">
-            <button type="button" className="tickets-page__ghost-action" onClick={closeAllModals}>Cancelar</button>
-            <button type="submit" className="tickets-page__primary-action" disabled={isSubmitting}>{isSubmitting ? 'Registrando...' : 'Registrar alta'}</button>
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={closeAllModals}>Cancelar</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmitting}>{isSubmitting ? 'Registrando...' : 'Registrar alta'}</button>
           </div>
         </form>
       </ModalDialog>
@@ -1971,8 +1971,8 @@ const AccessPage = () => {
           </div>
           {modalError ? <InlineNotice tone="error">{modalError}</InlineNotice> : null}
           <div className="modal-dialog__actions">
-            <button type="button" className="tickets-page__ghost-action" onClick={closeAllModals}>Cancelar</button>
-            <button type="submit" className="tickets-page__primary-action" disabled={isSubmitting}>{isSubmitting ? 'Procesando...' : 'Registrar devolución'}</button>
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={closeAllModals}>Cancelar</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmitting}>{isSubmitting ? 'Procesando...' : 'Registrar devolución'}</button>
           </div>
         </form>
       </ModalDialog>
@@ -1991,8 +1991,8 @@ const AccessPage = () => {
           </div>
           {modalError ? <InlineNotice tone="error">{modalError}</InlineNotice> : null}
           <div className="modal-dialog__actions">
-            <button type="button" className="tickets-page__ghost-action" onClick={closeAllModals}>Cancelar</button>
-            <button type="submit" className="tickets-page__primary-action" disabled={isSubmitting}>{isSubmitting ? 'Procesando...' : 'Confirmar no devolución'}</button>
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={closeAllModals}>Cancelar</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmitting}>{isSubmitting ? 'Procesando...' : 'Confirmar no devolución'}</button>
           </div>
         </form>
       </ModalDialog>
@@ -2045,8 +2045,8 @@ const AccessPage = () => {
           </div>
           {modalError ? <InlineNotice tone="error">{modalError}</InlineNotice> : null}
           <div className="modal-dialog__actions">
-            <button type="button" className="tickets-page__ghost-action" onClick={closeAllModals}>Cancelar</button>
-            <button type="submit" className="tickets-page__primary-action" disabled={isSubmitting}>{isSubmitting ? 'Actualizando...' : 'Aplicar cambio'}</button>
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={closeAllModals}>Cancelar</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmitting}>{isSubmitting ? 'Actualizando...' : 'Aplicar cambio'}</button>
           </div>
         </form>
       </ModalDialog>
@@ -2099,8 +2099,8 @@ const AccessPage = () => {
           </div>
           {modalError ? <InlineNotice tone="error">{modalError}</InlineNotice> : null}
           <div className="modal-dialog__actions">
-            <button type="button" className="tickets-page__ghost-action" onClick={closeAllModals}>Cancelar</button>
-            <button type="submit" className="tickets-page__primary-action" disabled={isSubmitting}>{isSubmitting ? 'Procesando...' : 'Confirmar baja'}</button>
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={closeAllModals}>Cancelar</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmitting}>{isSubmitting ? 'Procesando...' : 'Confirmar baja'}</button>
           </div>
         </form>
       </ModalDialog>

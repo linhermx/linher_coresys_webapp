@@ -1960,16 +1960,16 @@ const InventoryPage = () => {
   }, [actionSuccess, actionError]);
 
   return (
-    <section className="inventory-page" aria-label="Área de trabajo de inventario">
-      <header className="tickets-page__header">
-        <div className="tickets-page__heading">
-          <h1 className="tickets-page__title">Inventario</h1>
+    <section className="workspace-page inventory-page" aria-label="Área de trabajo de inventario">
+      <header className="workspace-page__header">
+        <div className="workspace-page__heading">
+          <h1 className="workspace-page__title">Inventario</h1>
         </div>
-        <div className="tickets-page__header-actions">
+        <div className="workspace-page__header-actions">
           {canManageCatalog ? (
             <button
               type="button"
-              className="tickets-page__ghost-action"
+              className="workspace-action workspace-action--ghost"
               ref={catalogTriggerRef}
               onClick={openCatalogModal}
             >
@@ -1980,7 +1980,7 @@ const InventoryPage = () => {
           {canUpdateInventory ? (
             <button
               type="button"
-              className="tickets-page__ghost-action"
+              className="workspace-action workspace-action--ghost"
               ref={createMovementTriggerRef}
               onClick={() => {
                 resetActionFeedback();
@@ -2000,7 +2000,7 @@ const InventoryPage = () => {
           {canCreateInventory ? (
             <button
               type="button"
-              className="tickets-page__primary-action"
+              className="workspace-action workspace-action--primary"
               ref={createAssetTriggerRef}
               onClick={() => {
                 resetActionFeedback();
@@ -2014,16 +2014,16 @@ const InventoryPage = () => {
         </div>
       </header>
 
-      <section className="tickets-page__surface inventory-page__surface">
-        <div className="tickets-page__toolbar inventory-page__toolbar">
+      <section className="workspace-page__surface workspace-page__surface--operational">
+        <div className="workspace-page__toolbar workspace-page__toolbar--operational">
           <SegmentedControl
             label="Vista operativa de inventario"
             options={inventoryViewOptions}
             activeKey={activeView}
             onActivate={handleViewChange}
-            className="tickets-page__segmented inventory-page__view-segmented"
-            buttonClassName="tickets-page__segmented-button"
-            activeButtonClassName="tickets-page__segmented-button--active"
+            className="workspace-segmented workspace-page__view-segmented"
+            buttonClassName="workspace-segmented__button"
+            activeButtonClassName="workspace-segmented__button--active"
             idPrefix="inventory-view"
             panelIdByKey={(key) => `inventory-panel-${key}`}
           />
@@ -2031,7 +2031,7 @@ const InventoryPage = () => {
 
         {screenError ? (
           <EmptyState title={inventoryLoadErrorTitle} copy={screenError} id="inventory-state-error" role="region">
-            <button type="button" className="tickets-page__primary-action" onClick={() => void loadCoreData()}>
+            <button type="button" className="workspace-action workspace-action--primary" onClick={() => void loadCoreData()}>
               Reintentar
             </button>
           </EmptyState>
@@ -2042,9 +2042,9 @@ const InventoryPage = () => {
             id={`inventory-panel-${activeView}`}
             role="tabpanel"
             aria-labelledby={`inventory-view-${activeView}`}
-            className="inventory-panel"
+            className="workspace-panel"
           >
-            <div className="inventory-panel__workspace inventory-panel__workspace--fixed">
+            <div className="workspace-panel__viewport workspace-panel__viewport--fixed">
               <OperationalPanel
                 isLoading
                 hasData={false}
@@ -2054,7 +2054,7 @@ const InventoryPage = () => {
                 loadingRole="status"
                 loadingAriaLive="polite"
                 loadingAriaAtomic
-                className={`inventory-panel__workspace inventory-panel__workspace--${activeView === 'locations' ? 'locations' : activeView === 'assets' ? 'assets' : 'table'}`}
+                className="workspace-panel__viewport workspace-panel__viewport--flush"
                 content={null}
                 emptyTitle=""
                 emptyCopy=""
@@ -2065,8 +2065,8 @@ const InventoryPage = () => {
 
         {!isLoadingScreen && !screenError ? (
           <>
-            <section id="inventory-panel-assets" role="tabpanel" aria-labelledby="inventory-view-assets" hidden={activeView !== 'assets'} className="inventory-panel">
-              <div className="tickets-page__control-row inventory-assets__control-row">
+            <section id="inventory-panel-assets" role="tabpanel" aria-labelledby="inventory-view-assets" hidden={activeView !== 'assets'} className="workspace-panel">
+              <div className="workspace-page__control-row workspace-page__control-row--operational">
                 <ToolbarSearchField
                   id="inventory-search"
                   name="inventory-search"
@@ -2074,17 +2074,17 @@ const InventoryPage = () => {
                   onChange={setSearchTerm}
                   placeholder="Buscar por activo, código, tipo o marca..."
                   srLabel="Buscar activos"
-                  className="inventory-assets__search"
+                  className="workspace-search--operational"
                 />
-                <div className="tickets-page__filters inventory-assets__filters">
+                <div className="workspace-page__filters workspace-page__filters--operational">
                   <FilterChipGroup
                     label="Filtro por estado"
                     options={assetStatusOptions}
                     activeKey={assetStatusFilter}
                     onSelect={setAssetStatusFilter}
-                    className="tickets-page__chip-group inventory-assets__chip-group"
-                    chipClassName="tickets-page__chip inventory-assets__chip"
-                    activeChipClassName="tickets-page__chip--active inventory-assets__chip--active"
+                    className="workspace-chip-group workspace-chip-group--compact"
+                    chipClassName="workspace-chip"
+                    activeChipClassName="workspace-chip--active"
                   />
                   <FilterSelect
                     id="inventory-tracking-mode"
@@ -2094,7 +2094,7 @@ const InventoryPage = () => {
                     value={trackingModeFilter}
                     options={trackingModeOptions}
                     onChange={setTrackingModeFilter}
-                    className="filter-select inventory-assets__tracking-select"
+                    className="filter-select filter-select--operational"
                   />
                 </div>
               </div>
@@ -2108,11 +2108,11 @@ const InventoryPage = () => {
                 detailAriaLabel="Panel contextual de detalle"
                 detailAriaLabelledBy={INVENTORY_ASSET_DETAIL_TITLE_ID}
                 main={(
-                  <div className="inventory-panel__workspace inventory-panel__workspace--assets inventory-panel__workspace--fixed">
+                  <div className="workspace-panel__viewport workspace-panel__viewport--flush workspace-panel__viewport--fixed">
                     {filteredAssets.length === 0 ? (
                       <EmptyState title={inventoryAssetsNoResultsState.title} copy={inventoryAssetsNoResultsState.copy} id="inventory-assets-empty" role="region">
                         {canCreateInventory ? (
-                          <button type="button" className="tickets-page__primary-action" onClick={() => setIsCreateAssetOpen(true)}>
+                          <button type="button" className="workspace-action workspace-action--primary" onClick={() => setIsCreateAssetOpen(true)}>
                             Nuevo activo
                           </button>
                         ) : null}
@@ -2121,7 +2121,7 @@ const InventoryPage = () => {
                       <OperationalTable
                         className="inventory-assets-list"
                         ariaLabel="Listado de activos"
-                        scrollClassName="ticket-list__scroll inventory-table-wrap inventory-table-wrap--workspace"
+                        scrollClassName="data-table__scroll workspace-scroll-wrap--fill"
                         pagination={(
                           <PaginationBar
                             ariaLabel="Paginación de activos"
@@ -2143,7 +2143,7 @@ const InventoryPage = () => {
                           />
                         )}
                       >
-                        <table className="ticket-list__table inventory-table">
+                        <table className="data-table__table inventory-table">
                           <thead>
                             <tr>
                               <th scope="col">Activo</th>
@@ -2165,10 +2165,10 @@ const InventoryPage = () => {
                                 <tr
                                   key={asset.id}
                                   className={isSelected
-                                    ? 'ticket-list__row inventory-table__row ticket-list__row--active inventory-table__row--active'
-                                    : 'ticket-list__row inventory-table__row'}
+                                    ? 'data-table__row inventory-table__row data-table__row--active inventory-table__row--active'
+                                    : 'data-table__row inventory-table__row'}
                                 >
-                                  <td className="ticket-list__cell">
+                                  <td className="data-table__cell">
                                     <button
                                       type="button"
                                       className="data-table__row-action"
@@ -2186,14 +2186,14 @@ const InventoryPage = () => {
                                       <span className="data-table__item-meta">{asset.type_name} / {asset.category_name}</span>
                                     </button>
                                   </td>
-                                  <td className="ticket-list__cell">{asset.tracking_mode_name}</td>
-                                  <td className="ticket-list__cell">
+                                  <td className="data-table__cell">{asset.tracking_mode_name}</td>
+                                  <td className="data-table__cell">
                                     <span className={`inventory-status-chip inventory-status-chip--${toOperationalStatusTone(asset.operational_status_key)}`}>
                                       {asset.operational_status_name || toOperationalStatusLabel(asset.operational_status_key)}
                                     </span>
                                   </td>
-                                  <td className="ticket-list__cell">{stockLabel}</td>
-                                  <td className="ticket-list__cell">{formatDateTime(asset.updated_at)}</td>
+                                  <td className="data-table__cell">{stockLabel}</td>
+                                  <td className="data-table__cell">{formatDateTime(asset.updated_at)}</td>
                                 </tr>
                               );
                             })}
@@ -2385,7 +2385,7 @@ const InventoryPage = () => {
                               <h3 className="inventory-asset-detail__panel-title">Unidades registradas</h3>
                               <div className="inventory-asset-detail__toolbar">
                                 {canCreateInventory ? (
-                                  <button type="button" className="tickets-page__primary-action" onClick={openCreateUnitsModal}>
+                                  <button type="button" className="workspace-action workspace-action--primary" onClick={openCreateUnitsModal}>
                                     <Tags size={14} aria-hidden="true" />
                                     <span>Registrar unidades</span>
                                   </button>
@@ -2548,8 +2548,8 @@ const InventoryPage = () => {
               />
             </section>
 
-            <section id="inventory-panel-movements" role="tabpanel" aria-labelledby="inventory-view-movements" hidden={activeView !== 'movements'} className="inventory-panel">
-              <div className="tickets-page__control-row inventory-assets__control-row">
+            <section id="inventory-panel-movements" role="tabpanel" aria-labelledby="inventory-view-movements" hidden={activeView !== 'movements'} className="workspace-panel">
+              <div className="workspace-page__control-row workspace-page__control-row--operational">
                 <ToolbarSearchField
                   id="inventory-movements-search"
                   name="inventory-movements-search"
@@ -2557,21 +2557,21 @@ const InventoryPage = () => {
                   onChange={setMovementsSearchTerm}
                   placeholder="Buscar por activo, tipo, dirección o motivo..."
                   srLabel="Buscar movimientos"
-                  className="inventory-assets__search"
+                  className="workspace-search--operational"
                 />
               </div>
-              <div className="inventory-panel__workspace inventory-panel__workspace--table inventory-panel__workspace--fixed">
+              <div className="workspace-panel__viewport workspace-panel__viewport--flush workspace-panel__viewport--fixed">
                 {filteredMovements.length === 0 ? (
                   <EmptyState title={inventoryMovementsNoRecordsState.title} copy={inventoryMovementsNoRecordsState.copy} id="inventory-movements-empty" role="region">
                     {canUpdateInventory ? (
-                      <button type="button" className="tickets-page__primary-action" onClick={() => setIsCreateMovementOpen(true)}>Registrar movimiento</button>
+                      <button type="button" className="workspace-action workspace-action--primary" onClick={() => setIsCreateMovementOpen(true)}>Registrar movimiento</button>
                     ) : null}
                   </EmptyState>
                 ) : (
                   <OperationalTable
                     className="inventory-movements-list"
                     ariaLabel="Listado de movimientos de inventario"
-                    scrollClassName="ticket-list__scroll inventory-table-wrap inventory-table-wrap--workspace"
+                    scrollClassName="data-table__scroll workspace-scroll-wrap--fill"
                     pagination={(
                       <PaginationBar
                         ariaLabel="Paginación de movimientos"
@@ -2593,7 +2593,7 @@ const InventoryPage = () => {
                       />
                     )}
                   >
-                    <table className="ticket-list__table inventory-table inventory-table--movements">
+                    <table className="data-table__table inventory-table inventory-table--movements">
                       <thead>
                         <tr>
                           <th scope="col">Fecha</th>
@@ -2607,14 +2607,14 @@ const InventoryPage = () => {
                       </thead>
                       <tbody>
                         {paginatedMovements.map((movement) => (
-                          <tr key={`${movement.id}-${movement.movement_line_id}`} className="ticket-list__row inventory-table__row">
-                            <td className="ticket-list__cell">{formatDateTime(movement.happened_at)}</td>
-                            <td className="ticket-list__cell">{movement.asset_name || 'Sin activo'}</td>
-                            <td className="ticket-list__cell">{movement.movement_type_name}</td>
-                            <td className="ticket-list__cell">{toMovementDirectionLabel(movement.direction)}</td>
-                            <td className="ticket-list__cell">{movement.quantity}</td>
-                            <td className="ticket-list__cell">{movement.reason}</td>
-                            <td className="ticket-list__cell">{movement.operator_name || 'Sistema'}</td>
+                          <tr key={`${movement.id}-${movement.movement_line_id}`} className="data-table__row inventory-table__row">
+                            <td className="data-table__cell">{formatDateTime(movement.happened_at)}</td>
+                            <td className="data-table__cell">{movement.asset_name || 'Sin activo'}</td>
+                            <td className="data-table__cell">{movement.movement_type_name}</td>
+                            <td className="data-table__cell">{toMovementDirectionLabel(movement.direction)}</td>
+                            <td className="data-table__cell">{movement.quantity}</td>
+                            <td className="data-table__cell">{movement.reason}</td>
+                            <td className="data-table__cell">{movement.operator_name || 'Sistema'}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -2624,8 +2624,8 @@ const InventoryPage = () => {
               </div>
             </section>
 
-            <section id="inventory-panel-assignments" role="tabpanel" aria-labelledby="inventory-view-assignments" hidden={activeView !== 'assignments'} className="inventory-panel">
-              <div className="tickets-page__control-row inventory-assets__control-row">
+            <section id="inventory-panel-assignments" role="tabpanel" aria-labelledby="inventory-view-assignments" hidden={activeView !== 'assignments'} className="workspace-panel">
+              <div className="workspace-page__control-row workspace-page__control-row--operational">
                 <ToolbarSearchField
                   id="inventory-assignments-search"
                   name="inventory-assignments-search"
@@ -2633,17 +2633,17 @@ const InventoryPage = () => {
                   onChange={setAssignmentsSearchTerm}
                   placeholder="Buscar por activo, unidad, colaborador o ubicación..."
                   srLabel="Buscar resguardos"
-                  className="inventory-assets__search"
+                  className="workspace-search--operational"
                 />
-                <div className="tickets-page__filters inventory-assets__filters">
+                <div className="workspace-page__filters workspace-page__filters--operational">
                   <FilterChipGroup
                     label="Filtro por estado de resguardo"
                     options={assignmentStatusOptions}
                     activeKey={assignmentStatusFilter}
                     onSelect={setAssignmentStatusFilter}
-                    className="tickets-page__chip-group inventory-assets__chip-group"
-                    chipClassName="tickets-page__chip inventory-assets__chip"
-                    activeChipClassName="tickets-page__chip--active inventory-assets__chip--active"
+                    className="workspace-chip-group workspace-chip-group--compact"
+                    chipClassName="workspace-chip"
+                    activeChipClassName="workspace-chip--active"
                   />
                   <FilterSelect
                     id="inventory-assignment-collaborator-filter"
@@ -2653,14 +2653,14 @@ const InventoryPage = () => {
                     value={assignmentCollaboratorFilter}
                     options={collaboratorFilterOptions}
                     onChange={setAssignmentCollaboratorFilter}
-                    className="filter-select inventory-assets__tracking-select"
+                    className="filter-select filter-select--operational"
                   />
                 </div>
-                <div className="inventory-assets__actions">
+                <div className="workspace-page__actions">
                   {canAssignInventory ? (
                     <button
                       type="button"
-                      className="tickets-page__ghost-action"
+                      className="workspace-action workspace-action--ghost"
                       ref={createAssignmentTriggerRef}
                       onClick={(event) => openCreateAssignmentModal(null, { useGlobal: true, triggerElement: event.currentTarget })}
                     >
@@ -2670,13 +2670,13 @@ const InventoryPage = () => {
                   ) : null}
                 </div>
               </div>
-              <div className="inventory-panel__workspace inventory-panel__workspace--table inventory-panel__workspace--fixed">
+              <div className="workspace-panel__viewport workspace-panel__viewport--flush workspace-panel__viewport--fixed">
                 {filteredAssignments.length === 0 ? (
                   <EmptyState title={inventoryAssignmentsNoResultsState.title} copy={inventoryAssignmentsNoResultsState.copy} id="inventory-assignments-empty" role="region">
                     {canAssignInventory ? (
                       <button
                         type="button"
-                        className="tickets-page__primary-action"
+                        className="workspace-action workspace-action--primary"
                         onClick={(event) => openCreateAssignmentModal(null, { useGlobal: true, triggerElement: event.currentTarget })}
                       >
                         <ShieldCheck size={14} aria-hidden="true" />
@@ -2688,7 +2688,7 @@ const InventoryPage = () => {
                   <OperationalTable
                     className="inventory-assignments-list"
                     ariaLabel="Listado de resguardos"
-                    scrollClassName="ticket-list__scroll inventory-table-wrap inventory-table-wrap--workspace"
+                    scrollClassName="data-table__scroll workspace-scroll-wrap--fill"
                     pagination={(
                       <PaginationBar
                         ariaLabel="Paginación de resguardos"
@@ -2710,7 +2710,7 @@ const InventoryPage = () => {
                       />
                     )}
                   >
-                    <table className="ticket-list__table inventory-table inventory-table--assignments">
+                    <table className="data-table__table inventory-table inventory-table--assignments">
                       <thead>
                         <tr>
                           <th scope="col">Colaborador</th>
@@ -2725,36 +2725,36 @@ const InventoryPage = () => {
                       </thead>
                       <tbody>
                         {paginatedAssignments.map((assignment) => (
-                          <tr key={assignment.id} className="ticket-list__row inventory-table__row">
-                            <td className="ticket-list__cell">
+                          <tr key={assignment.id} className="data-table__row inventory-table__row">
+                            <td className="data-table__cell">
                               <span className="data-table__item-title">{assignment.collaborator?.full_name || 'Sin colaborador'}</span>
                               <span className="data-table__item-meta inventory-assignments__meta">{assignment.collaborator?.employee_id ? `ID ${assignment.collaborator.employee_id}` : 'Sin ID'}</span>
                             </td>
-                            <td className="ticket-list__cell">
+                            <td className="data-table__cell">
                               <span className="data-table__item-title">{assignment.asset?.asset_name || 'Sin activo'}</span>
                               <span className="data-table__item-meta inventory-assignments__meta">{assignment.asset?.internal_code || 'Sin código'}</span>
                             </td>
-                            <td className="ticket-list__cell">
+                            <td className="data-table__cell">
                               <span className="data-table__item-title">{assignment.asset_unit?.asset_tag || 'Sin unidad'}</span>
                               {assignment.asset_unit?.serial_number ? (
                                 <span className="data-table__item-meta inventory-assignments__meta">{assignment.asset_unit.serial_number}</span>
                               ) : null}
                             </td>
-                            <td className="ticket-list__cell">
+                            <td className="data-table__cell">
                               <span className="inventory-assignments__supporting">{assignment.location?.name || 'Sin ubicación'}</span>
                             </td>
-                            <td className="ticket-list__cell">
+                            <td className="data-table__cell">
                               <span className={`inventory-status-chip inventory-status-chip--${assignment.status === 'active' ? 'accent' : 'neutral'}`}>
                                 {assignment.status === 'active' ? 'Activo' : 'Cerrado'}
                               </span>
                             </td>
-                            <td className="ticket-list__cell">
+                            <td className="data-table__cell">
                               <span className="inventory-assignments__supporting">{formatDateTime(assignment.assigned_at)}</span>
                             </td>
-                            <td className="ticket-list__cell">
+                            <td className="data-table__cell">
                               <span className="inventory-assignments__supporting">{assignment.expected_return_at ? formatDateTime(assignment.expected_return_at) : 'Sin fecha'}</span>
                             </td>
-                            <td className="ticket-list__cell">
+                            <td className="data-table__cell">
                               <div className="inventory-table__actions inventory-table__actions--assignments">
                                 {assignment.status === 'active' && canAssignInventory ? (
                                   <button
@@ -2786,8 +2786,8 @@ const InventoryPage = () => {
               </div>
             </section>
 
-            <section id="inventory-panel-locations" role="tabpanel" aria-labelledby="inventory-view-locations" hidden={activeView !== 'locations'} className="inventory-panel">
-              <div className="tickets-page__control-row inventory-assets__control-row">
+            <section id="inventory-panel-locations" role="tabpanel" aria-labelledby="inventory-view-locations" hidden={activeView !== 'locations'} className="workspace-panel">
+              <div className="workspace-page__control-row workspace-page__control-row--operational">
                 <ToolbarSearchField
                   id="inventory-locations-search"
                   name="inventory-locations-search"
@@ -2795,18 +2795,18 @@ const InventoryPage = () => {
                   onChange={setLocationsSearchTerm}
                   placeholder="Buscar por nombre, código o tipo de ubicación..."
                   srLabel="Buscar ubicaciones"
-                  className="inventory-assets__search"
+                  className="workspace-search--operational"
                 />
-                <div className="tickets-page__filters inventory-assets__filters">
+                <div className="workspace-page__filters workspace-page__filters--operational">
                   {canCreateInventory ? (
-                    <button type="button" className="tickets-page__ghost-action" ref={createLocationTriggerRef} onClick={openLocationCreate}>
+                    <button type="button" className="workspace-action workspace-action--ghost" ref={createLocationTriggerRef} onClick={openLocationCreate}>
                       <Building2 size={16} aria-hidden="true" />
                       <span>Nueva ubicación</span>
                     </button>
                   ) : null}
                 </div>
               </div>
-              <div className="inventory-panel__workspace inventory-panel__workspace--locations inventory-panel__workspace--fixed">
+              <div className="workspace-panel__viewport workspace-panel__viewport--flush workspace-panel__viewport--fixed">
                 <OperationalPanel
                   hasData={filteredLocations.length > 0}
                   tone="neutral"
@@ -2902,7 +2902,7 @@ const InventoryPage = () => {
                   emptyId="inventory-locations-empty"
                   emptyRole="region"
                   emptyActions={canCreateInventory ? (
-                    <button type="button" className="tickets-page__primary-action" onClick={openLocationCreate}>Nueva ubicación</button>
+                    <button type="button" className="workspace-action workspace-action--primary" onClick={openLocationCreate}>Nueva ubicación</button>
                   ) : null}
                 />
               </div>
@@ -2976,8 +2976,8 @@ const InventoryPage = () => {
             </label>
           </div>
           <footer className="modal-dialog__actions">
-            <button type="button" className="tickets-page__ghost-action" onClick={() => setIsCreateAssetOpen(false)}>Cancelar</button>
-            <button type="submit" className="tickets-page__primary-action" disabled={isSubmittingAsset}>{isSubmittingAsset ? 'Guardando...' : 'Crear activo'}</button>
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={() => setIsCreateAssetOpen(false)}>Cancelar</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmittingAsset}>{isSubmittingAsset ? 'Guardando...' : 'Crear activo'}</button>
           </footer>
         </form>
       </ModalDialog>
@@ -3046,7 +3046,7 @@ const InventoryPage = () => {
               <h3>Partidas</h3>
               <button
                 type="button"
-                className="tickets-page__ghost-action"
+                className="workspace-action workspace-action--ghost"
                 onClick={() => setMovementForm((current) => ({
                   ...current,
                   lines: [...current.lines, { ...defaultMovementLine, asset_id: selectedAssetId ? String(selectedAssetId) : '' }]
@@ -3170,8 +3170,8 @@ const InventoryPage = () => {
           </section>
 
           <footer className="modal-dialog__actions">
-            <button type="button" className="tickets-page__ghost-action" onClick={() => setIsCreateMovementOpen(false)}>Cancelar</button>
-            <button type="submit" className="tickets-page__primary-action" disabled={isSubmittingMovement}>{isSubmittingMovement ? 'Guardando...' : 'Registrar movimiento'}</button>
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={() => setIsCreateMovementOpen(false)}>Cancelar</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmittingMovement}>{isSubmittingMovement ? 'Guardando...' : 'Registrar movimiento'}</button>
           </footer>
         </form>
       </ModalDialog>
@@ -3255,8 +3255,8 @@ const InventoryPage = () => {
             </label>
           </div>
           <footer className="modal-dialog__actions">
-            <button type="button" className="tickets-page__ghost-action" onClick={() => setIsEditAssetOpen(false)}>Cancelar</button>
-            <button type="submit" className="tickets-page__primary-action" disabled={isSubmittingAssetEdit}>
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={() => setIsEditAssetOpen(false)}>Cancelar</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmittingAssetEdit}>
               {isSubmittingAssetEdit ? 'Guardando...' : 'Guardar cambios'}
             </button>
           </footer>
@@ -3314,7 +3314,7 @@ const InventoryPage = () => {
                   </div>
                   <div className="inventory-catalog__section-actions">
                     {editingAssetTypeId ? (
-                      <button type="button" className="tickets-page__ghost-action" onClick={resetAssetTypeEditor}>
+                      <button type="button" className="workspace-action workspace-action--ghost" onClick={resetAssetTypeEditor}>
                         Crear nuevo tipo
                       </button>
                     ) : null}
@@ -3380,11 +3380,11 @@ const InventoryPage = () => {
                     <textarea id="inventory-catalog-asset-type-description" name="inventory_catalog_asset_type_description" rows="3" value={assetTypeForm.description} onChange={(event) => setAssetTypeForm((current) => ({ ...current, description: event.target.value }))} />
                   </label>
                   <div className="modal-dialog__field modal-dialog__field--full inventory-catalog__actions">
-                    <button type="submit" className="tickets-page__primary-action" disabled={isSubmittingCatalogAssetType}>
+                    <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmittingCatalogAssetType}>
                       {isSubmittingCatalogAssetType ? 'Guardando...' : (editingAssetTypeId ? 'Guardar cambios' : 'Crear tipo de activo')}
                     </button>
                     {editingAssetTypeId ? (
-                      <button type="button" className="tickets-page__ghost-action" onClick={resetAssetTypeEditor}>
+                      <button type="button" className="workspace-action workspace-action--ghost" onClick={resetAssetTypeEditor}>
                         Cancelar edición
                       </button>
                     ) : null}
@@ -3472,7 +3472,7 @@ const InventoryPage = () => {
                         <div className="inventory-catalog__existing-actions">
                           <button
                             type="button"
-                            className="tickets-page__ghost-action inventory-catalog__existing-state"
+                            className="workspace-action workspace-action--ghost inventory-catalog__existing-state"
                             onClick={() => void handleToggleAssetTypeActive(assetType)}
                             aria-label={`${assetType.is_active ? 'Desactivar' : 'Reactivar'} ${assetType.name}`}
                           >
@@ -3511,7 +3511,7 @@ const InventoryPage = () => {
                   </div>
                   <div className="inventory-catalog__section-actions">
                     {editingLocationTypeId ? (
-                      <button type="button" className="tickets-page__ghost-action" onClick={resetLocationTypeEditor}>
+                      <button type="button" className="workspace-action workspace-action--ghost" onClick={resetLocationTypeEditor}>
                         Crear nuevo tipo
                       </button>
                     ) : null}
@@ -3549,11 +3549,11 @@ const InventoryPage = () => {
                     <textarea id="inventory-catalog-location-type-description" name="inventory_catalog_location_type_description" rows="3" value={locationTypeForm.description} onChange={(event) => setLocationTypeForm((current) => ({ ...current, description: event.target.value }))} />
                   </label>
                   <div className="modal-dialog__field modal-dialog__field--full inventory-catalog__actions">
-                    <button type="submit" className="tickets-page__primary-action" disabled={isSubmittingCatalogLocationType}>
+                    <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmittingCatalogLocationType}>
                       {isSubmittingCatalogLocationType ? 'Guardando...' : (editingLocationTypeId ? 'Guardar cambios' : 'Crear tipo de ubicación')}
                     </button>
                     {editingLocationTypeId ? (
-                      <button type="button" className="tickets-page__ghost-action" onClick={resetLocationTypeEditor}>
+                      <button type="button" className="workspace-action workspace-action--ghost" onClick={resetLocationTypeEditor}>
                         Cancelar edición
                       </button>
                     ) : null}
@@ -3640,7 +3640,7 @@ const InventoryPage = () => {
                         <div className="inventory-catalog__existing-actions">
                           <button
                             type="button"
-                            className="tickets-page__ghost-action inventory-catalog__existing-state"
+                            className="workspace-action workspace-action--ghost inventory-catalog__existing-state"
                             onClick={() => void handleToggleLocationTypeActive(locationType)}
                             aria-label={`${locationType.is_active ? 'Desactivar' : 'Reactivar'} ${locationType.name}`}
                           >
@@ -3742,11 +3742,11 @@ const InventoryPage = () => {
             </label>
           </div>
           <footer className="modal-dialog__actions">
-            <button type="button" className="tickets-page__ghost-action" onClick={() => {
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={() => {
               setIsCreateLocationOpen(false);
               setEditingLocationId(null);
             }}>Cancelar</button>
-            <button type="submit" className="tickets-page__primary-action" disabled={isSubmittingLocation}>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmittingLocation}>
               {isSubmittingLocation ? 'Guardando...' : (editingLocationId ? 'Guardar cambios' : 'Registrar ubicación')}
             </button>
           </footer>
@@ -3767,7 +3767,7 @@ const InventoryPage = () => {
               <h3>Unidades</h3>
               <button
                 type="button"
-                className="tickets-page__ghost-action"
+                className="workspace-action workspace-action--ghost"
                 onClick={() => setUnitLines((current) => ([
                   ...current,
                   {
@@ -3838,8 +3838,8 @@ const InventoryPage = () => {
             </div>
           </section>
           <footer className="modal-dialog__actions">
-            <button type="button" className="tickets-page__ghost-action" onClick={() => setIsCreateUnitsOpen(false)}>Cancelar</button>
-            <button type="submit" className="tickets-page__primary-action" disabled={isSubmittingUnits}>
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={() => setIsCreateUnitsOpen(false)}>Cancelar</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmittingUnits}>
               {isSubmittingUnits ? 'Guardando...' : 'Registrar unidades'}
             </button>
           </footer>
@@ -3925,8 +3925,8 @@ const InventoryPage = () => {
             </label>
           </div>
           <footer className="modal-dialog__actions">
-            <button type="button" className="tickets-page__ghost-action" onClick={() => setIsCreateAssignmentOpen(false)}>Cancelar</button>
-            <button type="submit" className="tickets-page__primary-action" disabled={isSubmittingAssignment}>
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={() => setIsCreateAssignmentOpen(false)}>Cancelar</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmittingAssignment}>
               {isSubmittingAssignment ? 'Guardando...' : 'Crear resguardo'}
             </button>
           </footer>
@@ -3993,8 +3993,8 @@ const InventoryPage = () => {
             </label>
           </div>
           <footer className="modal-dialog__actions">
-            <button type="button" className="tickets-page__ghost-action" onClick={() => setIsCloseAssignmentOpen(false)}>Cancelar</button>
-            <button type="submit" className="tickets-page__primary-action" disabled={isSubmittingAssignmentClose}>
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={() => setIsCloseAssignmentOpen(false)}>Cancelar</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmittingAssignmentClose}>
               {isSubmittingAssignmentClose ? 'Guardando...' : 'Cerrar resguardo'}
             </button>
           </footer>
@@ -4078,7 +4078,7 @@ const InventoryPage = () => {
           <footer className="modal-dialog__actions">
             <button
               type="button"
-              className="tickets-page__ghost-action"
+              className="workspace-action workspace-action--ghost"
               onClick={() => {
                 setIsUnitStatusOpen(false);
                 setUnitStatusForm(defaultUnitStatusForm);
@@ -4086,7 +4086,7 @@ const InventoryPage = () => {
             >
               Cancelar
             </button>
-            <button type="submit" className="tickets-page__primary-action" disabled={isSubmittingUnitStatus}>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmittingUnitStatus}>
               {isSubmittingUnitStatus ? 'Guardando...' : 'Aplicar cambio'}
             </button>
           </footer>
