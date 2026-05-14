@@ -3,10 +3,10 @@ import PropTypes from 'prop-types';
 import { EmptyState } from './EmptyState.jsx';
 import { OperationalTable } from './OperationalTable.jsx';
 
-const toPanelStateClassName = (className = 'tickets-empty-state') => (
-  className.includes('tickets-empty-state--panel')
+const toPanelStateClassName = (className = 'workspace-empty-state') => (
+  className.includes('workspace-empty-state--panel')
     ? className
-    : `${className} tickets-empty-state--panel`
+    : `${className} workspace-empty-state--panel`
 );
 
 export const OperationalPanel = ({
@@ -32,7 +32,7 @@ export const OperationalPanel = ({
   emptyAriaAtomic,
   emptyAriaBusy,
   emptyHidden,
-  emptyClassName = 'tickets-empty-state',
+  emptyClassName = 'workspace-empty-state',
   emptyActions = null,
   loadingTitle = 'Cargando información',
   loadingCopy = 'Estamos preparando esta vista. Esto puede tardar unos segundos.',
@@ -44,7 +44,7 @@ export const OperationalPanel = ({
   loadingAriaAtomic = true,
   loadingAriaBusy = true,
   loadingHidden,
-  loadingClassName = 'tickets-empty-state'
+  loadingClassName = 'workspace-empty-state'
 }) => {
   let panelContent = content;
   let panelPagination = pagination;

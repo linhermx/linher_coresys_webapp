@@ -11,8 +11,8 @@ export const ToolbarSearchField = ({
   className = '',
   inputClassName = ''
 }) => {
-  const resolvedClassName = `toolbar-search${className ? ` ${className}` : ''}`;
-  const resolvedInputClassName = `toolbar-search__input${inputClassName ? ` ${inputClassName}` : ''}`;
+  const resolvedClassName = `workspace-search${className ? ` ${className}` : ''}`;
+  const resolvedInputClassName = `workspace-search__input${inputClassName ? ` ${inputClassName}` : ''}`;
 
   return (
     <label className={resolvedClassName} htmlFor={id}>

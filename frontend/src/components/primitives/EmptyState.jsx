@@ -5,7 +5,7 @@ export const EmptyState = ({
   title,
   copy,
   children = null,
-  className = 'tickets-empty-state',
+  className = 'workspace-empty-state',
   id,
   role,
   ariaLabelledBy,
@@ -36,8 +36,8 @@ export const EmptyState = ({
       aria-busy={ariaBusy}
       hidden={hidden}
     >
-      <TitleTag className="tickets-empty-state__title" id={resolvedTitleId}>{title}</TitleTag>
-      <p className="tickets-empty-state__copy" id={resolvedCopyId}>{copy}</p>
+      <TitleTag className="workspace-empty-state__title" id={resolvedTitleId}>{title}</TitleTag>
+      <p className="workspace-empty-state__copy" id={resolvedCopyId}>{copy}</p>
       {children}
     </div>
   );

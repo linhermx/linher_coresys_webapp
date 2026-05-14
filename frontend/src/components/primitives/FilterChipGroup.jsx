@@ -5,9 +5,9 @@ export const FilterChipGroup = ({
   options,
   activeKey,
   onSelect,
-  className = 'tickets-page__chip-group',
-  chipClassName = 'tickets-page__chip',
-  activeChipClassName = 'tickets-page__chip--active'
+  className = 'workspace-chip-group',
+  chipClassName = 'workspace-chip',
+  activeChipClassName = 'workspace-chip--active'
 }) => (
   <div className={className} role="group" aria-label={label}>
     {options.map((option) => (
