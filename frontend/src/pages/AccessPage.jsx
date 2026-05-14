@@ -1280,7 +1280,7 @@ const AccessPage = () => {
             className="access-layout"
             main={(
               <>
-                <section id="access-panel-assignments" role="tabpanel" aria-labelledby="access-view-assignments" hidden={activeView !== 'assignments'} className="access-panel">
+                <section id="access-panel-assignments" role="tabpanel" aria-labelledby="access-view-assignments" hidden={activeView !== 'assignments'} className="workspace-panel access-panel">
                   <div className="workspace-page__control-row workspace-page__control-row--operational">
                     <ToolbarSearchField
                       id="access-assignments-search"
@@ -1348,7 +1348,7 @@ const AccessPage = () => {
                   </div>
                 </section>
 
-                <section id="access-panel-media" role="tabpanel" aria-labelledby="access-view-media" hidden={activeView !== 'media'} className="access-panel">
+                <section id="access-panel-media" role="tabpanel" aria-labelledby="access-view-media" hidden={activeView !== 'media'} className="workspace-panel access-panel">
                   <div className="workspace-page__control-row workspace-page__control-row--operational">
                     <ToolbarSearchField
                       id="access-media-search"
@@ -1427,7 +1427,7 @@ const AccessPage = () => {
                   </div>
                 </section>
 
-                <section id="access-panel-enrollments" role="tabpanel" aria-labelledby="access-view-enrollments" hidden={activeView !== 'enrollments'} className="access-panel">
+                <section id="access-panel-enrollments" role="tabpanel" aria-labelledby="access-view-enrollments" hidden={activeView !== 'enrollments'} className="workspace-panel access-panel">
                   <div className="workspace-page__control-row workspace-page__control-row--operational">
                     <ToolbarSearchField
                       id="access-enrollments-search"
@@ -1505,7 +1505,7 @@ const AccessPage = () => {
                   </div>
                 </section>
 
-                <section id="access-panel-history" role="tabpanel" aria-labelledby="access-view-history" hidden={activeView !== 'history'} className="access-panel">
+                <section id="access-panel-history" role="tabpanel" aria-labelledby="access-view-history" hidden={activeView !== 'history'} className="workspace-panel access-panel">
                   <div className="workspace-page__control-row workspace-page__control-row--operational">
                     <ToolbarSearchField
                       id="access-events-search"
