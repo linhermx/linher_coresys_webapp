@@ -1912,150 +1912,151 @@ const TicketsPage = () => {
                 </div>
               </div>
 
-              <div className="tickets-page__summary-slot">
-                {ticketSummaryStrip}
-              </div>
-
               <WorkspaceSplitLayout
                 viewKey="list"
                 detailOpen={activeView === 'list' && hasDetailPanel}
                 detailId="tickets-detail-panel"
                 main={(
                   <div className="workspace-panel__viewport workspace-panel__viewport--flush workspace-panel__viewport--fixed">
-                    {isTicketsLoading ? (
-                      <EmptyState
-                        title={ticketsLoadingState.title}
-                        copy={ticketsLoadingState.copy}
-                        role="status"
-                        ariaLive="polite"
-                        ariaAtomic
-                      />
-                    ) : (
-                      <OperationalTablePanel
-                        hasData={hasResults}
-                        tone="neutral"
-                        emptyTitle={ticketsNoResultsState.title}
-                        emptyCopy={ticketsNoResultsState.copy}
-                        emptyActions={(
-                          <button type="button" className="workspace-empty-state__action" onClick={clearFilters}>
-                            Limpiar filtros
-                          </button>
-                        )}
-                        pagination={(
-                          <PaginationBar
-                            ariaLabel="Paginación de tickets"
-                            start={pageStart + 1}
-                            end={Math.min(pageStart + itemsPerPage, filteredTickets.length)}
-                            total={filteredTickets.length}
-                            pageSize={itemsPerPage}
-                            pageSizeOptions={LIST_PAGE_SIZE_OPTIONS}
-                            pageSizeId="tickets-page-size"
-                            pageSizeName="tickets_page_size"
-                            currentPage={resolvedCurrentPage}
-                            totalPages={totalPages}
-                            onPageSizeChange={(nextSize) => {
-                              setItemsPerPage(nextSize);
-                              setCurrentPage(1);
-                            }}
-                            onPrev={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                            onNext={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
-                          />
-                        )}
-                        table={(
-                          <table className="data-table__table">
-                            <colgroup>
-                              <col className="data-table__col data-table__col--ticket" />
-                              <col className="data-table__col data-table__col--status" />
-                              <col className="data-table__col data-table__col--priority" />
-                              <col className="data-table__col data-table__col--requester" />
-                              <col className="data-table__col data-table__col--assignee" />
-                              <col className="data-table__col data-table__col--due" />
-                              <col className="data-table__col data-table__col--activity" />
-                            </colgroup>
-                            <thead>
-                              <tr>
-                                <th scope="col">Ticket</th>
-                                <th scope="col">Estado</th>
-                                <th scope="col">Prioridad</th>
-                                <th scope="col">Solicitante</th>
-                                <th scope="col">Responsable</th>
-                                <th scope="col">Vence</th>
-                                <th scope="col">Actividad</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {paginatedTickets.map((ticket) => {
-                                const isSelected = selectedTicket?.id === ticket.id;
+                    <div className="workspace-panel__stack">
+                      <div className="workspace-panel__supporting">
+                        {ticketSummaryStrip}
+                      </div>
+                      {isTicketsLoading ? (
+                        <EmptyState
+                          title={ticketsLoadingState.title}
+                          copy={ticketsLoadingState.copy}
+                          role="status"
+                          ariaLive="polite"
+                          ariaAtomic
+                        />
+                      ) : (
+                        <OperationalTablePanel
+                          hasData={hasResults}
+                          tone="neutral"
+                          emptyTitle={ticketsNoResultsState.title}
+                          emptyCopy={ticketsNoResultsState.copy}
+                          emptyActions={(
+                            <button type="button" className="workspace-empty-state__action" onClick={clearFilters}>
+                              Limpiar filtros
+                            </button>
+                          )}
+                          pagination={(
+                            <PaginationBar
+                              ariaLabel="Paginación de tickets"
+                              start={pageStart + 1}
+                              end={Math.min(pageStart + itemsPerPage, filteredTickets.length)}
+                              total={filteredTickets.length}
+                              pageSize={itemsPerPage}
+                              pageSizeOptions={LIST_PAGE_SIZE_OPTIONS}
+                              pageSizeId="tickets-page-size"
+                              pageSizeName="tickets_page_size"
+                              currentPage={resolvedCurrentPage}
+                              totalPages={totalPages}
+                              onPageSizeChange={(nextSize) => {
+                                setItemsPerPage(nextSize);
+                                setCurrentPage(1);
+                              }}
+                              onPrev={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                              onNext={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                            />
+                          )}
+                          table={(
+                            <table className="data-table__table">
+                              <colgroup>
+                                <col className="data-table__col data-table__col--ticket" />
+                                <col className="data-table__col data-table__col--status" />
+                                <col className="data-table__col data-table__col--priority" />
+                                <col className="data-table__col data-table__col--requester" />
+                                <col className="data-table__col data-table__col--assignee" />
+                                <col className="data-table__col data-table__col--due" />
+                                <col className="data-table__col data-table__col--activity" />
+                              </colgroup>
+                              <thead>
+                                <tr>
+                                  <th scope="col">Ticket</th>
+                                  <th scope="col">Estado</th>
+                                  <th scope="col">Prioridad</th>
+                                  <th scope="col">Solicitante</th>
+                                  <th scope="col">Responsable</th>
+                                  <th scope="col">Vence</th>
+                                  <th scope="col">Actividad</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {paginatedTickets.map((ticket) => {
+                                  const isSelected = selectedTicket?.id === ticket.id;
 
-                                return (
-                                  <tr
-                                    key={ticket.id}
-                                    className={isSelected ? 'data-table__row data-table__row--active' : 'data-table__row'}
-                                  >
-                                    <td>
-                                      <button
-                                        type="button"
-                                        className="data-table__row-action"
-                                        onClick={(event) => {
-                                          openTicketDetail(ticket.id, event.currentTarget, {
-                                            shouldAutoFocus: event.detail === 0
-                                          });
-                                        }}
-                                        aria-label={`Ver detalle del ticket ${ticket.id}`}
-                                        aria-controls={hasDetailPanel ? 'tickets-detail-panel' : undefined}
-                                        aria-expanded={hasDetailPanel ? isSelected : undefined}
-                                      >
-                                        <span className="data-table__item-id">{ticket.id}</span>
-                                        <span className="data-table__item-title">{ticket.title}</span>
-                                        <span className="data-table__item-meta">
-                                          {typeMeta[ticket.type].label} · {categoryLabels[ticket.category]}
-                                        </span>
-                                        <span className="data-table__item-meta data-table__item-meta--compact">
-                                          {ticket.requester} · {ticket.assignee} · {ticket.dueLabel}
-                                        </span>
-                                      </button>
-                                    </td>
-                                    <td className="data-table__cell data-table__cell--status">
-                                      <TicketBadge label={statusMeta[ticket.status].label} tone={statusMeta[ticket.status].tone} />
-                                    </td>
-                                    <td className="data-table__cell data-table__cell--priority">
-                                      <TicketBadge label={priorityMeta[ticket.priority].label} tone={priorityMeta[ticket.priority].tone} />
-                                    </td>
-                                    <td className="data-table__cell data-table__cell--requester">
-                                      <div className="data-table__person">
-                                        <span className="data-table__avatar" aria-hidden="true">
-                                          {ticket.requesterPhoto ? (
-                                            <img src={ticket.requesterPhoto} alt="" loading="lazy" />
-                                          ) : (
-                                            <span>{getInitials(ticket.requester)}</span>
-                                          )}
-                                        </span>
-                                        <div className="data-table__person-copy">
-                                          <strong>{ticket.requester}</strong>
-                                          <span>{ticket.area}</span>
+                                  return (
+                                    <tr
+                                      key={ticket.id}
+                                      className={isSelected ? 'data-table__row data-table__row--active' : 'data-table__row'}
+                                    >
+                                      <td>
+                                        <button
+                                          type="button"
+                                          className="data-table__row-action"
+                                          onClick={(event) => {
+                                            openTicketDetail(ticket.id, event.currentTarget, {
+                                              shouldAutoFocus: event.detail === 0
+                                            });
+                                          }}
+                                          aria-label={`Ver detalle del ticket ${ticket.id}`}
+                                          aria-controls={hasDetailPanel ? 'tickets-detail-panel' : undefined}
+                                          aria-expanded={hasDetailPanel ? isSelected : undefined}
+                                        >
+                                          <span className="data-table__item-id">{ticket.id}</span>
+                                          <span className="data-table__item-title">{ticket.title}</span>
+                                          <span className="data-table__item-meta">
+                                            {typeMeta[ticket.type].label} · {categoryLabels[ticket.category]}
+                                          </span>
+                                          <span className="data-table__item-meta data-table__item-meta--compact">
+                                            {ticket.requester} · {ticket.assignee} · {ticket.dueLabel}
+                                          </span>
+                                        </button>
+                                      </td>
+                                      <td className="data-table__cell data-table__cell--status">
+                                        <TicketBadge label={statusMeta[ticket.status].label} tone={statusMeta[ticket.status].tone} />
+                                      </td>
+                                      <td className="data-table__cell data-table__cell--priority">
+                                        <TicketBadge label={priorityMeta[ticket.priority].label} tone={priorityMeta[ticket.priority].tone} />
+                                      </td>
+                                      <td className="data-table__cell data-table__cell--requester">
+                                        <div className="data-table__person">
+                                          <span className="data-table__avatar" aria-hidden="true">
+                                            {ticket.requesterPhoto ? (
+                                              <img src={ticket.requesterPhoto} alt="" loading="lazy" />
+                                            ) : (
+                                              <span>{getInitials(ticket.requester)}</span>
+                                            )}
+                                          </span>
+                                          <div className="data-table__person-copy">
+                                            <strong>{ticket.requester}</strong>
+                                            <span>{ticket.area}</span>
+                                          </div>
                                         </div>
-                                      </div>
-                                    </td>
-                                    <td className="data-table__cell data-table__cell--assignee">
-                                      <span className="data-table__truncate">{ticket.assignee}</span>
-                                    </td>
-                                    <td className="data-table__cell data-table__cell--due">
-                                      <span className="data-table__truncate">{ticket.dueLabel}</span>
-                                    </td>
-                                    <td className="data-table__cell data-table__cell--activity">
-                                      <div className="data-table__activity">
-                                        <span>{ticket.activityLabel || ticket.updatedLabel}</span>
-                                        <span>{ticket.commentsLabel || `${ticket.commentsCount} comentarios`}</span>
-                                      </div>
-                                    </td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        )}
-                      />
-                    )}
+                                      </td>
+                                      <td className="data-table__cell data-table__cell--assignee">
+                                        <span className="data-table__truncate">{ticket.assignee}</span>
+                                      </td>
+                                      <td className="data-table__cell data-table__cell--due">
+                                        <span className="data-table__truncate">{ticket.dueLabel}</span>
+                                      </td>
+                                      <td className="data-table__cell data-table__cell--activity">
+                                        <div className="data-table__activity">
+                                          <span>{ticket.activityLabel || ticket.updatedLabel}</span>
+                                          <span>{ticket.commentsLabel || `${ticket.commentsCount} comentarios`}</span>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          )}
+                        />
+                      )}
+                    </div>
                   </div>
                 )}
                 detail={ticketsDetailPanel}
