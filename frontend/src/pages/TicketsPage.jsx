@@ -1711,6 +1711,107 @@ const TicketsPage = () => {
     }
   };
 
+  const ticketFilters = (
+    <>
+      <FilterChipGroup
+        label="Alcance de tickets"
+        options={scopeOptions}
+        activeKey={scopeFilter}
+        onSelect={(optionKey) => {
+          closeTicketDetail(false);
+          setScopeFilter(optionKey);
+          resetVolumeViews();
+        }}
+        className="workspace-chip-group workspace-chip-group--compact"
+        chipClassName="workspace-chip"
+        activeChipClassName="workspace-chip--active"
+      />
+
+      <FilterChipGroup
+        label="Tipo de ticket"
+        options={typeOptions}
+        activeKey={typeFilter}
+        onSelect={(optionKey) => {
+          closeTicketDetail(false);
+          setTypeFilter(optionKey);
+          resetVolumeViews();
+        }}
+        className="workspace-chip-group workspace-chip-group--compact"
+        chipClassName="workspace-chip"
+        activeChipClassName="workspace-chip--active"
+      />
+    </>
+  );
+
+  const ticketSummaryStrip = (
+    <div className="tickets-page__summary" role="group" aria-label="Resumen por estado">
+      <button
+        type="button"
+        className={`tickets-page__summary-card tickets-page__summary-card--all${statusFilter === 'all' ? ' tickets-page__summary-card--active' : ''}`}
+        onClick={() => {
+          closeTicketDetail(false);
+          setStatusFilter('all');
+          resetVolumeViews();
+        }}
+        aria-pressed={statusFilter === 'all'}
+        aria-label={`Filtrar todos los tickets. ${ticketsByScopeAndType.length} resultados visibles.`}
+      >
+        <span className="tickets-page__summary-label">Todos</span>
+        <strong className="tickets-page__summary-value">{ticketsByScopeAndType.length}</strong>
+      </button>
+
+      {statusSummary.map((itemSummary) => (
+        <button
+          key={itemSummary.key}
+          type="button"
+          className={`tickets-page__summary-card tickets-page__summary-card--${itemSummary.tone}${statusFilter === itemSummary.key ? ' tickets-page__summary-card--active' : ''}`}
+          onClick={() => {
+            closeTicketDetail(false);
+            setStatusFilter(itemSummary.key);
+            resetVolumeViews();
+          }}
+          aria-pressed={statusFilter === itemSummary.key}
+          aria-label={`Filtrar tickets en ${itemSummary.label}. ${itemSummary.count} resultados visibles.`}
+        >
+          <span className="tickets-page__summary-label">{itemSummary.label}</span>
+          <strong className="tickets-page__summary-value">{itemSummary.count}</strong>
+        </button>
+      ))}
+    </div>
+  );
+
+  const ticketsDetailPanel = shouldRenderDetail ? (
+    <TicketDetailPanel
+      ticket={selectedTicket}
+      onClose={closeTicketDetail}
+      onEdit={handleOpenEditModal}
+      onChangeStatus={handleChangeStatusFromDetail}
+      onAddComment={handleAddCommentFromDetail}
+      isStatusSubmitting={isStatusSubmitting}
+      statusChangeError={statusChangeError}
+      isCommentSubmitting={isCommentSubmitting}
+      commentError={commentError}
+      onUploadAttachment={handleUploadAttachment}
+      isUploadingAttachment={isAttachmentUploading}
+      attachmentError={attachmentUploadError}
+      closeButtonRef={detailCloseButtonRef}
+    />
+  ) : hasDetailPanel ? (
+    <TicketDetailContextState
+      reason={detailHiddenReason}
+      ticketId={selectedTicketId}
+      targetPage={selectedTicketTargetPage}
+      onGoToPage={() => {
+        if (selectedTicketTargetPage) {
+          setCurrentPage(selectedTicketTargetPage);
+        }
+      }}
+      onResetFilters={clearFilters}
+      onClose={closeTicketDetail}
+      closeButtonRef={detailCloseButtonRef}
+    />
+  ) : null;
+
   return (
     <section className="workspace-page tickets-page" aria-label="Área de trabajo de Tickets">
       <header className="workspace-page__header">
@@ -1743,436 +1844,384 @@ const TicketsPage = () => {
         </div>
       </header>
 
-      <section className="workspace-page__surface">
-        <div className="workspace-page__toolbar">
-          <ToolbarSearchField
-            id="ticket-search"
-            name="ticket_search"
-            value={searchTerm}
-            onChange={(value) => {
-              closeTicketDetail(false);
-              setSearchTerm(value);
-              resetVolumeViews();
-            }}
-            placeholder="Buscar tickets por folio, título o solicitante"
-            srLabel="Buscar en tickets"
-          />
-
+      <section className="workspace-page__surface workspace-page__surface--operational">
+        <div className="workspace-page__toolbar workspace-page__toolbar--operational">
           <SegmentedControl
             label="Vistas de tickets"
             options={viewOptions}
             activeKey={activeView}
             onActivate={activateView}
+            className="workspace-segmented workspace-page__view-segmented"
+            buttonClassName="workspace-segmented__button"
+            activeButtonClassName="workspace-segmented__button--active"
             idPrefix="tickets-view-tab"
             panelIdByKey={(key) => (key === 'list' ? 'tickets-list-panel' : 'tickets-pipeline-panel')}
           />
-        </div>
-
-        <div className="workspace-page__control-row">
-          <div
-            className={`tickets-page__summary-slot${activeView !== 'list' ? ' tickets-page__summary-slot--placeholder' : ''}`}
-            aria-hidden={activeView !== 'list'}
-          >
-            {activeView === 'list' ? (
-              <div className="tickets-page__summary" role="group" aria-label="Resumen por estado">
-                <button
-                  type="button"
-                  className={`tickets-page__summary-card tickets-page__summary-card--all${statusFilter === 'all' ? ' tickets-page__summary-card--active' : ''}`}
-                  onClick={() => {
-                    closeTicketDetail(false);
-                    setStatusFilter('all');
-                    resetVolumeViews();
-                  }}
-                  aria-pressed={statusFilter === 'all'}
-                  aria-label={`Filtrar todos los tickets. ${ticketsByScopeAndType.length} resultados visibles.`}
-                >
-                  <span className="tickets-page__summary-label">Todos</span>
-                  <strong className="tickets-page__summary-value">{ticketsByScopeAndType.length}</strong>
-                </button>
-
-                {statusSummary.map((itemSummary) => (
-                  <button
-                    key={itemSummary.key}
-                    type="button"
-                    className={`tickets-page__summary-card tickets-page__summary-card--${itemSummary.tone}${statusFilter === itemSummary.key ? ' tickets-page__summary-card--active' : ''}`}
-                    onClick={() => {
-                      closeTicketDetail(false);
-                      setStatusFilter(itemSummary.key);
-                      resetVolumeViews();
-                    }}
-                    aria-pressed={statusFilter === itemSummary.key}
-                    aria-label={`Filtrar tickets en ${itemSummary.label}. ${itemSummary.count} resultados visibles.`}
-                  >
-                    <span className="tickets-page__summary-label">{itemSummary.label}</span>
-                    <strong className="tickets-page__summary-value">{itemSummary.count}</strong>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </div>
-
-          <div className="workspace-page__filters" aria-label="Filtros de tickets">
-            <FilterChipGroup
-              label="Alcance de tickets"
-              options={scopeOptions}
-              activeKey={scopeFilter}
-              onSelect={(optionKey) => {
-                closeTicketDetail(false);
-                setScopeFilter(optionKey);
-                resetVolumeViews();
-              }}
-            />
-
-            <FilterChipGroup
-              label="Tipo de ticket"
-              options={typeOptions}
-              activeKey={typeFilter}
-              onSelect={(optionKey) => {
-                closeTicketDetail(false);
-                setTypeFilter(optionKey);
-                resetVolumeViews();
-              }}
-            />
-          </div>
         </div>
 
         <p className="sr-only" aria-live="polite" aria-atomic="true">
           {liveStatusMessage}
         </p>
 
-        <WorkspaceSplitLayout
-          viewKey={activeView}
-          detailOpen={hasDetailPanel}
-          detailId="tickets-detail-panel"
-          main={(
-            <>
-              {isTicketsLoading ? (
-                <EmptyState
-                  title={ticketsLoadingState.title}
-                  copy={ticketsLoadingState.copy}
-                  role="status"
-                  ariaLive="polite"
-                  ariaAtomic
-                />
-              ) : ticketsError ? (
-                <EmptyState
-                  title={ticketsLoadErrorTitle}
-                  copy={ticketsError}
-                  role="alert"
-                  ariaLive="assertive"
-                  ariaAtomic
+        {ticketsError ? (
+          <EmptyState
+            title={ticketsLoadErrorTitle}
+            copy={ticketsError}
+            role="alert"
+            ariaLive="assertive"
+            ariaAtomic
+          >
+            <div className="workspace-empty-state__actions">
+              {isAuthRequiredError ? (
+                <button
+                  type="button"
+                  className="workspace-action workspace-action--primary"
+                  onClick={() => {
+                    clearSession();
+                    navigate('/login', { replace: true, state: { from: '/tickets' } });
+                  }}
                 >
-                  <div className="workspace-empty-state__actions">
-                    {isAuthRequiredError ? (
-                      <button
-                        type="button"
-                        className="workspace-action workspace-action--primary"
-                        onClick={() => {
-                          clearSession();
-                          navigate('/login', { replace: true, state: { from: '/tickets' } });
-                        }}
-                      >
-                        Iniciar sesión
-                      </button>
-                    ) : null}
-                    <button type="button" className="workspace-empty-state__action" onClick={loadWorkspaceData}>
-                      Reintentar
-                    </button>
-                  </div>
-                </EmptyState>
-              ) : activeView === 'list' ? (
-                <OperationalTablePanel
-                  hasData={hasResults}
-                  tone="neutral"
-                  id="tickets-list-panel"
-                  role="tabpanel"
-                  ariaLabelledBy="tickets-view-tab-list"
-                  hidden={activeView !== 'list'}
-                  emptyTitle={ticketsNoResultsState.title}
-                  emptyCopy={ticketsNoResultsState.copy}
-                  emptyId="tickets-list-panel"
-                  emptyRole="tabpanel"
-                  emptyAriaLabelledBy="tickets-view-tab-list"
-                  emptyHidden={activeView !== 'list'}
-                  emptyActions={(
-                    <button type="button" className="workspace-empty-state__action" onClick={clearFilters}>
-                      Limpiar filtros
-                    </button>
-                  )}
-                  pagination={(
-                    <PaginationBar
-                      ariaLabel="Paginación de tickets"
-                      start={pageStart + 1}
-                      end={Math.min(pageStart + itemsPerPage, filteredTickets.length)}
-                      total={filteredTickets.length}
-                      pageSize={itemsPerPage}
-                      pageSizeOptions={LIST_PAGE_SIZE_OPTIONS}
-                      pageSizeId="tickets-page-size"
-                      pageSizeName="tickets_page_size"
-                      currentPage={resolvedCurrentPage}
-                      totalPages={totalPages}
-                      onPageSizeChange={(nextSize) => {
-                        setItemsPerPage(nextSize);
-                        setCurrentPage(1);
-                      }}
-                      onPrev={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                      onNext={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
-                    />
-                  )}
-                  table={(
-                    <table className="data-table__table">
-                      <colgroup>
-                        <col className="data-table__col data-table__col--ticket" />
-                        <col className="data-table__col data-table__col--status" />
-                        <col className="data-table__col data-table__col--priority" />
-                        <col className="data-table__col data-table__col--requester" />
-                        <col className="data-table__col data-table__col--assignee" />
-                        <col className="data-table__col data-table__col--due" />
-                        <col className="data-table__col data-table__col--activity" />
-                      </colgroup>
-                      <thead>
-                        <tr>
-                          <th scope="col">Ticket</th>
-                          <th scope="col">Estado</th>
-                          <th scope="col">Prioridad</th>
-                          <th scope="col">Solicitante</th>
-                          <th scope="col">Responsable</th>
-                          <th scope="col">Vence</th>
-                          <th scope="col">Actividad</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {paginatedTickets.map((ticket) => {
-                          const isSelected = selectedTicket?.id === ticket.id;
-
-                          return (
-                            <tr
-                              key={ticket.id}
-                              className={isSelected ? 'data-table__row data-table__row--active' : 'data-table__row'}
-                            >
-                              <td>
-                                <button
-                                  type="button"
-                                  className="data-table__row-action"
-                                  onClick={(event) => {
-                                    openTicketDetail(ticket.id, event.currentTarget, {
-                                      shouldAutoFocus: event.detail === 0
-                                    });
-                                  }}
-                                  aria-label={`Ver detalle del ticket ${ticket.id}`}
-                                  aria-controls={hasDetailPanel ? 'tickets-detail-panel' : undefined}
-                                  aria-expanded={hasDetailPanel ? isSelected : undefined}
-                                >
-                                  <span className="data-table__item-id">{ticket.id}</span>
-                                  <span className="data-table__item-title">{ticket.title}</span>
-                                  <span className="data-table__item-meta">
-                                    {typeMeta[ticket.type].label} · {categoryLabels[ticket.category]}
-                                  </span>
-                                  <span className="data-table__item-meta data-table__item-meta--compact">
-                                    {ticket.requester} · {ticket.assignee} · {ticket.dueLabel}
-                                  </span>
-                                </button>
-                              </td>
-                              <td className="data-table__cell data-table__cell--status">
-                                <TicketBadge label={statusMeta[ticket.status].label} tone={statusMeta[ticket.status].tone} />
-                              </td>
-                              <td className="data-table__cell data-table__cell--priority">
-                                <TicketBadge label={priorityMeta[ticket.priority].label} tone={priorityMeta[ticket.priority].tone} />
-                              </td>
-                              <td className="data-table__cell data-table__cell--requester">
-                                <div className="data-table__person">
-                                  <span className="data-table__avatar" aria-hidden="true">
-                                    {ticket.requesterPhoto ? (
-                                      <img src={ticket.requesterPhoto} alt="" loading="lazy" />
-                                    ) : (
-                                      <span>{getInitials(ticket.requester)}</span>
-                                    )}
-                                  </span>
-                                  <div className="data-table__person-copy">
-                                    <strong>{ticket.requester}</strong>
-                                    <span>{ticket.area}</span>
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="data-table__cell data-table__cell--assignee">
-                                <span className="data-table__truncate">{ticket.assignee}</span>
-                              </td>
-                              <td className="data-table__cell data-table__cell--due">
-                                <span className="data-table__truncate">{ticket.dueLabel}</span>
-                              </td>
-                              <td className="data-table__cell data-table__cell--activity">
-                                <div className="data-table__activity">
-                                  <span>{ticket.activityLabel || ticket.updatedLabel}</span>
-                                  <span>{ticket.commentsLabel || `${ticket.commentsCount} comentarios`}</span>
-                                </div>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  )}
+                  Iniciar sesión
+                </button>
+              ) : null}
+              <button type="button" className="workspace-empty-state__action" onClick={loadWorkspaceData}>
+                Reintentar
+              </button>
+            </div>
+          </EmptyState>
+        ) : (
+          <>
+            <section id="tickets-list-panel" role="tabpanel" aria-labelledby="tickets-view-tab-list" hidden={activeView !== 'list'} className="workspace-panel">
+              <div className="workspace-page__control-row workspace-page__control-row--operational">
+                <ToolbarSearchField
+                  id="tickets-list-search"
+                  name="ticket_search"
+                  value={searchTerm}
+                  onChange={(value) => {
+                    closeTicketDetail(false);
+                    setSearchTerm(value);
+                    resetVolumeViews();
+                  }}
+                  placeholder="Buscar tickets por folio, título o solicitante"
+                  srLabel="Buscar en tickets"
+                  className="workspace-search--operational"
                 />
-              ) : hasResults ? (
-                <div
-                  className="ticket-board-shell"
-                  id="tickets-pipeline-panel"
-                  role="tabpanel"
-                  aria-labelledby="tickets-view-tab-pipeline"
-                  aria-label="Pipeline de tickets"
-                  aria-describedby="tickets-pipeline-help"
-                  hidden={activeView !== 'pipeline'}
-                >
-                  <p id="tickets-pipeline-help" className="sr-only">
-                    Arrastra un ticket al carril de destino para cambiar su estado, o ábrelo y actualízalo
-                    desde el panel de detalle.
-                  </p>
-                  <div className="ticket-board">
-                    {groupedTickets.map((lane) => {
-                      const visibleCount = pipelineVisibleCounts[lane.key] ?? PIPELINE_VISIBLE_BATCH;
-                      const visibleItems = lane.items.slice(0, visibleCount);
-                      const remainingCount = Math.max(0, lane.items.length - visibleCount);
 
-                      return (
-                        <section
-                          key={lane.key}
-                          className={`ticket-board__lane ticket-board__lane--${lane.tone}`}
-                          aria-labelledby={`lane-${lane.key}`}
-                        >
-                          <header className="ticket-board__lane-header">
-                            <div>
-                              <h2 id={`lane-${lane.key}`} className="ticket-board__lane-title">{lane.label}</h2>
-                              <span className="ticket-board__lane-count">{lane.items.length}</span>
-                            </div>
-                          </header>
-
-                          <div
-                            className={`ticket-board__lane-body${dragOverLaneKey === lane.key ? ' ticket-board__lane-body--drag-over' : ''}`}
-                            onDragOver={(event) => {
-                              event.preventDefault();
-                              if (dragOverLaneKey !== lane.key) {
-                                setDragOverLaneKey(lane.key);
-                              }
-                            }}
-                            onDragLeave={() => {
-                              if (dragOverLaneKey === lane.key) {
-                                setDragOverLaneKey('');
-                              }
-                            }}
-                            onDrop={(event) => {
-                              event.preventDefault();
-                              void handleDropOnLane(lane.key);
-                            }}
-                          >
-                            {visibleItems.map((ticket) => {
-                              const isSelected = selectedTicket?.id === ticket.id;
-
-                              return (
-                                <button
-                                  key={ticket.id}
-                                  type="button"
-                                  className={`ticket-card${isSelected ? ' ticket-card--active' : ''}`}
-                                  onClick={(event) => {
-                                    openTicketDetail(ticket.id, event.currentTarget, {
-                                      shouldAutoFocus: event.detail === 0
-                                    });
-                                  }}
-                                  aria-label={`Ver detalle del ticket ${ticket.id}`}
-                                  aria-controls={hasDetailPanel ? 'tickets-detail-panel' : undefined}
-                                  aria-expanded={hasDetailPanel ? isSelected : undefined}
-                                  draggable
-                                  onDragStart={(event) => {
-                                    event.dataTransfer.effectAllowed = 'move';
-                                    event.dataTransfer.setData('text/plain', String(ticket.ticketId));
-                                    setDraggingTicketId(ticket.ticketId);
-                                  }}
-                                  onDragEnd={() => {
-                                    setDraggingTicketId(null);
-                                    setDragOverLaneKey('');
-                                  }}
-                                >
-                                  <div className="ticket-card__header">
-                                    <span className="ticket-card__id">{ticket.id}</span>
-                                    <TicketBadge label={priorityMeta[ticket.priority].label} tone={priorityMeta[ticket.priority].tone} />
-                                  </div>
-                                  <p className="ticket-card__title">{ticket.title}</p>
-                                  <div className="ticket-card__footer">
-                                    <span>{ticket.requester}</span>
-                                    <span>{ticket.dueLabel}</span>
-                                  </div>
-                                </button>
-                              );
-                            })}
-
-                            {remainingCount > 0 ? (
-                              <button
-                                type="button"
-                                className={`ticket-board__more ticket-board__more--${lane.tone}`}
-                                aria-label={`Ver más tickets en ${lane.label}. Quedan ${remainingCount} por mostrar`}
-                                onClick={() => {
-                                  setPipelineVisibleCounts((currentCounts) => ({
-                                    ...currentCounts,
-                                    [lane.key]: currentCounts[lane.key] + PIPELINE_VISIBLE_BATCH
-                                  }));
-                                }}
-                              >
-                                Ver más ({remainingCount})
-                              </button>
-                            ) : null}
-                          </div>
-                        </section>
-                      );
-                    })}
-                  </div>
+                <div className="workspace-page__filters workspace-page__filters--operational" aria-label="Filtros de tickets">
+                  {ticketFilters}
                 </div>
-              ) : (
-                <EmptyState
-                  title={ticketsNoResultsState.title}
-                  copy={ticketsNoResultsState.copy}
-                  id="tickets-pipeline-panel"
-                  role="tabpanel"
-                  ariaLabelledBy="tickets-view-tab-pipeline"
-                  hidden={activeView !== 'pipeline'}
-                >
-                  <button type="button" className="workspace-empty-state__action" onClick={clearFilters}>
-                    Limpiar filtros
-                  </button>
-                </EmptyState>
-              )}
-            </>
-          )}
-          detail={shouldRenderDetail ? (
-            <TicketDetailPanel
-              ticket={selectedTicket}
-              onClose={closeTicketDetail}
-              onEdit={handleOpenEditModal}
-              onChangeStatus={handleChangeStatusFromDetail}
-              onAddComment={handleAddCommentFromDetail}
-              isStatusSubmitting={isStatusSubmitting}
-              statusChangeError={statusChangeError}
-              isCommentSubmitting={isCommentSubmitting}
-              commentError={commentError}
-              onUploadAttachment={handleUploadAttachment}
-              isUploadingAttachment={isAttachmentUploading}
-              attachmentError={attachmentUploadError}
-              closeButtonRef={detailCloseButtonRef}
-            />
-          ) : hasDetailPanel ? (
-            <TicketDetailContextState
-              reason={detailHiddenReason}
-              ticketId={selectedTicketId}
-              targetPage={selectedTicketTargetPage}
-              onGoToPage={() => {
-                if (selectedTicketTargetPage) {
-                  setCurrentPage(selectedTicketTargetPage);
-                }
-              }}
-              onResetFilters={clearFilters}
-              onClose={closeTicketDetail}
-              closeButtonRef={detailCloseButtonRef}
-            />
-          ) : null}
-        />
+              </div>
+
+              <div className="tickets-page__summary-slot">
+                {ticketSummaryStrip}
+              </div>
+
+              <WorkspaceSplitLayout
+                viewKey="list"
+                detailOpen={activeView === 'list' && hasDetailPanel}
+                detailId="tickets-detail-panel"
+                main={(
+                  <div className="workspace-panel__viewport workspace-panel__viewport--flush workspace-panel__viewport--fixed">
+                    {isTicketsLoading ? (
+                      <EmptyState
+                        title={ticketsLoadingState.title}
+                        copy={ticketsLoadingState.copy}
+                        role="status"
+                        ariaLive="polite"
+                        ariaAtomic
+                      />
+                    ) : (
+                      <OperationalTablePanel
+                        hasData={hasResults}
+                        tone="neutral"
+                        emptyTitle={ticketsNoResultsState.title}
+                        emptyCopy={ticketsNoResultsState.copy}
+                        emptyActions={(
+                          <button type="button" className="workspace-empty-state__action" onClick={clearFilters}>
+                            Limpiar filtros
+                          </button>
+                        )}
+                        pagination={(
+                          <PaginationBar
+                            ariaLabel="Paginación de tickets"
+                            start={pageStart + 1}
+                            end={Math.min(pageStart + itemsPerPage, filteredTickets.length)}
+                            total={filteredTickets.length}
+                            pageSize={itemsPerPage}
+                            pageSizeOptions={LIST_PAGE_SIZE_OPTIONS}
+                            pageSizeId="tickets-page-size"
+                            pageSizeName="tickets_page_size"
+                            currentPage={resolvedCurrentPage}
+                            totalPages={totalPages}
+                            onPageSizeChange={(nextSize) => {
+                              setItemsPerPage(nextSize);
+                              setCurrentPage(1);
+                            }}
+                            onPrev={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                            onNext={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                          />
+                        )}
+                        table={(
+                          <table className="data-table__table">
+                            <colgroup>
+                              <col className="data-table__col data-table__col--ticket" />
+                              <col className="data-table__col data-table__col--status" />
+                              <col className="data-table__col data-table__col--priority" />
+                              <col className="data-table__col data-table__col--requester" />
+                              <col className="data-table__col data-table__col--assignee" />
+                              <col className="data-table__col data-table__col--due" />
+                              <col className="data-table__col data-table__col--activity" />
+                            </colgroup>
+                            <thead>
+                              <tr>
+                                <th scope="col">Ticket</th>
+                                <th scope="col">Estado</th>
+                                <th scope="col">Prioridad</th>
+                                <th scope="col">Solicitante</th>
+                                <th scope="col">Responsable</th>
+                                <th scope="col">Vence</th>
+                                <th scope="col">Actividad</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {paginatedTickets.map((ticket) => {
+                                const isSelected = selectedTicket?.id === ticket.id;
+
+                                return (
+                                  <tr
+                                    key={ticket.id}
+                                    className={isSelected ? 'data-table__row data-table__row--active' : 'data-table__row'}
+                                  >
+                                    <td>
+                                      <button
+                                        type="button"
+                                        className="data-table__row-action"
+                                        onClick={(event) => {
+                                          openTicketDetail(ticket.id, event.currentTarget, {
+                                            shouldAutoFocus: event.detail === 0
+                                          });
+                                        }}
+                                        aria-label={`Ver detalle del ticket ${ticket.id}`}
+                                        aria-controls={hasDetailPanel ? 'tickets-detail-panel' : undefined}
+                                        aria-expanded={hasDetailPanel ? isSelected : undefined}
+                                      >
+                                        <span className="data-table__item-id">{ticket.id}</span>
+                                        <span className="data-table__item-title">{ticket.title}</span>
+                                        <span className="data-table__item-meta">
+                                          {typeMeta[ticket.type].label} · {categoryLabels[ticket.category]}
+                                        </span>
+                                        <span className="data-table__item-meta data-table__item-meta--compact">
+                                          {ticket.requester} · {ticket.assignee} · {ticket.dueLabel}
+                                        </span>
+                                      </button>
+                                    </td>
+                                    <td className="data-table__cell data-table__cell--status">
+                                      <TicketBadge label={statusMeta[ticket.status].label} tone={statusMeta[ticket.status].tone} />
+                                    </td>
+                                    <td className="data-table__cell data-table__cell--priority">
+                                      <TicketBadge label={priorityMeta[ticket.priority].label} tone={priorityMeta[ticket.priority].tone} />
+                                    </td>
+                                    <td className="data-table__cell data-table__cell--requester">
+                                      <div className="data-table__person">
+                                        <span className="data-table__avatar" aria-hidden="true">
+                                          {ticket.requesterPhoto ? (
+                                            <img src={ticket.requesterPhoto} alt="" loading="lazy" />
+                                          ) : (
+                                            <span>{getInitials(ticket.requester)}</span>
+                                          )}
+                                        </span>
+                                        <div className="data-table__person-copy">
+                                          <strong>{ticket.requester}</strong>
+                                          <span>{ticket.area}</span>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="data-table__cell data-table__cell--assignee">
+                                      <span className="data-table__truncate">{ticket.assignee}</span>
+                                    </td>
+                                    <td className="data-table__cell data-table__cell--due">
+                                      <span className="data-table__truncate">{ticket.dueLabel}</span>
+                                    </td>
+                                    <td className="data-table__cell data-table__cell--activity">
+                                      <div className="data-table__activity">
+                                        <span>{ticket.activityLabel || ticket.updatedLabel}</span>
+                                        <span>{ticket.commentsLabel || `${ticket.commentsCount} comentarios`}</span>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        )}
+                      />
+                    )}
+                  </div>
+                )}
+                detail={ticketsDetailPanel}
+              />
+            </section>
+
+            <section id="tickets-pipeline-panel" role="tabpanel" aria-labelledby="tickets-view-tab-pipeline" hidden={activeView !== 'pipeline'} className="workspace-panel">
+              <div className="workspace-page__control-row workspace-page__control-row--operational">
+                <ToolbarSearchField
+                  id="tickets-pipeline-search"
+                  name="ticket_search_pipeline"
+                  value={searchTerm}
+                  onChange={(value) => {
+                    closeTicketDetail(false);
+                    setSearchTerm(value);
+                    resetVolumeViews();
+                  }}
+                  placeholder="Buscar tickets por folio, título o solicitante"
+                  srLabel="Buscar en pipeline"
+                  className="workspace-search--operational"
+                />
+
+                <div className="workspace-page__filters workspace-page__filters--operational" aria-label="Filtros de tickets">
+                  {ticketFilters}
+                </div>
+              </div>
+
+              <WorkspaceSplitLayout
+                viewKey="pipeline"
+                detailOpen={activeView === 'pipeline' && hasDetailPanel}
+                detailId="tickets-detail-panel"
+                main={(
+                  <div className="workspace-panel__viewport workspace-panel__viewport--flush workspace-panel__viewport--fixed">
+                    {isTicketsLoading ? (
+                      <EmptyState
+                        title={ticketsLoadingState.title}
+                        copy={ticketsLoadingState.copy}
+                        role="status"
+                        ariaLive="polite"
+                        ariaAtomic
+                      />
+                    ) : hasResults ? (
+                      <div
+                        className="ticket-board-shell"
+                        aria-label="Pipeline de tickets"
+                        aria-describedby="tickets-pipeline-help"
+                      >
+                        <p id="tickets-pipeline-help" className="sr-only">
+                          Arrastra un ticket al carril de destino para cambiar su estado, o ábrelo y actualízalo
+                          desde el panel de detalle.
+                        </p>
+                        <div className="ticket-board">
+                          {groupedTickets.map((lane) => {
+                            const visibleCount = pipelineVisibleCounts[lane.key] ?? PIPELINE_VISIBLE_BATCH;
+                            const visibleItems = lane.items.slice(0, visibleCount);
+                            const remainingCount = Math.max(0, lane.items.length - visibleCount);
+
+                            return (
+                              <section
+                                key={lane.key}
+                                className={`ticket-board__lane ticket-board__lane--${lane.tone}`}
+                                aria-labelledby={`lane-${lane.key}`}
+                              >
+                                <header className="ticket-board__lane-header">
+                                  <div>
+                                    <h2 id={`lane-${lane.key}`} className="ticket-board__lane-title">{lane.label}</h2>
+                                    <span className="ticket-board__lane-count">{lane.items.length}</span>
+                                  </div>
+                                </header>
+
+                                <div
+                                  className={`ticket-board__lane-body${dragOverLaneKey === lane.key ? ' ticket-board__lane-body--drag-over' : ''}`}
+                                  onDragOver={(event) => {
+                                    event.preventDefault();
+                                    if (dragOverLaneKey !== lane.key) {
+                                      setDragOverLaneKey(lane.key);
+                                    }
+                                  }}
+                                  onDragLeave={() => {
+                                    if (dragOverLaneKey === lane.key) {
+                                      setDragOverLaneKey('');
+                                    }
+                                  }}
+                                  onDrop={(event) => {
+                                    event.preventDefault();
+                                    void handleDropOnLane(lane.key);
+                                  }}
+                                >
+                                  {visibleItems.map((ticket) => {
+                                    const isSelected = selectedTicket?.id === ticket.id;
+
+                                    return (
+                                      <button
+                                        key={ticket.id}
+                                        type="button"
+                                        className={`ticket-card${isSelected ? ' ticket-card--active' : ''}`}
+                                        onClick={(event) => {
+                                          openTicketDetail(ticket.id, event.currentTarget, {
+                                            shouldAutoFocus: event.detail === 0
+                                          });
+                                        }}
+                                        aria-label={`Ver detalle del ticket ${ticket.id}`}
+                                        aria-controls={hasDetailPanel ? 'tickets-detail-panel' : undefined}
+                                        aria-expanded={hasDetailPanel ? isSelected : undefined}
+                                        draggable
+                                        onDragStart={(event) => {
+                                          event.dataTransfer.effectAllowed = 'move';
+                                          event.dataTransfer.setData('text/plain', String(ticket.ticketId));
+                                          setDraggingTicketId(ticket.ticketId);
+                                        }}
+                                        onDragEnd={() => {
+                                          setDraggingTicketId(null);
+                                          setDragOverLaneKey('');
+                                        }}
+                                      >
+                                        <div className="ticket-card__header">
+                                          <span className="ticket-card__id">{ticket.id}</span>
+                                          <TicketBadge label={priorityMeta[ticket.priority].label} tone={priorityMeta[ticket.priority].tone} />
+                                        </div>
+                                        <p className="ticket-card__title">{ticket.title}</p>
+                                        <div className="ticket-card__footer">
+                                          <span>{ticket.requester}</span>
+                                          <span>{ticket.dueLabel}</span>
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+
+                                  {remainingCount > 0 ? (
+                                    <button
+                                      type="button"
+                                      className={`ticket-board__more ticket-board__more--${lane.tone}`}
+                                      aria-label={`Ver más tickets en ${lane.label}. Quedan ${remainingCount} por mostrar`}
+                                      onClick={() => {
+                                        setPipelineVisibleCounts((currentCounts) => ({
+                                          ...currentCounts,
+                                          [lane.key]: currentCounts[lane.key] + PIPELINE_VISIBLE_BATCH
+                                        }));
+                                      }}
+                                    >
+                                      Ver más ({remainingCount})
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </section>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <EmptyState
+                        title={ticketsNoResultsState.title}
+                        copy={ticketsNoResultsState.copy}
+                      >
+                        <button type="button" className="workspace-empty-state__action" onClick={clearFilters}>
+                          Limpiar filtros
+                        </button>
+                      </EmptyState>
+                    )}
+                  </div>
+                )}
+                detail={ticketsDetailPanel}
+              />
+            </section>
+          </>
+        )}
       </section>
 
       <AdvancedFiltersModal
@@ -2258,4 +2307,3 @@ const TicketsPage = () => {
 };
 
 export default TicketsPage;
-
