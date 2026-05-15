@@ -1201,6 +1201,11 @@ textarea:focus-visible {
   row-gap: 8px;
 }
 
+.workspace-page__notice-slot {
+  display: grid;
+  gap: 8px;
+}
+
 .workspace-search {
   flex: 1 1 420px;
   min-width: 240px;
@@ -5791,34 +5796,6 @@ textarea:focus-visible {
   align-content: start;
 }
 
-.inventory-toast {
-  position: fixed;
-  right: var(--spacing-lg);
-  bottom: var(--spacing-lg);
-  z-index: 78;
-  min-height: 40px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: var(--radius-md);
-  border: 1px solid color-mix(in oklch, var(--color-border) 58%, transparent);
-  font-size: var(--inventory-meta-size);
-  line-height: 1.25;
-  font-weight: 700;
-  background: color-mix(in oklch, var(--color-surface) 94%, var(--color-bg) 6%);
-  box-shadow: var(--shadow-soft);
-}
-
-.inventory-toast--success {
-  border-color: color-mix(in oklch, var(--color-success) 34%, var(--color-border) 66%);
-  background: color-mix(in oklch, var(--color-success-soft) 34%, var(--color-surface) 66%);
-}
-
-.inventory-toast--error {
-  border-color: color-mix(in oklch, var(--color-danger) 34%, var(--color-border) 66%);
-  background: color-mix(in oklch, var(--color-danger-soft) 34%, var(--color-surface) 66%);
-}
 
 .inventory-assets__chip:focus-visible,
 .inventory-assets__tracking-select select:focus-visible,
@@ -5944,10 +5921,4 @@ textarea:focus-visible {
     font-size: 0.93rem;
   }
 
-  .inventory-toast {
-    left: var(--spacing-md);
-    right: var(--spacing-md);
-    bottom: var(--spacing-md);
-    justify-content: center;
-  }
 }

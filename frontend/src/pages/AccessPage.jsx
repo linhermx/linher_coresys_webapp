@@ -388,6 +388,7 @@ const AccessPage = () => {
   const canCreateAccess = hasPermission(authUser, 'access.create');
   const canAssignAccess = hasPermission(authUser, 'access.assign');
   const canUpdateAccess = hasPermission(authUser, 'access.update');
+  const hasActionNotice = Boolean(actionError || actionSuccess);
 
   const resetFeedback = useCallback(() => {
     setActionError('');
@@ -1444,8 +1445,12 @@ const AccessPage = () => {
           />
         </div>
 
-        {actionSuccess ? <InlineNotice tone="success">{actionSuccess}</InlineNotice> : null}
-        {actionError ? <InlineNotice tone="error">{actionError}</InlineNotice> : null}
+        {hasActionNotice ? (
+          <div className="workspace-page__notice-slot">
+            {actionSuccess ? <InlineNotice tone="success">{actionSuccess}</InlineNotice> : null}
+            {actionError ? <InlineNotice tone="error">{actionError}</InlineNotice> : null}
+          </div>
+        ) : null}
 
         {screenError ? (
           <EmptyState title={accessLoadErrorTitle} copy={screenError} id="access-state-error" role="region">

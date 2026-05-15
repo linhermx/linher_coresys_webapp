@@ -25,6 +25,7 @@ import { FieldLabel } from '../components/primitives/FieldLabel.jsx';
 import { FilterChipGroup } from '../components/primitives/FilterChipGroup.jsx';
 import { FilterSelect } from '../components/primitives/FilterSelect.jsx';
 import { DrawerTabs } from '../components/primitives/DrawerTabs.jsx';
+import { InlineNotice } from '../components/primitives/InlineNotice.jsx';
 import { OperationalPanel } from '../components/primitives/OperationalPanel.jsx';
 import { OperationalTable } from '../components/primitives/OperationalTable.jsx';
 import { PaginationBar } from '../components/primitives/PaginationBar.jsx';
@@ -1834,6 +1835,7 @@ const InventoryPage = () => {
   const hasAvailableAssetUnits = selectedAssetUnits.some((unit) => unit.status_key === 'available');
   const hasAssignedAssetUnits = selectedAssetUnits.some((unit) => unit.status_key === 'assigned');
   const hasRepairingAssetUnits = selectedAssetUnits.some((unit) => unit.status_key === 'in_repair');
+  const hasActionNotice = Boolean(actionError || actionSuccess);
   const recentSummaryMovements = selectedAssetMovements.slice(0, 3);
   const isAssetDetailPanelOpen = activeView === 'assets' && Boolean(detailAsset);
   const detailExistenceLabel = detailAsset
@@ -2028,6 +2030,13 @@ const InventoryPage = () => {
             panelIdByKey={(key) => `inventory-panel-${key}`}
           />
         </div>
+
+        {hasActionNotice ? (
+          <div className="workspace-page__notice-slot">
+            {actionSuccess ? <InlineNotice tone="success">{actionSuccess}</InlineNotice> : null}
+            {actionError ? <InlineNotice tone="error">{actionError}</InlineNotice> : null}
+          </div>
+        ) : null}
 
         {screenError ? (
           <EmptyState title={inventoryLoadErrorTitle} copy={screenError} id="inventory-state-error" role="region">
@@ -4093,18 +4102,6 @@ const InventoryPage = () => {
         </form>
       </ModalDialog>
 
-      {actionError ? (
-        <div className="inventory-toast inventory-toast--error" role="alert">
-          <X size={14} aria-hidden="true" />
-          <span>{actionError}</span>
-        </div>
-      ) : null}
-      {actionSuccess ? (
-        <div className="inventory-toast inventory-toast--success" role="status" aria-live="polite">
-          <Check size={14} aria-hidden="true" />
-          <span>{actionSuccess}</span>
-        </div>
-      ) : null}
     </section>
   );
 };
