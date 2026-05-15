@@ -1,10 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  AlertTriangle,
   ArrowRightLeft,
-  Check,
-  Info,
   KanbanSquare,
   List,
   MessageSquareMore,
@@ -19,6 +16,7 @@ import { EmptyState } from '../components/primitives/EmptyState.jsx';
 import { FilterChipGroup } from '../components/primitives/FilterChipGroup.jsx';
 import { DrawerTabs } from '../components/primitives/DrawerTabs.jsx';
 import { FilterSelect } from '../components/primitives/FilterSelect.jsx';
+import { InlineNotice } from '../components/primitives/InlineNotice.jsx';
 import { ModalDialog } from '../components/primitives/ModalDialog.jsx';
 import { OperationalTablePanel } from '../components/primitives/OperationalTablePanel.jsx';
 import { PaginationBar } from '../components/primitives/PaginationBar.jsx';
@@ -1173,6 +1171,11 @@ const TicketsPage = () => {
     setActionToast(null);
   };
 
+  const workspaceNotice = actionToast || (isStatusSubmitting ? {
+    tone: 'info',
+    message: 'Actualizando estado del ticket...'
+  } : null);
+
   const showToast = (message, tone = 'success', duration = 3600) => {
     clearToastTimer();
 
@@ -1863,6 +1866,28 @@ const TicketsPage = () => {
           {liveStatusMessage}
         </p>
 
+        {workspaceNotice ? (
+          <div className="workspace-page__notice-slot">
+            <InlineNotice
+              tone={workspaceNotice.tone || 'info'}
+              role={workspaceNotice.tone === 'error' ? 'alert' : 'status'}
+              live={workspaceNotice.tone === 'error' ? 'assertive' : 'polite'}
+              actions={actionToast ? (
+                <button
+                  type="button"
+                  className="inline-notice__dismiss"
+                  aria-label="Cerrar notificación"
+                  onClick={dismissToast}
+                >
+                  <X size={14} aria-hidden="true" />
+                </button>
+              ) : null}
+            >
+              {workspaceNotice.message}
+            </InlineNotice>
+          </div>
+        ) : null}
+
         {ticketsError ? (
           <EmptyState
             title={ticketsLoadErrorTitle}
@@ -2271,38 +2296,6 @@ const TicketsPage = () => {
         submitError={ticketFormError}
         returnFocusRef={editTicketTriggerRef}
       />
-
-      {isStatusSubmitting && !actionToast ? (
-        <div className="tickets-toast tickets-toast--info" role="status" aria-live="polite">
-          <Info size={16} aria-hidden="true" className="tickets-toast__icon" />
-          <span>Actualizando estado del ticket...</span>
-        </div>
-      ) : null}
-
-      {actionToast ? (
-        <div
-          className={`tickets-toast tickets-toast--${actionToast.tone || 'info'}`}
-          role={actionToast.tone === 'error' ? 'alert' : 'status'}
-          aria-live="polite"
-        >
-          {actionToast.tone === 'success' ? (
-            <Check size={16} aria-hidden="true" className="tickets-toast__icon" />
-          ) : actionToast.tone === 'error' ? (
-            <AlertTriangle size={16} aria-hidden="true" className="tickets-toast__icon" />
-          ) : (
-            <Info size={16} aria-hidden="true" className="tickets-toast__icon" />
-          )}
-          <span className="tickets-toast__message">{actionToast.message}</span>
-          <button
-            type="button"
-            className="tickets-toast__close"
-            aria-label="Cerrar notificación"
-            onClick={dismissToast}
-          >
-            <X size={14} aria-hidden="true" />
-          </button>
-        </div>
-      ) : null}
     </section>
   );
 };

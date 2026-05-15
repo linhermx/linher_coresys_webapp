@@ -3394,6 +3394,7 @@ textarea:focus-visible {
 
 .inline-notice__body {
   min-width: 0;
+  flex: 1 1 auto;
   display: grid;
   gap: 3px;
 }
@@ -3409,60 +3410,14 @@ textarea:focus-visible {
   line-height: 1.45;
 }
 
-.ticket-modal__actions,
-.modal-dialog__actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--spacing-sm);
-  flex-wrap: wrap;
-}
-
-.tickets-toast {
-  position: fixed;
-  right: var(--spacing-lg);
-  bottom: var(--spacing-lg);
-  z-index: 75;
-  min-height: 42px;
-  max-width: min(460px, calc(100vw - (var(--spacing-lg) * 2)));
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  padding: 8px 10px 8px 12px;
-  border: 1px solid color-mix(in oklch, var(--color-border) 58%, transparent);
-  border-radius: var(--radius-lg);
-  background: color-mix(in oklch, var(--color-surface) 94%, var(--color-bg) 6%);
-  color: var(--color-text-main);
-  box-shadow: var(--shadow-sm);
-  font-size: 0.82rem;
-  font-weight: 600;
-}
-
-.tickets-toast--success {
-  border-color: color-mix(in oklch, var(--color-success) 34%, var(--color-border) 66%);
-  background: color-mix(in oklch, var(--color-success-soft) 38%, var(--color-surface) 62%);
-}
-
-.tickets-toast--error {
-  border-color: color-mix(in oklch, var(--color-danger) 34%, var(--color-border) 66%);
-  background: color-mix(in oklch, var(--color-danger-soft) 32%, var(--color-surface) 68%);
-}
-
-.tickets-toast--info {
-  border-color: color-mix(in oklch, var(--color-primary) 30%, var(--color-border) 70%);
-  background: color-mix(in oklch, var(--color-primary-soft) 32%, var(--color-surface) 68%);
-}
-
-.tickets-toast__icon {
+.inline-notice__actions {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 8px;
 }
 
-.tickets-toast__message {
-  margin-right: 2px;
-  line-height: 1.35;
-}
-
-.tickets-toast__close {
+.inline-notice__dismiss {
   margin-left: auto;
   border: 0;
   border-radius: 999px;
@@ -3474,16 +3429,29 @@ textarea:focus-visible {
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    box-shadow 140ms ease;
 }
 
-.tickets-toast__close:hover {
-  background: color-mix(in oklch, var(--color-surface) 78%, transparent);
+.inline-notice__dismiss:hover {
+  background: color-mix(in oklch, currentColor 8%, transparent);
 }
 
-.tickets-toast__close:focus-visible {
+.inline-notice__dismiss:focus-visible {
   outline: none;
   box-shadow: var(--shadow-focus);
 }
+
+.ticket-modal__actions,
+.modal-dialog__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
 
 @media (max-width: 900px) {
   .workspace__canvas {
