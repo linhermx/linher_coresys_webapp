@@ -1236,6 +1236,187 @@ const AccessPage = () => {
   const activeAssignmentsForDetail = detailContext?.assignments?.filter((assignment) => assignment.status_key === 'active') || [];
   const canOffboardFromDetail = Boolean(detailContext?.collaborator?.id)
     && (detailContext?.enrollments?.some((enrollment) => enrollment.status_key !== 'deactivated') || activeAssignmentsForDetail.length > 0);
+  const accessDetailPanel = detailContext ? (
+    <aside className="ticket-detail ticket-detail--tone-primary access-detail" aria-labelledby={ACCESS_DETAIL_TITLE_ID}>
+      <div className="ticket-detail__summary">
+        <header className="ticket-detail__header">
+          <div className="ticket-detail__header-top">
+            <div>
+              <div className="ticket-detail__header-id">
+                <span className="ticket-detail__ticket-id">Detalle</span>
+              </div>
+              <h2 id={ACCESS_DETAIL_TITLE_ID} className="ticket-detail__title">{detailContext.title}</h2>
+              <p className="ticket-detail__summary access-detail__summary-copy">{detailContext.subtitle}</p>
+            </div>
+            <div className="ticket-detail__header-actions">
+              {detailContext.media?.status_key === 'available' && canAssignAccess ? (
+                <button type="button" className="ticket-detail__edit" onClick={() => openAssignModal(detailContext.media.id)}>
+                  <ArrowRightLeft size={14} aria-hidden="true" />
+                  <span>Asignar</span>
+                </button>
+              ) : null}
+              {detailContext.assignment?.status_key === 'active' && canAssignAccess ? (
+                <button type="button" className="ticket-detail__edit" onClick={() => openReturnModal(detailContext.assignment)}>
+                  <Undo2 size={14} aria-hidden="true" />
+                  <span>Devolver</span>
+                </button>
+              ) : null}
+              {detailContext.assignment?.status_key === 'active' && canAssignAccess ? (
+                <button type="button" className="ticket-detail__edit" onClick={() => openNotReturnedModal(detailContext.assignment)}>
+                  <CircleOff size={14} aria-hidden="true" />
+                  <span>No devuelto</span>
+                </button>
+              ) : null}
+              {detailContext.collaborator?.id && canCreateAccess ? (
+                <button type="button" className="ticket-detail__edit" onClick={() => openCreateEnrollmentModal(detailContext)}>
+                  <UserCog size={14} aria-hidden="true" />
+                  <span>Nueva alta</span>
+                </button>
+              ) : null}
+              {canOffboardFromDetail && canAssignAccess ? (
+                <button type="button" className="ticket-detail__edit" onClick={() => openOffboardModal(detailContext)}>
+                  <UserMinus size={14} aria-hidden="true" />
+                  <span>Dar de baja accesos</span>
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="ticket-detail__close"
+                onClick={() => {
+                  setSelectedAssignmentId(null);
+                  setSelectedMediaId(null);
+                  setSelectedEnrollmentId(null);
+                  setSelectedEventId(null);
+                }}
+                aria-label="Cerrar detalle de accesos"
+              >
+                <CircleOff size={16} aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+
+          <dl className="ticket-detail__meta-grid">
+            <div className="ticket-detail__meta-item">
+              <dt className="ticket-detail__meta-label">Colaborador</dt>
+              <dd>{detailContext.collaborator?.full_name || 'Sin colaborador ligado'}</dd>
+            </div>
+            <div className="ticket-detail__meta-item">
+              <dt className="ticket-detail__meta-label">ID operativo</dt>
+              <dd>{detailContext.collaborator?.employee_id || 'Sin ID'}</dd>
+            </div>
+            <div className="ticket-detail__meta-item">
+              <dt className="ticket-detail__meta-label">Medio</dt>
+              <dd>{detailContext.media ? toMediaLabel(detailContext.media) : 'Sin medio ligado'}</dd>
+            </div>
+            <div className="ticket-detail__meta-item">
+              <dt className="ticket-detail__meta-label">Estado principal</dt>
+              <dd>
+                {detailContext.assignment ? (
+                  <span className={getAssignmentStatusToneClass(detailContext.assignment.status_key)}>{detailContext.assignment.status_name}</span>
+                ) : detailContext.enrollment ? (
+                  <span className={getEnrollmentStatusToneClass(detailContext.enrollment.status_key)}>{detailContext.enrollment.status_name}</span>
+                ) : detailContext.media ? (
+                  <span className={getMediumStatusToneClass(detailContext.media.status_key)}>{detailContext.media.status_name}</span>
+                ) : detailContext.event ? (
+                  <span className="inventory-status-chip inventory-status-chip--neutral">{toEventLabel(detailContext.event.event_type)}</span>
+                ) : 'Sin contexto'}
+              </dd>
+            </div>
+          </dl>
+        </header>
+
+        <section className="ticket-detail__section">
+          <div className="ticket-detail__section-headline">
+            <h3 className="ticket-detail__section-title">Resumen operativo</h3>
+          </div>
+          <ul className="access-detail__list">
+            {detailContext.assignment ? (
+              <li>
+                <strong>Asignación vigente</strong>
+                <span>Asignado el {formatDateTime(detailContext.assignment.assigned_at)}</span>
+                <span>{detailContext.assignment.expected_return_at ? `Retorno esperado: ${formatDateOnly(detailContext.assignment.expected_return_at)}` : 'Sin fecha de retorno comprometida'}</span>
+              </li>
+            ) : null}
+            {detailContext.media ? (
+              <li>
+                <strong>Unidad física vinculada</strong>
+                <span>{detailContext.media.asset_unit?.asset_tag || detailContext.media.asset_unit_id}</span>
+                <span>{detailContext.media.asset_unit?.serial_number || 'Sin número de serie registrado'}</span>
+              </li>
+            ) : null}
+            {detailContext.enrollment ? (
+              <li>
+                <strong>Alta actual</strong>
+                <span>{detailContext.enrollment.access_system?.name || 'Sin sistema'}</span>
+                <span>{detailContext.enrollment.activated_at ? `Activo desde ${formatDateTime(detailContext.enrollment.activated_at)}` : 'Sin fecha de activación registrada'}</span>
+              </li>
+            ) : null}
+            {detailContext.event ? (
+              <li>
+                <strong>Evento seleccionado</strong>
+                <span>{formatDateTime(detailContext.event.happened_at)}</span>
+                <span>{detailContext.event.notes || 'Sin observaciones adicionales'}</span>
+              </li>
+            ) : null}
+          </ul>
+        </section>
+
+        <section className="ticket-detail__section">
+          <div className="ticket-detail__section-headline">
+            <h3 className="ticket-detail__section-title">Altas relacionadas</h3>
+          </div>
+          {detailContext.enrollments?.length ? (
+            <ul className="access-detail__list">
+              {detailContext.enrollments.map((enrollment) => (
+                <li key={enrollment.id}>
+                  <strong>{enrollment.access_system?.name || 'Sin sistema'}</strong>
+                  <span>{enrollment.media?.tag_code || 'Sin medio ligado'}</span>
+                  <div className="access-detail__list-inline">
+                    <span className={getEnrollmentStatusToneClass(enrollment.status_key)}>{enrollment.status_name}</span>
+                    {enrollment.status_key !== 'deactivated' && canUpdateAccess ? (
+                      <button type="button" className="action-inline action-inline--secondary" onClick={() => openEnrollmentStatusModal(enrollment)}>
+                        <Wrench size={14} aria-hidden="true" />
+                        <span>Cambiar estado</span>
+                      </button>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="inventory-asset-detail__empty-copy">No hay altas relacionadas para este contexto todavía.</p>
+          )}
+        </section>
+
+        <section className="ticket-detail__section ticket-detail__section--activity">
+          <div className="ticket-detail__section-headline">
+            <h3 className="ticket-detail__section-title">Historial reciente</h3>
+          </div>
+          {detailContext.events?.length ? (
+            <ul className="ticket-activity inventory-asset-detail__activity-list" aria-label="Historial reciente de accesos">
+              {detailContext.events.map((eventRow) => (
+                <li key={eventRow.id} className="ticket-activity__item">
+                  <span className="ticket-activity__dot" aria-hidden="true" />
+                  <div>
+                    <p className="ticket-activity__title">{toEventLabel(eventRow.event_type)}</p>
+                    <p className="ticket-activity__meta">
+                      <span className="inventory-asset-detail__activity-impact">{eventRow.access_system_name || eventRow.tag_code || eventRow.collaborator_name || 'Accesos'}</span>
+                      <span className="inventory-asset-detail__activity-when">{formatDateTime(eventRow.happened_at)}</span>
+                    </p>
+                    {eventRow.notes ? (
+                      <p className="ticket-detail__comment-history-caption">{eventRow.notes}</p>
+                    ) : null}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="inventory-asset-detail__empty-copy">Aún no hay eventos relacionados que mostrar.</p>
+          )}
+        </section>
+      </div>
+    </aside>
+  ) : null;
 
   return (
     <section className="workspace-page access-page" aria-label="Área de trabajo de accesos">
@@ -1271,39 +1452,39 @@ const AccessPage = () => {
             <button type="button" className="workspace-action workspace-action--primary" onClick={() => void loadCoreData()}>Reintentar</button>
           </EmptyState>
         ) : (
-          <WorkspaceSplitLayout
-            viewKey={activeView}
-            detailOpen={detailOpen}
-            detailId={ACCESS_DETAIL_ID}
-            detailRole="complementary"
-            detailAriaLabelledBy={ACCESS_DETAIL_TITLE_ID}
-            className="access-layout"
-            main={(
-              <>
-                <section id="access-panel-assignments" role="tabpanel" aria-labelledby="access-view-assignments" hidden={activeView !== 'assignments'} className="workspace-panel access-panel">
-                  <div className="workspace-page__control-row workspace-page__control-row--operational">
-                    <ToolbarSearchField
-                      id="access-assignments-search"
-                      name="access-assignments-search"
-                      value={assignmentSearchTerm}
-                      onChange={setAssignmentSearchTerm}
-                      placeholder="Buscar por colaborador, tag o unidad..."
-                      srLabel="Buscar asignaciones de acceso"
-                      className="workspace-search--operational"
-                    />
-                    <div className="workspace-page__filters workspace-page__filters--operational">
-                      <FilterChipGroup
-                        label="Filtro por estado de asignación"
-                        options={assignmentStatusOptions}
-                        activeKey={assignmentStatusFilter}
-                        onSelect={setAssignmentStatusFilter}
-                        className="workspace-chip-group workspace-chip-group--compact"
-                        chipClassName="workspace-chip"
-                        activeChipClassName="workspace-chip--active"
-                      />
-                    </div>
-                  </div>
+          <>
+            <section id="access-panel-assignments" role="tabpanel" aria-labelledby="access-view-assignments" hidden={activeView !== 'assignments'} className="workspace-panel access-panel">
+              <div className="workspace-page__control-row workspace-page__control-row--operational">
+                <ToolbarSearchField
+                  id="access-assignments-search"
+                  name="access-assignments-search"
+                  value={assignmentSearchTerm}
+                  onChange={setAssignmentSearchTerm}
+                  placeholder="Buscar por colaborador, tag o unidad..."
+                  srLabel="Buscar asignaciones de acceso"
+                  className="workspace-search--operational"
+                />
+                <div className="workspace-page__filters workspace-page__filters--operational">
+                  <FilterChipGroup
+                    label="Filtro por estado de asignación"
+                    options={assignmentStatusOptions}
+                    activeKey={assignmentStatusFilter}
+                    onSelect={setAssignmentStatusFilter}
+                    className="workspace-chip-group workspace-chip-group--compact"
+                    chipClassName="workspace-chip"
+                    activeChipClassName="workspace-chip--active"
+                  />
+                </div>
+              </div>
 
+              <WorkspaceSplitLayout
+                viewKey="list"
+                detailOpen={activeView === 'assignments' && detailOpen}
+                detailId={ACCESS_DETAIL_ID}
+                detailRole="complementary"
+                detailAriaLabelledBy={ACCESS_DETAIL_TITLE_ID}
+                className="access-layout"
+                main={(
                   <div className="workspace-panel__viewport workspace-panel__viewport--flush workspace-panel__viewport--fixed">
                     <OperationalTablePanel
                       preserveShell
@@ -1346,43 +1527,54 @@ const AccessPage = () => {
                       ) : null}
                     />
                   </div>
-                </section>
+                )}
+                detail={accessDetailPanel}
+              />
+            </section>
 
-                <section id="access-panel-media" role="tabpanel" aria-labelledby="access-view-media" hidden={activeView !== 'media'} className="workspace-panel access-panel">
-                  <div className="workspace-page__control-row workspace-page__control-row--operational">
-                    <ToolbarSearchField
-                      id="access-media-search"
-                      name="access-media-search"
-                      value={mediaSearchTerm}
-                      onChange={setMediaSearchTerm}
-                      placeholder="Buscar por tag, tipo, unidad o colaborador..."
-                      srLabel="Buscar medios de acceso"
-                      className="workspace-search--operational"
-                    />
-                    <div className="workspace-page__filters workspace-page__filters--operational">
-                      <FilterSelect
-                        id="access-media-status-filter"
-                        name="access_media_status_filter"
-                        label="Estado"
-                        showLabel={false}
-                        value={mediaStatusFilter}
-                        options={mediaStatusFilterOptions}
-                        onChange={setMediaStatusFilter}
-                        className="filter-select filter-select--operational"
-                      />
-                      <FilterSelect
-                        id="access-media-type-filter"
-                        name="access_media_type_filter"
-                        label="Tipo"
-                        showLabel={false}
-                        value={mediumTypeFilter}
-                        options={mediumTypeFilterOptions}
-                        onChange={setMediumTypeFilter}
-                        className="filter-select filter-select--operational"
-                      />
-                    </div>
-                  </div>
+            <section id="access-panel-media" role="tabpanel" aria-labelledby="access-view-media" hidden={activeView !== 'media'} className="workspace-panel access-panel">
+              <div className="workspace-page__control-row workspace-page__control-row--operational">
+                <ToolbarSearchField
+                  id="access-media-search"
+                  name="access-media-search"
+                  value={mediaSearchTerm}
+                  onChange={setMediaSearchTerm}
+                  placeholder="Buscar por tag, tipo, unidad o colaborador..."
+                  srLabel="Buscar medios de acceso"
+                  className="workspace-search--operational"
+                />
+                <div className="workspace-page__filters workspace-page__filters--operational">
+                  <FilterSelect
+                    id="access-media-status-filter"
+                    name="access_media_status_filter"
+                    label="Estado"
+                    showLabel={false}
+                    value={mediaStatusFilter}
+                    options={mediaStatusFilterOptions}
+                    onChange={setMediaStatusFilter}
+                    className="filter-select filter-select--operational"
+                  />
+                  <FilterSelect
+                    id="access-media-type-filter"
+                    name="access_media_type_filter"
+                    label="Tipo"
+                    showLabel={false}
+                    value={mediumTypeFilter}
+                    options={mediumTypeFilterOptions}
+                    onChange={setMediumTypeFilter}
+                    className="filter-select filter-select--operational"
+                  />
+                </div>
+              </div>
 
+              <WorkspaceSplitLayout
+                viewKey="list"
+                detailOpen={activeView === 'media' && detailOpen}
+                detailId={ACCESS_DETAIL_ID}
+                detailRole="complementary"
+                detailAriaLabelledBy={ACCESS_DETAIL_TITLE_ID}
+                className="access-layout"
+                main={(
                   <div className="workspace-panel__viewport workspace-panel__viewport--flush workspace-panel__viewport--fixed">
                     <OperationalTablePanel
                       preserveShell
@@ -1425,42 +1617,53 @@ const AccessPage = () => {
                       ) : null}
                     />
                   </div>
-                </section>
+                )}
+                detail={accessDetailPanel}
+              />
+            </section>
 
-                <section id="access-panel-enrollments" role="tabpanel" aria-labelledby="access-view-enrollments" hidden={activeView !== 'enrollments'} className="workspace-panel access-panel">
-                  <div className="workspace-page__control-row workspace-page__control-row--operational">
-                    <ToolbarSearchField
-                      id="access-enrollments-search"
-                      name="access-enrollments-search"
-                      value={enrollmentSearchTerm}
-                      onChange={setEnrollmentSearchTerm}
-                      placeholder="Buscar por colaborador, sistema o tag..."
-                      srLabel="Buscar altas"
-                      className="workspace-search--operational"
-                    />
-                    <div className="workspace-page__filters workspace-page__filters--operational">
-                      <FilterChipGroup
-                        label="Filtro por estado de alta"
-                        options={enrollmentStatusOptions}
-                        activeKey={enrollmentStatusFilter}
-                        onSelect={setEnrollmentStatusFilter}
-                        className="workspace-chip-group workspace-chip-group--compact"
-                        chipClassName="workspace-chip"
-                        activeChipClassName="workspace-chip--active"
-                      />
-                      <FilterSelect
-                        id="access-enrollment-system-filter"
-                        name="access_enrollment_system_filter"
-                        label="Sistema"
-                        showLabel={false}
-                        value={enrollmentSystemFilter}
-                        options={systemFilterOptions}
-                        onChange={setEnrollmentSystemFilter}
-                        className="filter-select filter-select--operational"
-                      />
-                    </div>
-                  </div>
+            <section id="access-panel-enrollments" role="tabpanel" aria-labelledby="access-view-enrollments" hidden={activeView !== 'enrollments'} className="workspace-panel access-panel">
+              <div className="workspace-page__control-row workspace-page__control-row--operational">
+                <ToolbarSearchField
+                  id="access-enrollments-search"
+                  name="access-enrollments-search"
+                  value={enrollmentSearchTerm}
+                  onChange={setEnrollmentSearchTerm}
+                  placeholder="Buscar por colaborador, sistema o tag..."
+                  srLabel="Buscar altas"
+                  className="workspace-search--operational"
+                />
+                <div className="workspace-page__filters workspace-page__filters--operational">
+                  <FilterChipGroup
+                    label="Filtro por estado de alta"
+                    options={enrollmentStatusOptions}
+                    activeKey={enrollmentStatusFilter}
+                    onSelect={setEnrollmentStatusFilter}
+                    className="workspace-chip-group workspace-chip-group--compact"
+                    chipClassName="workspace-chip"
+                    activeChipClassName="workspace-chip--active"
+                  />
+                  <FilterSelect
+                    id="access-enrollment-system-filter"
+                    name="access_enrollment_system_filter"
+                    label="Sistema"
+                    showLabel={false}
+                    value={enrollmentSystemFilter}
+                    options={systemFilterOptions}
+                    onChange={setEnrollmentSystemFilter}
+                    className="filter-select filter-select--operational"
+                  />
+                </div>
+              </div>
 
+              <WorkspaceSplitLayout
+                viewKey="list"
+                detailOpen={activeView === 'enrollments' && detailOpen}
+                detailId={ACCESS_DETAIL_ID}
+                detailRole="complementary"
+                detailAriaLabelledBy={ACCESS_DETAIL_TITLE_ID}
+                className="access-layout"
+                main={(
                   <div className="workspace-panel__viewport workspace-panel__viewport--flush workspace-panel__viewport--fixed">
                     <OperationalTablePanel
                       preserveShell
@@ -1503,21 +1706,32 @@ const AccessPage = () => {
                       ) : null}
                     />
                   </div>
-                </section>
+                )}
+                detail={accessDetailPanel}
+              />
+            </section>
 
-                <section id="access-panel-history" role="tabpanel" aria-labelledby="access-view-history" hidden={activeView !== 'history'} className="workspace-panel access-panel">
-                  <div className="workspace-page__control-row workspace-page__control-row--operational">
-                    <ToolbarSearchField
-                      id="access-events-search"
-                      name="access-events-search"
-                      value={eventSearchTerm}
-                      onChange={setEventSearchTerm}
-                      placeholder="Buscar por evento, colaborador, sistema o tag..."
-                      srLabel="Buscar historial de accesos"
-                      className="workspace-search--operational"
-                    />
-                  </div>
+            <section id="access-panel-history" role="tabpanel" aria-labelledby="access-view-history" hidden={activeView !== 'history'} className="workspace-panel access-panel">
+              <div className="workspace-page__control-row workspace-page__control-row--operational">
+                <ToolbarSearchField
+                  id="access-events-search"
+                  name="access-events-search"
+                  value={eventSearchTerm}
+                  onChange={setEventSearchTerm}
+                  placeholder="Buscar por evento, colaborador, sistema o tag..."
+                  srLabel="Buscar historial de accesos"
+                  className="workspace-search--operational"
+                />
+              </div>
 
+              <WorkspaceSplitLayout
+                viewKey="list"
+                detailOpen={activeView === 'history' && detailOpen}
+                detailId={ACCESS_DETAIL_ID}
+                detailRole="complementary"
+                detailAriaLabelledBy={ACCESS_DETAIL_TITLE_ID}
+                className="access-layout"
+                main={(
                   <div className="workspace-panel__viewport workspace-panel__viewport--flush workspace-panel__viewport--fixed">
                     <OperationalTablePanel
                       preserveShell
@@ -1554,191 +1768,11 @@ const AccessPage = () => {
                       emptyCopy={accessEventsNoRecordsState.copy}
                     />
                   </div>
-                </section>
-              </>
-            )}
-            detail={detailContext ? (
-              <aside className="ticket-detail ticket-detail--tone-primary access-detail" aria-labelledby={ACCESS_DETAIL_TITLE_ID}>
-                <div className="ticket-detail__summary">
-                  <header className="ticket-detail__header">
-                    <div className="ticket-detail__header-top">
-                      <div>
-                        <div className="ticket-detail__header-id">
-                          <span className="ticket-detail__ticket-id">Detalle</span>
-                        </div>
-                        <h2 id={ACCESS_DETAIL_TITLE_ID} className="ticket-detail__title">{detailContext.title}</h2>
-                        <p className="ticket-detail__summary access-detail__summary-copy">{detailContext.subtitle}</p>
-                      </div>
-                      <div className="ticket-detail__header-actions">
-                        {detailContext.media?.status_key === 'available' && canAssignAccess ? (
-                          <button type="button" className="ticket-detail__edit" onClick={() => openAssignModal(detailContext.media.id)}>
-                            <ArrowRightLeft size={14} aria-hidden="true" />
-                            <span>Asignar</span>
-                          </button>
-                        ) : null}
-                        {detailContext.assignment?.status_key === 'active' && canAssignAccess ? (
-                          <button type="button" className="ticket-detail__edit" onClick={() => openReturnModal(detailContext.assignment)}>
-                            <Undo2 size={14} aria-hidden="true" />
-                            <span>Devolver</span>
-                          </button>
-                        ) : null}
-                        {detailContext.assignment?.status_key === 'active' && canAssignAccess ? (
-                          <button type="button" className="ticket-detail__edit" onClick={() => openNotReturnedModal(detailContext.assignment)}>
-                            <CircleOff size={14} aria-hidden="true" />
-                            <span>No devuelto</span>
-                          </button>
-                        ) : null}
-                        {detailContext.collaborator?.id && canCreateAccess ? (
-                          <button type="button" className="ticket-detail__edit" onClick={() => openCreateEnrollmentModal(detailContext)}>
-                            <UserCog size={14} aria-hidden="true" />
-                            <span>Nueva alta</span>
-                          </button>
-                        ) : null}
-                        {canOffboardFromDetail && canAssignAccess ? (
-                          <button type="button" className="ticket-detail__edit" onClick={() => openOffboardModal(detailContext)}>
-                            <UserMinus size={14} aria-hidden="true" />
-                            <span>Dar de baja accesos</span>
-                          </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          className="ticket-detail__close"
-                          onClick={() => {
-                            setSelectedAssignmentId(null);
-                            setSelectedMediaId(null);
-                            setSelectedEnrollmentId(null);
-                            setSelectedEventId(null);
-                          }}
-                          aria-label="Cerrar detalle de accesos"
-                        >
-                          <CircleOff size={16} aria-hidden="true" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <dl className="ticket-detail__meta-grid">
-                      <div className="ticket-detail__meta-item">
-                        <dt className="ticket-detail__meta-label">Colaborador</dt>
-                        <dd>{detailContext.collaborator?.full_name || 'Sin colaborador ligado'}</dd>
-                      </div>
-                      <div className="ticket-detail__meta-item">
-                        <dt className="ticket-detail__meta-label">ID operativo</dt>
-                        <dd>{detailContext.collaborator?.employee_id || 'Sin ID'}</dd>
-                      </div>
-                      <div className="ticket-detail__meta-item">
-                        <dt className="ticket-detail__meta-label">Medio</dt>
-                        <dd>{detailContext.media ? toMediaLabel(detailContext.media) : 'Sin medio ligado'}</dd>
-                      </div>
-                      <div className="ticket-detail__meta-item">
-                        <dt className="ticket-detail__meta-label">Estado principal</dt>
-                        <dd>
-                          {detailContext.assignment ? (
-                            <span className={getAssignmentStatusToneClass(detailContext.assignment.status_key)}>{detailContext.assignment.status_name}</span>
-                          ) : detailContext.enrollment ? (
-                            <span className={getEnrollmentStatusToneClass(detailContext.enrollment.status_key)}>{detailContext.enrollment.status_name}</span>
-                          ) : detailContext.media ? (
-                            <span className={getMediumStatusToneClass(detailContext.media.status_key)}>{detailContext.media.status_name}</span>
-                          ) : detailContext.event ? (
-                            <span className="inventory-status-chip inventory-status-chip--neutral">{toEventLabel(detailContext.event.event_type)}</span>
-                          ) : 'Sin contexto'}
-                        </dd>
-                      </div>
-                    </dl>
-                  </header>
-
-                  <section className="ticket-detail__section">
-                    <div className="ticket-detail__section-headline">
-                      <h3 className="ticket-detail__section-title">Resumen operativo</h3>
-                    </div>
-                    <ul className="access-detail__list">
-                      {detailContext.assignment ? (
-                        <li>
-                          <strong>Asignación vigente</strong>
-                          <span>Asignado el {formatDateTime(detailContext.assignment.assigned_at)}</span>
-                          <span>{detailContext.assignment.expected_return_at ? `Retorno esperado: ${formatDateOnly(detailContext.assignment.expected_return_at)}` : 'Sin fecha de retorno comprometida'}</span>
-                        </li>
-                      ) : null}
-                      {detailContext.media ? (
-                        <li>
-                          <strong>Unidad física vinculada</strong>
-                          <span>{detailContext.media.asset_unit?.asset_tag || detailContext.media.asset_unit_id}</span>
-                          <span>{detailContext.media.asset_unit?.serial_number || 'Sin número de serie registrado'}</span>
-                        </li>
-                      ) : null}
-                      {detailContext.enrollment ? (
-                        <li>
-                          <strong>Alta actual</strong>
-                          <span>{detailContext.enrollment.access_system?.name || 'Sin sistema'}</span>
-                          <span>{detailContext.enrollment.activated_at ? `Activo desde ${formatDateTime(detailContext.enrollment.activated_at)}` : 'Sin fecha de activación registrada'}</span>
-                        </li>
-                      ) : null}
-                      {detailContext.event ? (
-                        <li>
-                          <strong>Evento seleccionado</strong>
-                          <span>{formatDateTime(detailContext.event.happened_at)}</span>
-                          <span>{detailContext.event.notes || 'Sin observaciones adicionales'}</span>
-                        </li>
-                      ) : null}
-                    </ul>
-                  </section>
-
-                  <section className="ticket-detail__section">
-                    <div className="ticket-detail__section-headline">
-                      <h3 className="ticket-detail__section-title">Altas relacionadas</h3>
-                    </div>
-                    {detailContext.enrollments?.length ? (
-                      <ul className="access-detail__list">
-                        {detailContext.enrollments.map((enrollment) => (
-                          <li key={enrollment.id}>
-                            <strong>{enrollment.access_system?.name || 'Sin sistema'}</strong>
-                            <span>{enrollment.media?.tag_code || 'Sin medio ligado'}</span>
-                            <div className="access-detail__list-inline">
-                              <span className={getEnrollmentStatusToneClass(enrollment.status_key)}>{enrollment.status_name}</span>
-                              {enrollment.status_key !== 'deactivated' && canUpdateAccess ? (
-                                <button type="button" className="action-inline action-inline--secondary" onClick={() => openEnrollmentStatusModal(enrollment)}>
-                                  <Wrench size={14} aria-hidden="true" />
-                                  <span>Cambiar estado</span>
-                                </button>
-                              ) : null}
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="inventory-asset-detail__empty-copy">No hay altas relacionadas para este contexto todavía.</p>
-                    )}
-                  </section>
-
-                  <section className="ticket-detail__section ticket-detail__section--activity">
-                    <div className="ticket-detail__section-headline">
-                      <h3 className="ticket-detail__section-title">Historial reciente</h3>
-                    </div>
-                    {detailContext.events?.length ? (
-                      <ul className="ticket-activity inventory-asset-detail__activity-list" aria-label="Historial reciente de accesos">
-                        {detailContext.events.map((eventRow) => (
-                          <li key={eventRow.id} className="ticket-activity__item">
-                            <span className="ticket-activity__dot" aria-hidden="true" />
-                            <div>
-                              <p className="ticket-activity__title">{toEventLabel(eventRow.event_type)}</p>
-                              <p className="ticket-activity__meta">
-                                <span className="inventory-asset-detail__activity-impact">{eventRow.access_system_name || eventRow.tag_code || eventRow.collaborator_name || 'Accesos'}</span>
-                                <span className="inventory-asset-detail__activity-when">{formatDateTime(eventRow.happened_at)}</span>
-                              </p>
-                              {eventRow.notes ? (
-                                <p className="ticket-detail__comment-history-caption">{eventRow.notes}</p>
-                              ) : null}
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="inventory-asset-detail__empty-copy">Aún no hay eventos relacionados que mostrar.</p>
-                    )}
-                  </section>
-                </div>
-              </aside>
-            ) : null}
-          />
+                )}
+                detail={accessDetailPanel}
+              />
+            </section>
+          </>
         )}
       </section>
 
