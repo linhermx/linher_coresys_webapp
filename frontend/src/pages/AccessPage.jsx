@@ -964,21 +964,21 @@ const AccessPage = () => {
     }), 'La baja de accesos se procesó correctamente.');
   };
 
-  const activeHeaderActions = (
+  const headerActions = (
     <>
-      {activeView === 'enrollments' && canCreateAccess ? (
+      {canCreateAccess ? (
         <button type="button" className="workspace-action workspace-action--ghost" ref={createEnrollmentTriggerRef} onClick={() => openCreateEnrollmentModal()}>
           <UserCog size={16} aria-hidden="true" />
           <span>Nueva alta</span>
         </button>
       ) : null}
-      {activeView === 'media' && canCreateAccess ? (
+      {canCreateAccess ? (
         <button type="button" className="workspace-action workspace-action--ghost" ref={createMediaTriggerRef} onClick={() => void openCreateMediaModal()}>
           <IdCard size={16} aria-hidden="true" />
           <span>Registrar medio</span>
         </button>
       ) : null}
-      {activeView === 'assignments' && canAssignAccess ? (
+      {canAssignAccess ? (
         <button type="button" className="workspace-action workspace-action--primary" ref={createAssignmentTriggerRef} onClick={() => openAssignModal()}>
           <Plus size={16} aria-hidden="true" />
           <span>Asignar medio</span>
@@ -1425,7 +1425,7 @@ const AccessPage = () => {
           <h1 className="workspace-page__title">Accesos</h1>
         </div>
         <div className="workspace-page__header-actions">
-          {activeHeaderActions}
+          {headerActions}
         </div>
       </header>
 
