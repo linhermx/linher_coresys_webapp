@@ -16,12 +16,12 @@ import { EmptyState } from '../components/primitives/EmptyState.jsx';
 import { FilterChipGroup } from '../components/primitives/FilterChipGroup.jsx';
 import { DrawerTabs } from '../components/primitives/DrawerTabs.jsx';
 import { FilterSelect } from '../components/primitives/FilterSelect.jsx';
-import { InlineNotice } from '../components/primitives/InlineNotice.jsx';
 import { ModalDialog } from '../components/primitives/ModalDialog.jsx';
 import { OperationalTablePanel } from '../components/primitives/OperationalTablePanel.jsx';
 import { PaginationBar } from '../components/primitives/PaginationBar.jsx';
 import { SegmentedControl } from '../components/primitives/SegmentedControl.jsx';
 import { ToolbarSearchField } from '../components/primitives/ToolbarSearchField.jsx';
+import { WorkspaceNoticeRail } from '../components/primitives/WorkspaceNoticeRail.jsx';
 import { WorkspaceSplitLayout } from '../components/primitives/WorkspaceSplitLayout.jsx';
 import {
   addTicketComment,
@@ -1171,10 +1171,30 @@ const TicketsPage = () => {
     setActionToast(null);
   };
 
-  const workspaceNotice = actionToast || (isStatusSubmitting ? {
-    tone: 'info',
-    message: 'Actualizando estado del ticket...'
-  } : null);
+  const workspaceNotice = actionToast;
+  const workspaceNotices = useMemo(() => {
+    if (!workspaceNotice) {
+      return [];
+    }
+
+    return [{
+      key: actionToast?.id || 'ticket-workspace-notice',
+      tone: workspaceNotice.tone || 'info',
+      message: workspaceNotice.message,
+      role: workspaceNotice.tone === 'error' ? 'alert' : 'status',
+      live: workspaceNotice.tone === 'error' ? 'assertive' : 'polite',
+      actions: actionToast ? (
+        <button
+          type="button"
+          className="inline-notice__dismiss"
+          aria-label="Cerrar notificación"
+          onClick={dismissToast}
+        >
+          <X size={14} aria-hidden="true" />
+        </button>
+      ) : null
+    }];
+  }, [actionToast, dismissToast, workspaceNotice]);
 
   const showToast = (message, tone = 'success', duration = 3600) => {
     clearToastTimer();
@@ -1866,27 +1886,7 @@ const TicketsPage = () => {
           {liveStatusMessage}
         </p>
 
-        {workspaceNotice ? (
-          <div className="workspace-page__notice-slot">
-            <InlineNotice
-              tone={workspaceNotice.tone || 'info'}
-              role={workspaceNotice.tone === 'error' ? 'alert' : 'status'}
-              live={workspaceNotice.tone === 'error' ? 'assertive' : 'polite'}
-              actions={actionToast ? (
-                <button
-                  type="button"
-                  className="inline-notice__dismiss"
-                  aria-label="Cerrar notificación"
-                  onClick={dismissToast}
-                >
-                  <X size={14} aria-hidden="true" />
-                </button>
-              ) : null}
-            >
-              {workspaceNotice.message}
-            </InlineNotice>
-          </div>
-        ) : null}
+        {workspaceNotice ? <WorkspaceNoticeRail notices={workspaceNotices} /> : null}
 
         {ticketsError ? (
           <EmptyState

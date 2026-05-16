@@ -1201,9 +1201,23 @@ textarea:focus-visible {
   row-gap: 8px;
 }
 
-.workspace-page__notice-slot {
+.workspace-notice-rail {
+  position: fixed;
+  inset-block-start: calc(var(--topbar-height) + var(--spacing-md));
+  right: max(
+    var(--spacing-lg),
+    calc((((100vw - var(--sidebar-width)) - (var(--spacing-lg) * 2) - var(--content-max-width)) / 2) + var(--spacing-lg))
+  );
+  inline-size: min(420px, calc(100vw - var(--sidebar-width) - (var(--spacing-lg) * 2)));
   display: grid;
   gap: 8px;
+  z-index: 60;
+  pointer-events: none;
+}
+
+.workspace-notice-rail > * {
+  pointer-events: auto;
+  box-shadow: var(--shadow-md);
 }
 
 .workspace-search {
@@ -3521,6 +3535,17 @@ textarea:focus-visible {
 
   .shell__content {
     padding: var(--spacing-md);
+  }
+
+  .workspace-notice-rail {
+    position: fixed;
+    left: var(--spacing-md);
+    right: var(--spacing-md);
+    transform: none;
+    inset-block-end: var(--spacing-md);
+    inset-block-start: auto;
+    inline-size: auto;
+    z-index: 60;
   }
 }
 

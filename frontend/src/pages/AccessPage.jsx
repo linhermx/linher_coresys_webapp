@@ -22,6 +22,7 @@ import { OperationalTablePanel } from '../components/primitives/OperationalTable
 import { PaginationBar } from '../components/primitives/PaginationBar.jsx';
 import { SegmentedControl } from '../components/primitives/SegmentedControl.jsx';
 import { ToolbarSearchField } from '../components/primitives/ToolbarSearchField.jsx';
+import { WorkspaceNoticeRail } from '../components/primitives/WorkspaceNoticeRail.jsx';
 import { WorkspaceSplitLayout } from '../components/primitives/WorkspaceSplitLayout.jsx';
 import { useAuth } from '../hooks/useAuth.js';
 import {
@@ -389,6 +390,27 @@ const AccessPage = () => {
   const canAssignAccess = hasPermission(authUser, 'access.assign');
   const canUpdateAccess = hasPermission(authUser, 'access.update');
   const hasActionNotice = Boolean(actionError || actionSuccess);
+  const workspaceNotices = useMemo(() => {
+    const notices = [];
+
+    if (actionSuccess) {
+      notices.push({
+        key: 'access-success',
+        tone: 'success',
+        message: actionSuccess
+      });
+    }
+
+    if (actionError) {
+      notices.push({
+        key: 'access-error',
+        tone: 'error',
+        message: actionError
+      });
+    }
+
+    return notices;
+  }, [actionError, actionSuccess]);
 
   const resetFeedback = useCallback(() => {
     setActionError('');
@@ -1445,12 +1467,7 @@ const AccessPage = () => {
           />
         </div>
 
-        {hasActionNotice ? (
-          <div className="workspace-page__notice-slot">
-            {actionSuccess ? <InlineNotice tone="success">{actionSuccess}</InlineNotice> : null}
-            {actionError ? <InlineNotice tone="error">{actionError}</InlineNotice> : null}
-          </div>
-        ) : null}
+        {hasActionNotice ? <WorkspaceNoticeRail notices={workspaceNotices} /> : null}
 
         {screenError ? (
           <EmptyState title={accessLoadErrorTitle} copy={screenError} id="access-state-error" role="region">

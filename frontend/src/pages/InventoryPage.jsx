@@ -31,6 +31,7 @@ import { OperationalTable } from '../components/primitives/OperationalTable.jsx'
 import { PaginationBar } from '../components/primitives/PaginationBar.jsx';
 import { SegmentedControl } from '../components/primitives/SegmentedControl.jsx';
 import { ToolbarSearchField } from '../components/primitives/ToolbarSearchField.jsx';
+import { WorkspaceNoticeRail } from '../components/primitives/WorkspaceNoticeRail.jsx';
 import { WorkspaceSplitLayout } from '../components/primitives/WorkspaceSplitLayout.jsx';
 import { ModalDialog } from '../components/primitives/ModalDialog.jsx';
 import { useAuth } from '../hooks/useAuth.js';
@@ -1836,6 +1837,27 @@ const InventoryPage = () => {
   const hasAssignedAssetUnits = selectedAssetUnits.some((unit) => unit.status_key === 'assigned');
   const hasRepairingAssetUnits = selectedAssetUnits.some((unit) => unit.status_key === 'in_repair');
   const hasActionNotice = Boolean(actionError || actionSuccess);
+  const workspaceNotices = useMemo(() => {
+    const notices = [];
+
+    if (actionSuccess) {
+      notices.push({
+        key: 'inventory-success',
+        tone: 'success',
+        message: actionSuccess
+      });
+    }
+
+    if (actionError) {
+      notices.push({
+        key: 'inventory-error',
+        tone: 'error',
+        message: actionError
+      });
+    }
+
+    return notices;
+  }, [actionError, actionSuccess]);
   const recentSummaryMovements = selectedAssetMovements.slice(0, 3);
   const isAssetDetailPanelOpen = activeView === 'assets' && Boolean(detailAsset);
   const detailExistenceLabel = detailAsset
@@ -2031,12 +2053,7 @@ const InventoryPage = () => {
           />
         </div>
 
-        {hasActionNotice ? (
-          <div className="workspace-page__notice-slot">
-            {actionSuccess ? <InlineNotice tone="success">{actionSuccess}</InlineNotice> : null}
-            {actionError ? <InlineNotice tone="error">{actionError}</InlineNotice> : null}
-          </div>
-        ) : null}
+        {hasActionNotice ? <WorkspaceNoticeRail notices={workspaceNotices} /> : null}
 
         {screenError ? (
           <EmptyState title={inventoryLoadErrorTitle} copy={screenError} id="inventory-state-error" role="region">
