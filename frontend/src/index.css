@@ -1085,12 +1085,10 @@ textarea:focus-visible {
   transition:
     background-color 140ms ease,
     border-color 140ms ease,
-    transform 140ms ease,
     box-shadow 140ms ease;
 }
 
 .tickets-page__summary-card:hover {
-  transform: translateY(-1px);
   border-color: color-mix(in oklch, var(--summary-card-accent) var(--ticket-tone-border-strong-mix), var(--color-border));
   box-shadow: var(--shadow-soft);
 }
