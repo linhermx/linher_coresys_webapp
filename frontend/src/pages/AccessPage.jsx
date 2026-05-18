@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   Undo2,
   UserCog,
+  UserPlus,
   UserMinus,
   Wrench
 } from 'lucide-react';
@@ -22,6 +23,7 @@ import { OperationalTablePanel } from '../components/primitives/OperationalTable
 import { PaginationBar } from '../components/primitives/PaginationBar.jsx';
 import { SegmentedControl } from '../components/primitives/SegmentedControl.jsx';
 import { ToolbarSearchField } from '../components/primitives/ToolbarSearchField.jsx';
+import { WorkspaceActionMenu } from '../components/primitives/WorkspaceActionMenu.jsx';
 import { WorkspaceNoticeRail } from '../components/primitives/WorkspaceNoticeRail.jsx';
 import { WorkspaceSplitLayout } from '../components/primitives/WorkspaceSplitLayout.jsx';
 import { useAuth } from '../hooks/useAuth.js';
@@ -40,7 +42,7 @@ import {
   returnAccessMediaAssignment,
   updateAccessEnrollmentStatus
 } from '../services/accessService.js';
-import { isCollaboratorAuthError, listCollaborators } from '../services/collaboratorService.js';
+import { createCollaborator, isCollaboratorAuthError, listCollaborators } from '../services/collaboratorService.js';
 import { isAuthError as isInventoryAuthError, listInventoryAssetUnits, listLocations } from '../services/inventoryService.js';
 import { hasPermission } from '../utils/accessControl.js';
 import {
@@ -94,7 +96,7 @@ const accessMediaNoRecordsState = createWorkspaceNoRecordsState(
 );
 const accessEnrollmentsNoRecordsState = createWorkspaceNoRecordsState(
   'altas',
-  'Crea la primera alta por sistema para mantener visible quién está activo en Producción, Oficinas, Baño o Admin.'
+  'Crea la primera alta por sistema para mantener visible quién está activo en Producción, Oficinas o Baño.'
 );
 const accessEventsNoRecordsState = createWorkspaceNoRecordsState(
   'eventos',
@@ -134,6 +136,13 @@ const defaultEnrollmentForm = {
   notes: ''
 };
 
+const defaultCreateCollaboratorForm = {
+  employee_id: '',
+  first_name: '',
+  last_name: '',
+  area_name: ''
+};
+
 const defaultReturnForm = {
   location_id: '',
   returned_at: '',
@@ -163,6 +172,19 @@ const defaultOffboardForm = {
 const normalizeErrorMessage = (error, fallback) => (
   String(error?.message || '').trim() || fallback
 );
+
+const normalizeFieldValue = (value) => String(value || '').trim();
+
+const toPositiveNumberOrNull = (value) => {
+  const normalized = Number(value);
+  if (!Number.isInteger(normalized) || normalized <= 0) {
+    return null;
+  }
+
+  return normalized;
+};
+
+const buildFieldErrorId = (fieldId) => `${fieldId}-error`;
 
 const toDateTimeLocalValue = (value = new Date()) => {
   const date = value instanceof Date ? value : new Date(value);
@@ -366,29 +388,39 @@ const AccessPage = () => {
   const [isNotReturnedModalOpen, setIsNotReturnedModalOpen] = useState(false);
   const [isEnrollmentStatusOpen, setIsEnrollmentStatusOpen] = useState(false);
   const [isOffboardOpen, setIsOffboardOpen] = useState(false);
+  const [isCreateCollaboratorOpen, setIsCreateCollaboratorOpen] = useState(false);
 
   const [createMediaForm, setCreateMediaForm] = useState(defaultCreateMediaForm);
   const [assignForm, setAssignForm] = useState(defaultAssignForm);
   const [createEnrollmentForm, setCreateEnrollmentForm] = useState(defaultEnrollmentForm);
+  const [createCollaboratorForm, setCreateCollaboratorForm] = useState(defaultCreateCollaboratorForm);
   const [returnForm, setReturnForm] = useState(defaultReturnForm);
   const [notReturnedForm, setNotReturnedForm] = useState(defaultNotReturnedForm);
   const [enrollmentStatusForm, setEnrollmentStatusForm] = useState(defaultEnrollmentStatusForm);
   const [offboardForm, setOffboardForm] = useState(defaultOffboardForm);
 
   const [modalError, setModalError] = useState('');
+  const [formErrors, setFormErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeAssignmentAction, setActiveAssignmentAction] = useState(null);
   const [activeEnrollmentAction, setActiveEnrollmentAction] = useState(null);
   const [activeOffboardTarget, setActiveOffboardTarget] = useState(null);
+  const [collaboratorCreationTarget, setCollaboratorCreationTarget] = useState(null);
 
   const createAssignmentTriggerRef = useRef(null);
   const createMediaTriggerRef = useRef(null);
   const createEnrollmentTriggerRef = useRef(null);
+  const accessOverflowTriggerRef = useRef(null);
+  const createAssignmentReturnFocusRef = useRef(null);
+  const createMediaReturnFocusRef = useRef(null);
+  const createEnrollmentReturnFocusRef = useRef(null);
+  const createCollaboratorReturnFocusRef = useRef(null);
 
   const activeView = resolveAccessView(searchParams.get('view'));
   const canCreateAccess = hasPermission(authUser, 'access.create');
   const canAssignAccess = hasPermission(authUser, 'access.assign');
   const canUpdateAccess = hasPermission(authUser, 'access.update');
+  const canCreateCollaborators = hasPermission(authUser, 'collaborators.create');
   const hasActionNotice = Boolean(actionError || actionSuccess);
   const workspaceNotices = useMemo(() => {
     const notices = [];
@@ -412,19 +444,59 @@ const AccessPage = () => {
     return notices;
   }, [actionError, actionSuccess]);
 
+  const getFieldError = useCallback((fieldId) => formErrors[fieldId] || '', [formErrors]);
+  const getFieldDescribedBy = useCallback((fieldId, extraId = '') => {
+    const describedBy = [
+      extraId,
+      formErrors[fieldId] ? buildFieldErrorId(fieldId) : ''
+    ].filter(Boolean).join(' ');
+
+    return describedBy || undefined;
+  }, [formErrors]);
+  const renderFieldError = useCallback((fieldId) => {
+    const message = formErrors[fieldId];
+    if (!message) {
+      return null;
+    }
+
+    return (
+      <p id={buildFieldErrorId(fieldId)} className="modal-dialog__field-help modal-dialog__field-help--error" role="alert">
+        {message}
+      </p>
+    );
+  }, [formErrors]);
+  const focusFirstInvalidField = useCallback((errors) => {
+    const firstFieldId = Object.keys(errors)[0];
+    if (!firstFieldId) {
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      document.getElementById(firstFieldId)?.focus?.();
+    });
+  }, []);
+  const applyValidationErrors = useCallback((errors) => {
+    setModalError('');
+    setFormErrors(errors);
+    focusFirstInvalidField(errors);
+  }, [focusFirstInvalidField]);
+
   const resetFeedback = useCallback(() => {
     setActionError('');
     setActionSuccess('');
     setModalError('');
+    setFormErrors({});
   }, []);
 
   const loadAvailableUnits = useCallback(async () => {
     setIsLoadingUnits(true);
 
     try {
-      const units = await listInventoryAssetUnits({ status: 'available' });
+      const units = await listInventoryAssetUnits({ status: 'available', assetTypeKey: 'rfid_tag' });
       const linkedUnitIds = new Set(media.map((item) => Number(item.asset_unit_id)));
-      setAvailableInventoryUnits(units.filter((unit) => !linkedUnitIds.has(Number(unit.id))));
+      setAvailableInventoryUnits(units.filter((unit) => (
+        unit.asset_type_key === 'rfid_tag' && !linkedUnitIds.has(Number(unit.id))
+      )));
     } finally {
       setIsLoadingUnits(false);
     }
@@ -586,6 +658,23 @@ const AccessPage = () => {
       }))
     ];
   }, [assignments, createEnrollmentForm.collaborator_id]);
+
+  const assignmentOptionsForEnrollmentStatus = useMemo(() => {
+    const collaboratorId = Number(activeEnrollmentAction?.collaborator?.id || 0);
+    const filteredAssignments = collaboratorId > 0
+      ? assignments.filter((assignment) => (
+        assignment.status_key === 'active' && Number(assignment.collaborator?.id) === collaboratorId
+      ))
+      : assignments.filter((assignment) => assignment.status_key === 'active');
+
+    return [
+      { key: '', label: 'Sin medio ligado' },
+      ...filteredAssignments.map((assignment) => ({
+        key: String(assignment.id),
+        label: `${assignment.media?.tag_code || 'Sin tag'} · ${assignment.collaborator?.full_name || 'Sin colaborador'}`
+      }))
+    ];
+  }, [activeEnrollmentAction, assignments]);
 
   const filteredAssignments = useMemo(() => assignments.filter((assignment) => {
     if (assignmentStatusFilter !== 'all' && assignment.status_key !== assignmentStatusFilter) {
@@ -788,19 +877,27 @@ const AccessPage = () => {
     setIsNotReturnedModalOpen(false);
     setIsEnrollmentStatusOpen(false);
     setIsOffboardOpen(false);
+    setIsCreateCollaboratorOpen(false);
     setModalError('');
+    setFormErrors({});
     setIsSubmitting(false);
+    setActiveAssignmentAction(null);
+    setActiveEnrollmentAction(null);
+    setActiveOffboardTarget(null);
+    setCollaboratorCreationTarget(null);
   };
 
-  const openCreateMediaModal = async () => {
+  const openCreateMediaModal = async (triggerElement = null) => {
     resetFeedback();
+    createMediaReturnFocusRef.current = triggerElement || createMediaTriggerRef.current || accessOverflowTriggerRef.current;
     setCreateMediaForm(defaultCreateMediaForm);
     setIsCreateMediaOpen(true);
     await loadAvailableUnits();
   };
 
-  const openAssignModal = (prefillMediaId = null) => {
+  const openAssignModal = (prefillMediaId = null, triggerElement = null) => {
     resetFeedback();
+    createAssignmentReturnFocusRef.current = triggerElement || createAssignmentTriggerRef.current;
     setAssignForm({
       ...defaultAssignForm,
       access_media_id: prefillMediaId ? String(prefillMediaId) : '',
@@ -809,8 +906,9 @@ const AccessPage = () => {
     setIsAssignModalOpen(true);
   };
 
-  const openCreateEnrollmentModal = (context = null) => {
+  const openCreateEnrollmentModal = (context = null, triggerElement = null) => {
     resetFeedback();
+    createEnrollmentReturnFocusRef.current = triggerElement || createEnrollmentTriggerRef.current || accessOverflowTriggerRef.current;
     setCreateEnrollmentForm({
       ...defaultEnrollmentForm,
       collaborator_id: context?.collaborator?.id ? String(context.collaborator.id) : '',
@@ -818,6 +916,21 @@ const AccessPage = () => {
       activated_at: toDateTimeLocalValue()
     });
     setIsCreateEnrollmentOpen(true);
+  };
+
+  const openCreateCollaboratorModal = (target = null, triggerElement = null) => {
+    resetFeedback();
+    createCollaboratorReturnFocusRef.current = triggerElement || accessOverflowTriggerRef.current;
+    setCreateCollaboratorForm(defaultCreateCollaboratorForm);
+    setCollaboratorCreationTarget(target);
+    setIsCreateCollaboratorOpen(true);
+  };
+
+  const closeCreateCollaboratorModal = () => {
+    setIsCreateCollaboratorOpen(false);
+    setCollaboratorCreationTarget(null);
+    setModalError('');
+    setFormErrors({});
   };
 
   const openReturnModal = (assignment) => {
@@ -870,6 +983,150 @@ const AccessPage = () => {
     setIsOffboardOpen(true);
   };
 
+  const validateCreateMediaForm = () => {
+    const errors = {};
+
+    if (!normalizeFieldValue(createMediaForm.medium_type_key)) {
+      errors['access-create-media-type'] = 'Selecciona un tipo de medio.';
+    }
+
+    if (!toPositiveNumberOrNull(createMediaForm.asset_unit_id)) {
+      errors['access-create-media-unit'] = 'Selecciona una unidad RFID disponible.';
+    }
+
+    if (!normalizeFieldValue(createMediaForm.tag_code)) {
+      errors['access-create-media-tag'] = 'Captura el tag o codigo del medio.';
+    }
+
+    return errors;
+  };
+
+  const validateCreateCollaboratorForm = () => {
+    const errors = {};
+
+    if (!normalizeFieldValue(createCollaboratorForm.employee_id)) {
+      errors['access-create-collaborator-employee-id'] = 'Captura el ID operativo del colaborador.';
+    } else if (!toPositiveNumberOrNull(createCollaboratorForm.employee_id)) {
+      errors['access-create-collaborator-employee-id'] = 'El ID operativo debe ser un número entero mayor a cero.';
+    }
+
+    if (!normalizeFieldValue(createCollaboratorForm.first_name)) {
+      errors['access-create-collaborator-first-name'] = 'Captura el nombre del colaborador.';
+    }
+
+    if (!normalizeFieldValue(createCollaboratorForm.last_name)) {
+      errors['access-create-collaborator-last-name'] = 'Captura los apellidos del colaborador.';
+    }
+
+    return errors;
+  };
+
+  const validateAssignForm = () => {
+    const errors = {};
+
+    if (!toPositiveNumberOrNull(assignForm.access_media_id)) {
+      errors['access-assign-media'] = 'Selecciona un medio disponible.';
+    }
+
+    if (!toPositiveNumberOrNull(assignForm.collaborator_id)) {
+      errors['access-assign-collaborator'] = 'Selecciona un colaborador.';
+    }
+
+    if (!normalizeFieldValue(assignForm.assigned_at)) {
+      errors['access-assign-assigned-at'] = 'Indica la fecha de asignacion.';
+    }
+
+    return errors;
+  };
+
+  const validateCreateEnrollmentForm = () => {
+    const errors = {};
+
+    if (!toPositiveNumberOrNull(createEnrollmentForm.collaborator_id)) {
+      errors['access-create-enrollment-collaborator'] = 'Selecciona un colaborador.';
+    }
+
+    if (!toPositiveNumberOrNull(createEnrollmentForm.access_system_id)) {
+      errors['access-create-enrollment-system'] = 'Selecciona un sistema.';
+    }
+
+    if (!normalizeFieldValue(createEnrollmentForm.status_key)) {
+      errors['access-create-enrollment-status'] = 'Selecciona un estado inicial.';
+    }
+
+    if (createEnrollmentForm.status_key === 'active' && !normalizeFieldValue(createEnrollmentForm.activated_at)) {
+      errors['access-create-enrollment-activated-at'] = 'Indica la fecha de activacion del alta.';
+    }
+
+    return errors;
+  };
+
+  const validateReturnForm = () => {
+    const errors = {};
+
+    if (!toPositiveNumberOrNull(returnForm.location_id)) {
+      errors['access-return-location'] = 'Selecciona la ubicacion donde regresa el medio.';
+    }
+
+    if (!normalizeFieldValue(returnForm.returned_at)) {
+      errors['access-return-returned-at'] = 'Indica la fecha de devolucion.';
+    }
+
+    return errors;
+  };
+
+  const validateNotReturnedForm = () => {
+    const errors = {};
+
+    if (!normalizeFieldValue(notReturnedForm.resolved_at)) {
+      errors['access-not-returned-resolved-at'] = 'Indica la fecha de cierre.';
+    }
+
+    return errors;
+  };
+
+  const validateEnrollmentStatusForm = () => {
+    const errors = {};
+
+    if (!activeEnrollmentAction) {
+      errors['access-enrollment-next-status'] = 'No se encontro el alta que intentas actualizar.';
+      return errors;
+    }
+
+    if (!normalizeFieldValue(enrollmentStatusForm.status_key)) {
+      errors['access-enrollment-next-status'] = 'Selecciona el nuevo estado.';
+    }
+
+    if (enrollmentStatusForm.status_key === 'active' && !normalizeFieldValue(enrollmentStatusForm.activated_at)) {
+      errors['access-enrollment-activated-at'] = 'Indica la fecha de activacion.';
+    }
+
+    if (enrollmentStatusForm.status_key === 'deactivated' && !normalizeFieldValue(enrollmentStatusForm.deactivated_at)) {
+      errors['access-enrollment-deactivated-at'] = 'Indica la fecha de baja.';
+    }
+
+    return errors;
+  };
+
+  const validateOffboardForm = () => {
+    const errors = {};
+    const hasActiveAssignments = activeOffboardTarget?.assignments?.some((assignment) => assignment.status_key === 'active');
+
+    if (!normalizeFieldValue(offboardForm.offboarded_at)) {
+      errors['access-offboarded-at'] = 'Indica la fecha de baja.';
+    }
+
+    if (hasActiveAssignments && !normalizeFieldValue(offboardForm.media_resolution)) {
+      errors['access-offboard-resolution'] = 'Indica si el medio fue devuelto o no devuelto.';
+    }
+
+    if (hasActiveAssignments && offboardForm.media_resolution === 'returned' && !toPositiveNumberOrNull(offboardForm.location_id)) {
+      errors['access-offboard-location'] = 'Selecciona la ubicacion donde se reintegrara el medio.';
+    }
+
+    return errors;
+  };
+
   const runMutation = async (operation, successMessage) => {
     setIsSubmitting(true);
     setModalError('');
@@ -894,38 +1151,105 @@ const AccessPage = () => {
 
   const handleCreateMediaSubmit = async (event) => {
     event.preventDefault();
+    const errors = validateCreateMediaForm();
+    if (Object.keys(errors).length > 0) {
+      applyValidationErrors(errors);
+      return;
+    }
 
     await runMutation(() => createAccessMedia({
       medium_type_key: createMediaForm.medium_type_key,
-      asset_unit_id: Number(createMediaForm.asset_unit_id),
-      tag_code: createMediaForm.tag_code,
-      notes: createMediaForm.notes || undefined
-    }), 'Medio de acceso registrado correctamente.');
+      asset_unit_id: toPositiveNumberOrNull(createMediaForm.asset_unit_id),
+      tag_code: normalizeFieldValue(createMediaForm.tag_code),
+      notes: normalizeFieldValue(createMediaForm.notes) || undefined
+    }), 'Medio de acceso vinculado correctamente.');
+  };
+
+  const handleCreateCollaboratorSubmit = async (event) => {
+    event.preventDefault();
+    const errors = validateCreateCollaboratorForm();
+    if (Object.keys(errors).length > 0) {
+      applyValidationErrors(errors);
+      return;
+    }
+
+    setIsSubmitting(true);
+    setModalError('');
+
+    try {
+      const createdCollaborator = await createCollaborator({
+        employee_id: toPositiveNumberOrNull(createCollaboratorForm.employee_id),
+        first_name: normalizeFieldValue(createCollaboratorForm.first_name),
+        last_name: normalizeFieldValue(createCollaboratorForm.last_name),
+        area_name: normalizeFieldValue(createCollaboratorForm.area_name) || undefined,
+        status: 'active'
+      });
+
+      const collaboratorRows = await listCollaborators({ status: 'active' });
+      setCollaborators(collaboratorRows);
+
+      if (collaboratorCreationTarget === 'assign') {
+        setAssignForm((current) => ({
+          ...current,
+          collaborator_id: String(createdCollaborator.id)
+        }));
+      }
+
+      if (collaboratorCreationTarget === 'enrollment') {
+        setCreateEnrollmentForm((current) => ({
+          ...current,
+          collaborator_id: String(createdCollaborator.id),
+          media_assignment_id: ''
+        }));
+      }
+
+      closeCreateCollaboratorModal();
+      setActionSuccess('Colaborador registrado correctamente.');
+    } catch (error) {
+      if (isAccessAuthError(error) || isCollaboratorAuthError(error) || isInventoryAuthError(error)) {
+        clearSession();
+        return;
+      }
+
+      setModalError(normalizeErrorMessage(error, 'No fue posible registrar el colaborador.'));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleAssignSubmit = async (event) => {
     event.preventDefault();
+    const errors = validateAssignForm();
+    if (Object.keys(errors).length > 0) {
+      applyValidationErrors(errors);
+      return;
+    }
 
     await runMutation(() => assignAccessMedia({
-      access_media_id: Number(assignForm.access_media_id),
-      collaborator_id: Number(assignForm.collaborator_id),
-      assigned_at: assignForm.assigned_at || undefined,
-      expected_return_at: assignForm.expected_return_at || undefined,
-      location_id: assignForm.location_id ? Number(assignForm.location_id) : undefined,
-      notes: assignForm.notes || undefined
+      access_media_id: toPositiveNumberOrNull(assignForm.access_media_id),
+      collaborator_id: toPositiveNumberOrNull(assignForm.collaborator_id),
+      assigned_at: normalizeFieldValue(assignForm.assigned_at) || undefined,
+      expected_return_at: normalizeFieldValue(assignForm.expected_return_at) || undefined,
+      location_id: toPositiveNumberOrNull(assignForm.location_id) || undefined,
+      notes: normalizeFieldValue(assignForm.notes) || undefined
     }), 'Medio asignado correctamente.');
   };
 
   const handleCreateEnrollmentSubmit = async (event) => {
     event.preventDefault();
+    const errors = validateCreateEnrollmentForm();
+    if (Object.keys(errors).length > 0) {
+      applyValidationErrors(errors);
+      return;
+    }
 
     await runMutation(() => createAccessEnrollment({
-      collaborator_id: Number(createEnrollmentForm.collaborator_id),
-      access_system_id: Number(createEnrollmentForm.access_system_id),
-      media_assignment_id: createEnrollmentForm.media_assignment_id ? Number(createEnrollmentForm.media_assignment_id) : undefined,
+      collaborator_id: toPositiveNumberOrNull(createEnrollmentForm.collaborator_id),
+      access_system_id: toPositiveNumberOrNull(createEnrollmentForm.access_system_id),
+      media_assignment_id: toPositiveNumberOrNull(createEnrollmentForm.media_assignment_id) || undefined,
       status_key: createEnrollmentForm.status_key,
-      activated_at: createEnrollmentForm.activated_at || undefined,
-      notes: createEnrollmentForm.notes || undefined
+      activated_at: normalizeFieldValue(createEnrollmentForm.activated_at) || undefined,
+      notes: normalizeFieldValue(createEnrollmentForm.notes) || undefined
     }), 'Alta registrada correctamente.');
   };
 
@@ -934,11 +1258,16 @@ const AccessPage = () => {
     if (!activeAssignmentAction) {
       return;
     }
+    const errors = validateReturnForm();
+    if (Object.keys(errors).length > 0) {
+      applyValidationErrors(errors);
+      return;
+    }
 
     await runMutation(() => returnAccessMediaAssignment(activeAssignmentAction.id, {
-      location_id: Number(returnForm.location_id),
-      returned_at: returnForm.returned_at || undefined,
-      notes: returnForm.notes || undefined
+      location_id: toPositiveNumberOrNull(returnForm.location_id),
+      returned_at: normalizeFieldValue(returnForm.returned_at) || undefined,
+      notes: normalizeFieldValue(returnForm.notes) || undefined
     }), 'El medio fue devuelto y reintegrado correctamente.');
   };
 
@@ -947,10 +1276,15 @@ const AccessPage = () => {
     if (!activeAssignmentAction) {
       return;
     }
+    const errors = validateNotReturnedForm();
+    if (Object.keys(errors).length > 0) {
+      applyValidationErrors(errors);
+      return;
+    }
 
     await runMutation(() => markAccessMediaAssignmentNotReturned(activeAssignmentAction.id, {
-      resolved_at: notReturnedForm.resolved_at || undefined,
-      notes: notReturnedForm.notes || undefined
+      resolved_at: normalizeFieldValue(notReturnedForm.resolved_at) || undefined,
+      notes: normalizeFieldValue(notReturnedForm.notes) || undefined
     }), 'El medio quedó marcado como no devuelto.');
   };
 
@@ -959,13 +1293,18 @@ const AccessPage = () => {
     if (!activeEnrollmentAction) {
       return;
     }
+    const errors = validateEnrollmentStatusForm();
+    if (Object.keys(errors).length > 0) {
+      applyValidationErrors(errors);
+      return;
+    }
 
     await runMutation(() => updateAccessEnrollmentStatus(activeEnrollmentAction.id, {
       status_key: enrollmentStatusForm.status_key,
-      media_assignment_id: enrollmentStatusForm.media_assignment_id ? Number(enrollmentStatusForm.media_assignment_id) : undefined,
-      activated_at: enrollmentStatusForm.status_key === 'active' ? (enrollmentStatusForm.activated_at || undefined) : undefined,
-      deactivated_at: enrollmentStatusForm.status_key === 'deactivated' ? (enrollmentStatusForm.deactivated_at || undefined) : undefined,
-      notes: enrollmentStatusForm.notes || undefined
+      media_assignment_id: toPositiveNumberOrNull(enrollmentStatusForm.media_assignment_id) || undefined,
+      activated_at: enrollmentStatusForm.status_key === 'active' ? (normalizeFieldValue(enrollmentStatusForm.activated_at) || undefined) : undefined,
+      deactivated_at: enrollmentStatusForm.status_key === 'deactivated' ? (normalizeFieldValue(enrollmentStatusForm.deactivated_at) || undefined) : undefined,
+      notes: normalizeFieldValue(enrollmentStatusForm.notes) || undefined
     }), 'Estado del alta actualizado correctamente.');
   };
 
@@ -974,35 +1313,65 @@ const AccessPage = () => {
     if (!activeOffboardTarget?.collaborator?.id) {
       return;
     }
+    const errors = validateOffboardForm();
+    if (Object.keys(errors).length > 0) {
+      applyValidationErrors(errors);
+      return;
+    }
 
     const hasActiveAssignments = activeOffboardTarget.assignments?.some((assignment) => assignment.status_key === 'active');
 
     await runMutation(() => offboardCollaboratorAccess(activeOffboardTarget.collaborator.id, {
       media_resolution: hasActiveAssignments ? offboardForm.media_resolution : undefined,
       location_id: hasActiveAssignments && offboardForm.media_resolution === 'returned' && offboardForm.location_id
-        ? Number(offboardForm.location_id)
+        ? toPositiveNumberOrNull(offboardForm.location_id)
         : undefined,
-      offboarded_at: offboardForm.offboarded_at || undefined,
-      notes: offboardForm.notes || undefined
+      offboarded_at: normalizeFieldValue(offboardForm.offboarded_at) || undefined,
+      notes: normalizeFieldValue(offboardForm.notes) || undefined
     }), 'La baja de accesos se procesó correctamente.');
   };
 
+  const accessOverflowActions = [
+    canCreateAccess ? {
+      key: 'link-media',
+      label: 'Vincular medio',
+      icon: IdCard,
+      onSelect: () => {
+        void openCreateMediaModal(accessOverflowTriggerRef.current);
+      }
+    } : null,
+    canCreateAccess ? {
+      key: 'create-enrollment',
+      label: 'Registrar alta',
+      icon: UserCog,
+      onSelect: () => openCreateEnrollmentModal(null, accessOverflowTriggerRef.current)
+    } : null,
+    canCreateCollaborators ? {
+      key: 'create-collaborator',
+      label: 'Registrar colaborador',
+      icon: UserPlus,
+      onSelect: () => openCreateCollaboratorModal(null, accessOverflowTriggerRef.current)
+    } : null
+  ].filter(Boolean);
+
   const headerActions = (
     <>
-      {canCreateAccess ? (
-        <button type="button" className="workspace-action workspace-action--ghost" ref={createEnrollmentTriggerRef} onClick={() => openCreateEnrollmentModal()}>
-          <UserCog size={16} aria-hidden="true" />
-          <span>Nueva alta</span>
-        </button>
-      ) : null}
-      {canCreateAccess ? (
-        <button type="button" className="workspace-action workspace-action--ghost" ref={createMediaTriggerRef} onClick={() => void openCreateMediaModal()}>
-          <IdCard size={16} aria-hidden="true" />
-          <span>Registrar medio</span>
-        </button>
+      {accessOverflowActions.length ? (
+        <WorkspaceActionMenu
+          label="Más acciones"
+          items={accessOverflowActions}
+          className="workspace-page__header-menu"
+          triggerClassName="workspace-action workspace-action--ghost"
+          triggerRef={accessOverflowTriggerRef}
+        />
       ) : null}
       {canAssignAccess ? (
-        <button type="button" className="workspace-action workspace-action--primary" ref={createAssignmentTriggerRef} onClick={() => openAssignModal()}>
+        <button
+          type="button"
+          className="workspace-action workspace-action--primary"
+          ref={createAssignmentTriggerRef}
+          onClick={(event) => openAssignModal(null, event.currentTarget)}
+        >
           <Plus size={16} aria-hidden="true" />
           <span>Asignar medio</span>
         </button>
@@ -1134,7 +1503,7 @@ const AccessPage = () => {
                   {item.status_key === 'available' && canAssignAccess ? (
                     <button type="button" className="action-inline action-inline--primary" onClick={(event) => {
                       event.stopPropagation();
-                      openAssignModal(item.id);
+                      openAssignModal(item.id, event.currentTarget);
                     }}>
                       <ArrowRightLeft size={14} aria-hidden="true" />
                       <span>Asignar</span>
@@ -1256,6 +1625,9 @@ const AccessPage = () => {
   );
 
   const detailOpen = Boolean(detailContext);
+  const offboardHasActiveAssignments = Boolean(
+    activeOffboardTarget?.assignments?.some((assignment) => assignment.status_key === 'active')
+  );
   const activeAssignmentsForDetail = detailContext?.assignments?.filter((assignment) => assignment.status_key === 'active') || [];
   const canOffboardFromDetail = Boolean(detailContext?.collaborator?.id)
     && (detailContext?.enrollments?.some((enrollment) => enrollment.status_key !== 'deactivated') || activeAssignmentsForDetail.length > 0);
@@ -1273,7 +1645,7 @@ const AccessPage = () => {
             </div>
             <div className="ticket-detail__header-actions">
               {detailContext.media?.status_key === 'available' && canAssignAccess ? (
-                <button type="button" className="ticket-detail__edit" onClick={() => openAssignModal(detailContext.media.id)}>
+                <button type="button" className="ticket-detail__edit" onClick={(event) => openAssignModal(detailContext.media.id, event.currentTarget)}>
                   <ArrowRightLeft size={14} aria-hidden="true" />
                   <span>Asignar</span>
                 </button>
@@ -1291,9 +1663,9 @@ const AccessPage = () => {
                 </button>
               ) : null}
               {detailContext.collaborator?.id && canCreateAccess ? (
-                <button type="button" className="ticket-detail__edit" onClick={() => openCreateEnrollmentModal(detailContext)}>
+                <button type="button" className="ticket-detail__edit" onClick={(event) => openCreateEnrollmentModal(detailContext, event.currentTarget)}>
                   <UserCog size={14} aria-hidden="true" />
-                  <span>Nueva alta</span>
+                  <span>Registrar alta</span>
                 </button>
               ) : null}
               {canOffboardFromDetail && canAssignAccess ? (
@@ -1542,7 +1914,7 @@ const AccessPage = () => {
                       emptyTitle={accessAssignmentsNoRecordsState.title}
                       emptyCopy={accessAssignmentsNoRecordsState.copy}
                       emptyActions={canAssignAccess ? (
-                        <button type="button" className="workspace-action workspace-action--primary" onClick={() => openAssignModal()}>
+                        <button type="button" className="workspace-action workspace-action--primary" onClick={(event) => openAssignModal(null, event.currentTarget)}>
                           <Plus size={14} aria-hidden="true" />
                           <span>Asignar medio</span>
                         </button>
@@ -1586,6 +1958,21 @@ const AccessPage = () => {
                     onChange={setMediumTypeFilter}
                     className="filter-select filter-select--operational"
                   />
+                </div>
+                <div className="workspace-page__actions">
+                  {canCreateAccess ? (
+                    <button
+                      type="button"
+                      className="workspace-action workspace-action--ghost"
+                      ref={createMediaTriggerRef}
+                      onClick={(event) => {
+                        void openCreateMediaModal(event.currentTarget);
+                      }}
+                    >
+                      <IdCard size={16} aria-hidden="true" />
+                      <span>Vincular medio</span>
+                    </button>
+                  ) : null}
                 </div>
               </div>
 
@@ -1632,9 +2019,9 @@ const AccessPage = () => {
                       emptyTitle={accessMediaNoRecordsState.title}
                       emptyCopy={accessMediaNoRecordsState.copy}
                       emptyActions={canCreateAccess ? (
-                        <button type="button" className="workspace-action workspace-action--primary" onClick={() => void openCreateMediaModal()}>
+                        <button type="button" className="workspace-action workspace-action--primary" onClick={(event) => void openCreateMediaModal(event.currentTarget)}>
                           <Plus size={14} aria-hidden="true" />
-                          <span>Registrar medio</span>
+                          <span>Vincular medio</span>
                         </button>
                       ) : null}
                     />
@@ -1675,6 +2062,19 @@ const AccessPage = () => {
                     onChange={setEnrollmentSystemFilter}
                     className="filter-select filter-select--operational"
                   />
+                </div>
+                <div className="workspace-page__actions">
+                  {canCreateAccess ? (
+                    <button
+                      type="button"
+                      className="workspace-action workspace-action--ghost"
+                      ref={createEnrollmentTriggerRef}
+                      onClick={(event) => openCreateEnrollmentModal(null, event.currentTarget)}
+                    >
+                      <UserCog size={16} aria-hidden="true" />
+                      <span>Registrar alta</span>
+                    </button>
+                  ) : null}
                 </div>
               </div>
 
@@ -1721,9 +2121,9 @@ const AccessPage = () => {
                       emptyTitle={accessEnrollmentsNoRecordsState.title}
                       emptyCopy={accessEnrollmentsNoRecordsState.copy}
                       emptyActions={canCreateAccess ? (
-                        <button type="button" className="workspace-action workspace-action--primary" onClick={() => openCreateEnrollmentModal()}>
+                        <button type="button" className="workspace-action workspace-action--primary" onClick={(event) => openCreateEnrollmentModal(null, event.currentTarget)}>
                           <Plus size={14} aria-hidden="true" />
-                          <span>Nueva alta</span>
+                          <span>Registrar alta</span>
                         </button>
                       ) : null}
                     />
@@ -1799,7 +2199,7 @@ const AccessPage = () => {
       </section>
 
       {/* Modals intentionally follow the existing modal system for consistency. */}
-      <ModalDialog open={isCreateMediaOpen} title="Registrar medio de acceso" onClose={closeAllModals} returnFocusRef={createMediaTriggerRef} size="wide">
+      <ModalDialog open={isCreateMediaOpen} title="Vincular medio de acceso" onClose={closeAllModals} returnFocusRef={createMediaReturnFocusRef} size="wide">
         <form className="modal-dialog__form" onSubmit={(event) => void handleCreateMediaSubmit(event)}>
           <div className="modal-dialog__grid">
             <label className="modal-dialog__field">
@@ -1814,7 +2214,10 @@ const AccessPage = () => {
                 options={catalog.medium_types.map((mediumType) => ({ key: mediumType.type_key, label: mediumType.name }))}
                 onChange={(value) => setCreateMediaForm((current) => ({ ...current, medium_type_key: value }))}
                 placeholder="Selecciona un tipo"
+                ariaDescribedBy={getFieldDescribedBy('access-create-media-type')}
+                invalid={Boolean(getFieldError('access-create-media-type'))}
               />
+              {renderFieldError('access-create-media-type')}
             </label>
             <label className="modal-dialog__field">
               <span>Unidad RFID</span>
@@ -1829,20 +2232,31 @@ const AccessPage = () => {
                 onChange={(value) => setCreateMediaForm((current) => ({ ...current, asset_unit_id: value }))}
                 placeholder="Selecciona una unidad"
                 disabled={isLoadingUnits}
+                ariaDescribedBy={getFieldDescribedBy('access-create-media-unit')}
+                invalid={Boolean(getFieldError('access-create-media-unit'))}
               />
+              {renderFieldError('access-create-media-unit')}
+              <p className="modal-dialog__field-help">Solo se muestran unidades RFID disponibles que ya existen en Inventario.</p>
             </label>
-            <label className="modal-dialog__field">
+            <label className="modal-dialog__field" htmlFor="access-create-media-tag">
               <span>Tag o código</span>
               <input
+                id="access-create-media-tag"
+                name="access_create_media_tag"
                 type="text"
                 value={createMediaForm.tag_code}
                 onChange={(event) => setCreateMediaForm((current) => ({ ...current, tag_code: event.target.value.toUpperCase() }))}
                 placeholder="Ej. 5373445"
+                aria-invalid={getFieldError('access-create-media-tag') ? 'true' : undefined}
+                aria-describedby={getFieldDescribedBy('access-create-media-tag')}
               />
+              {renderFieldError('access-create-media-tag')}
             </label>
-            <label className="modal-dialog__field modal-dialog__field--full">
+            <label className="modal-dialog__field modal-dialog__field--full" htmlFor="access-create-media-notes">
               <span>Observaciones</span>
               <textarea
+                id="access-create-media-notes"
+                name="access_create_media_notes"
                 value={createMediaForm.notes}
                 onChange={(event) => setCreateMediaForm((current) => ({ ...current, notes: event.target.value }))}
                 placeholder="Contexto opcional del medio de acceso"
@@ -1852,12 +2266,12 @@ const AccessPage = () => {
           {modalError ? <InlineNotice tone="error">{modalError}</InlineNotice> : null}
           <div className="modal-dialog__actions">
             <button type="button" className="workspace-action workspace-action--ghost" onClick={closeAllModals}>Cancelar</button>
-            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmitting}>{isSubmitting ? 'Registrando...' : 'Registrar medio'}</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmitting}>{isSubmitting ? 'Vinculando...' : 'Vincular medio'}</button>
           </div>
         </form>
       </ModalDialog>
 
-      <ModalDialog open={isAssignModalOpen} title="Asignar medio" onClose={closeAllModals} returnFocusRef={createAssignmentTriggerRef} size="wide">
+      <ModalDialog open={isAssignModalOpen} title="Asignar medio" onClose={closeAllModals} returnFocusRef={createAssignmentReturnFocusRef} size="wide">
         <form className="modal-dialog__form" onSubmit={(event) => void handleAssignSubmit(event)}>
           <div className="modal-dialog__grid">
             <label className="modal-dialog__field">
@@ -1872,10 +2286,21 @@ const AccessPage = () => {
                 options={assignmentMediumOptions}
                 onChange={(value) => setAssignForm((current) => ({ ...current, access_media_id: value }))}
                 placeholder="Selecciona un medio"
+                ariaDescribedBy={getFieldDescribedBy('access-assign-media')}
+                invalid={Boolean(getFieldError('access-assign-media'))}
               />
+              {renderFieldError('access-assign-media')}
             </label>
             <label className="modal-dialog__field">
-              <span>Colaborador</span>
+              <div className="access-modal__field-headline">
+                <span>Colaborador</span>
+                {canCreateCollaborators ? (
+                  <button type="button" className="action-inline action-inline--secondary" onClick={(event) => openCreateCollaboratorModal('assign', event.currentTarget)}>
+                    <UserPlus size={14} aria-hidden="true" />
+                    <span>Registrar colaborador</span>
+                  </button>
+                ) : null}
+              </div>
               <FilterSelect
                 id="access-assign-collaborator"
                 name="access_assign_collaborator"
@@ -1886,33 +2311,43 @@ const AccessPage = () => {
                 options={collaboratorOptions}
                 onChange={(value) => setAssignForm((current) => ({ ...current, collaborator_id: value }))}
                 placeholder="Selecciona un colaborador"
+                ariaDescribedBy={getFieldDescribedBy('access-assign-collaborator')}
+                invalid={Boolean(getFieldError('access-assign-collaborator'))}
               />
+              {renderFieldError('access-assign-collaborator')}
             </label>
-            <label className="modal-dialog__field">
+            <label className="modal-dialog__field" htmlFor="access-assign-assigned-at">
               <span>Fecha de asignación</span>
-              <input type="datetime-local" value={assignForm.assigned_at} onChange={(event) => setAssignForm((current) => ({ ...current, assigned_at: event.target.value }))} />
+              <input
+                id="access-assign-assigned-at"
+                name="access_assign_assigned_at"
+                type="datetime-local"
+                value={assignForm.assigned_at}
+                onChange={(event) => setAssignForm((current) => ({ ...current, assigned_at: event.target.value }))}
+                aria-invalid={getFieldError('access-assign-assigned-at') ? 'true' : undefined}
+                aria-describedby={getFieldDescribedBy('access-assign-assigned-at')}
+              />
+              {renderFieldError('access-assign-assigned-at')}
             </label>
-            <label className="modal-dialog__field">
+            <label className="modal-dialog__field" htmlFor="access-assign-expected-return-at">
               <span>Retorno esperado</span>
-              <input type="datetime-local" value={assignForm.expected_return_at} onChange={(event) => setAssignForm((current) => ({ ...current, expected_return_at: event.target.value }))} />
-            </label>
-            <label className="modal-dialog__field modal-dialog__field--full">
-              <span>Ubicación operativa</span>
-              <FilterSelect
-                id="access-assign-location"
-                name="access_assign_location"
-                label="Ubicación"
-                variant="field"
-                showLabel={false}
-                value={assignForm.location_id}
-                options={locationOptions}
-                onChange={(value) => setAssignForm((current) => ({ ...current, location_id: value }))}
-                placeholder="Usar ubicación actual"
+              <input
+                id="access-assign-expected-return-at"
+                name="access_assign_expected_return_at"
+                type="datetime-local"
+                value={assignForm.expected_return_at}
+                onChange={(event) => setAssignForm((current) => ({ ...current, expected_return_at: event.target.value }))}
               />
             </label>
-            <label className="modal-dialog__field modal-dialog__field--full">
+            <label className="modal-dialog__field modal-dialog__field--full" htmlFor="access-assign-notes">
               <span>Notas</span>
-              <textarea value={assignForm.notes} onChange={(event) => setAssignForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Motivo o contexto de la asignación" />
+              <textarea
+                id="access-assign-notes"
+                name="access_assign_notes"
+                value={assignForm.notes}
+                onChange={(event) => setAssignForm((current) => ({ ...current, notes: event.target.value }))}
+                placeholder="Entrega personal del chip o tarjeta al colaborador"
+              />
             </label>
           </div>
           {modalError ? <InlineNotice tone="error">{modalError}</InlineNotice> : null}
@@ -1923,11 +2358,19 @@ const AccessPage = () => {
         </form>
       </ModalDialog>
 
-      <ModalDialog open={isCreateEnrollmentOpen} title="Nueva alta" onClose={closeAllModals} returnFocusRef={createEnrollmentTriggerRef} size="wide">
+      <ModalDialog open={isCreateEnrollmentOpen} title="Registrar alta" onClose={closeAllModals} returnFocusRef={createEnrollmentReturnFocusRef} size="wide">
         <form className="modal-dialog__form" onSubmit={(event) => void handleCreateEnrollmentSubmit(event)}>
           <div className="modal-dialog__grid">
             <label className="modal-dialog__field">
-              <span>Colaborador</span>
+              <div className="access-modal__field-headline">
+                <span>Colaborador</span>
+                {canCreateCollaborators ? (
+                  <button type="button" className="action-inline action-inline--secondary" onClick={(event) => openCreateCollaboratorModal('enrollment', event.currentTarget)}>
+                    <UserPlus size={14} aria-hidden="true" />
+                    <span>Registrar colaborador</span>
+                  </button>
+                ) : null}
+              </div>
               <FilterSelect
                 id="access-create-enrollment-collaborator"
                 name="access_create_enrollment_collaborator"
@@ -1938,7 +2381,10 @@ const AccessPage = () => {
                 options={collaboratorOptions}
                 onChange={(value) => setCreateEnrollmentForm((current) => ({ ...current, collaborator_id: value, media_assignment_id: '' }))}
                 placeholder="Selecciona un colaborador"
+                ariaDescribedBy={getFieldDescribedBy('access-create-enrollment-collaborator')}
+                invalid={Boolean(getFieldError('access-create-enrollment-collaborator'))}
               />
+              {renderFieldError('access-create-enrollment-collaborator')}
             </label>
             <label className="modal-dialog__field">
               <span>Sistema</span>
@@ -1952,7 +2398,10 @@ const AccessPage = () => {
                 options={enrollmentSystemOptions}
                 onChange={(value) => setCreateEnrollmentForm((current) => ({ ...current, access_system_id: value }))}
                 placeholder="Selecciona un sistema"
+                ariaDescribedBy={getFieldDescribedBy('access-create-enrollment-system')}
+                invalid={Boolean(getFieldError('access-create-enrollment-system'))}
               />
+              {renderFieldError('access-create-enrollment-system')}
             </label>
             <label className="modal-dialog__field">
               <span>Asignación ligada</span>
@@ -1980,21 +2429,108 @@ const AccessPage = () => {
                 options={catalog.enrollment_statuses.map((status) => ({ key: status.status_key, label: status.name }))}
                 onChange={(value) => setCreateEnrollmentForm((current) => ({ ...current, status_key: value }))}
                 placeholder="Selecciona un estado"
+                ariaDescribedBy={getFieldDescribedBy('access-create-enrollment-status')}
+                invalid={Boolean(getFieldError('access-create-enrollment-status'))}
               />
+              {renderFieldError('access-create-enrollment-status')}
             </label>
-            <label className="modal-dialog__field modal-dialog__field--full">
+            <label className="modal-dialog__field modal-dialog__field--full" htmlFor="access-create-enrollment-activated-at">
               <span>Fecha de activación</span>
-              <input type="datetime-local" value={createEnrollmentForm.activated_at} onChange={(event) => setCreateEnrollmentForm((current) => ({ ...current, activated_at: event.target.value }))} />
+              <input
+                id="access-create-enrollment-activated-at"
+                name="access_create_enrollment_activated_at"
+                type="datetime-local"
+                value={createEnrollmentForm.activated_at}
+                onChange={(event) => setCreateEnrollmentForm((current) => ({ ...current, activated_at: event.target.value }))}
+                aria-invalid={getFieldError('access-create-enrollment-activated-at') ? 'true' : undefined}
+                aria-describedby={getFieldDescribedBy('access-create-enrollment-activated-at')}
+              />
+              {renderFieldError('access-create-enrollment-activated-at')}
             </label>
-            <label className="modal-dialog__field modal-dialog__field--full">
+            <label className="modal-dialog__field modal-dialog__field--full" htmlFor="access-create-enrollment-notes">
               <span>Notas</span>
-              <textarea value={createEnrollmentForm.notes} onChange={(event) => setCreateEnrollmentForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Contexto operativo del alta" />
+              <textarea
+                id="access-create-enrollment-notes"
+                name="access_create_enrollment_notes"
+                value={createEnrollmentForm.notes}
+                onChange={(event) => setCreateEnrollmentForm((current) => ({ ...current, notes: event.target.value }))}
+                placeholder="Contexto operativo del alta"
+              />
             </label>
           </div>
           {modalError ? <InlineNotice tone="error">{modalError}</InlineNotice> : null}
           <div className="modal-dialog__actions">
             <button type="button" className="workspace-action workspace-action--ghost" onClick={closeAllModals}>Cancelar</button>
             <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmitting}>{isSubmitting ? 'Registrando...' : 'Registrar alta'}</button>
+          </div>
+        </form>
+      </ModalDialog>
+
+      <ModalDialog open={isCreateCollaboratorOpen} title="Registrar colaborador" onClose={closeCreateCollaboratorModal} returnFocusRef={createCollaboratorReturnFocusRef} size="wide">
+        <form className="modal-dialog__form" onSubmit={(event) => void handleCreateCollaboratorSubmit(event)}>
+          <div className="modal-dialog__grid">
+            <label className="modal-dialog__field" htmlFor="access-create-collaborator-employee-id">
+              <span>ID operativo</span>
+              <input
+                id="access-create-collaborator-employee-id"
+                name="access_create_collaborator_employee_id"
+                type="text"
+                inputMode="numeric"
+                value={createCollaboratorForm.employee_id}
+                onChange={(event) => setCreateCollaboratorForm((current) => ({ ...current, employee_id: event.target.value }))}
+                placeholder="Ej. 900109"
+                aria-invalid={getFieldError('access-create-collaborator-employee-id') ? 'true' : undefined}
+                aria-describedby={getFieldDescribedBy('access-create-collaborator-employee-id')}
+              />
+              {renderFieldError('access-create-collaborator-employee-id')}
+            </label>
+            <label className="modal-dialog__field" htmlFor="access-create-collaborator-first-name">
+              <span>Nombre(s)</span>
+              <input
+                id="access-create-collaborator-first-name"
+                name="access_create_collaborator_first_name"
+                type="text"
+                value={createCollaboratorForm.first_name}
+                onChange={(event) => setCreateCollaboratorForm((current) => ({ ...current, first_name: event.target.value }))}
+                placeholder="Ej. Laura"
+                aria-invalid={getFieldError('access-create-collaborator-first-name') ? 'true' : undefined}
+                aria-describedby={getFieldDescribedBy('access-create-collaborator-first-name')}
+              />
+              {renderFieldError('access-create-collaborator-first-name')}
+            </label>
+            <label className="modal-dialog__field" htmlFor="access-create-collaborator-last-name">
+              <span>Apellidos</span>
+              <input
+                id="access-create-collaborator-last-name"
+                name="access_create_collaborator_last_name"
+                type="text"
+                value={createCollaboratorForm.last_name}
+                onChange={(event) => setCreateCollaboratorForm((current) => ({ ...current, last_name: event.target.value }))}
+                placeholder="Ej. Santiago"
+                aria-invalid={getFieldError('access-create-collaborator-last-name') ? 'true' : undefined}
+                aria-describedby={getFieldDescribedBy('access-create-collaborator-last-name')}
+              />
+              {renderFieldError('access-create-collaborator-last-name')}
+            </label>
+            <label className="modal-dialog__field" htmlFor="access-create-collaborator-area-name">
+              <span>Área</span>
+              <input
+                id="access-create-collaborator-area-name"
+                name="access_create_collaborator_area_name"
+                type="text"
+                value={createCollaboratorForm.area_name}
+                onChange={(event) => setCreateCollaboratorForm((current) => ({ ...current, area_name: event.target.value }))}
+                placeholder="Ej. Producción"
+              />
+            </label>
+            <div className="modal-dialog__field modal-dialog__field--full">
+              <p className="modal-dialog__field-help">Esto agrega al colaborador al directorio operativo. No crea un usuario para entrar a Coresys.</p>
+            </div>
+          </div>
+          {modalError ? <InlineNotice tone="error">{modalError}</InlineNotice> : null}
+          <div className="modal-dialog__actions">
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={closeCreateCollaboratorModal}>Cancelar</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmitting}>{isSubmitting ? 'Registrando...' : 'Registrar colaborador'}</button>
           </div>
         </form>
       </ModalDialog>
@@ -2014,15 +2550,33 @@ const AccessPage = () => {
                 options={locationOptions}
                 onChange={(value) => setReturnForm((current) => ({ ...current, location_id: value }))}
                 placeholder="Selecciona una ubicación"
+                ariaDescribedBy={getFieldDescribedBy('access-return-location')}
+                invalid={Boolean(getFieldError('access-return-location'))}
               />
+              {renderFieldError('access-return-location')}
             </label>
-            <label className="modal-dialog__field">
+            <label className="modal-dialog__field" htmlFor="access-return-returned-at">
               <span>Fecha de devolución</span>
-              <input type="datetime-local" value={returnForm.returned_at} onChange={(event) => setReturnForm((current) => ({ ...current, returned_at: event.target.value }))} />
+              <input
+                id="access-return-returned-at"
+                name="access_return_returned_at"
+                type="datetime-local"
+                value={returnForm.returned_at}
+                onChange={(event) => setReturnForm((current) => ({ ...current, returned_at: event.target.value }))}
+                aria-invalid={getFieldError('access-return-returned-at') ? 'true' : undefined}
+                aria-describedby={getFieldDescribedBy('access-return-returned-at')}
+              />
+              {renderFieldError('access-return-returned-at')}
             </label>
-            <label className="modal-dialog__field modal-dialog__field--full">
+            <label className="modal-dialog__field modal-dialog__field--full" htmlFor="access-return-notes">
               <span>Notas</span>
-              <textarea value={returnForm.notes} onChange={(event) => setReturnForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Condición o contexto de la devolución" />
+              <textarea
+                id="access-return-notes"
+                name="access_return_notes"
+                value={returnForm.notes}
+                onChange={(event) => setReturnForm((current) => ({ ...current, notes: event.target.value }))}
+                placeholder="Condición o contexto de la devolución"
+              />
             </label>
           </div>
           {modalError ? <InlineNotice tone="error">{modalError}</InlineNotice> : null}
@@ -2036,13 +2590,28 @@ const AccessPage = () => {
       <ModalDialog open={isNotReturnedModalOpen} title="Marcar no devuelto" onClose={closeAllModals} size="wide">
         <form className="modal-dialog__form" onSubmit={(event) => void handleNotReturnedSubmit(event)}>
           <div className="modal-dialog__grid">
-            <label className="modal-dialog__field">
+            <label className="modal-dialog__field" htmlFor="access-not-returned-resolved-at">
               <span>Fecha de cierre</span>
-              <input type="datetime-local" value={notReturnedForm.resolved_at} onChange={(event) => setNotReturnedForm((current) => ({ ...current, resolved_at: event.target.value }))} />
+              <input
+                id="access-not-returned-resolved-at"
+                name="access_not_returned_resolved_at"
+                type="datetime-local"
+                value={notReturnedForm.resolved_at}
+                onChange={(event) => setNotReturnedForm((current) => ({ ...current, resolved_at: event.target.value }))}
+                aria-invalid={getFieldError('access-not-returned-resolved-at') ? 'true' : undefined}
+                aria-describedby={getFieldDescribedBy('access-not-returned-resolved-at')}
+              />
+              {renderFieldError('access-not-returned-resolved-at')}
             </label>
-            <label className="modal-dialog__field modal-dialog__field--full">
+            <label className="modal-dialog__field modal-dialog__field--full" htmlFor="access-not-returned-notes">
               <span>Motivo</span>
-              <textarea value={notReturnedForm.notes} onChange={(event) => setNotReturnedForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Describe por qué el medio ya no fue devuelto" />
+              <textarea
+                id="access-not-returned-notes"
+                name="access_not_returned_notes"
+                value={notReturnedForm.notes}
+                onChange={(event) => setNotReturnedForm((current) => ({ ...current, notes: event.target.value }))}
+                placeholder="Describe por qué el medio ya no fue devuelto"
+              />
             </label>
           </div>
           {modalError ? <InlineNotice tone="error">{modalError}</InlineNotice> : null}
@@ -2070,7 +2639,10 @@ const AccessPage = () => {
                   .map((status) => ({ key: status.status_key, label: status.name }))}
                 onChange={(value) => setEnrollmentStatusForm((current) => ({ ...current, status_key: value }))}
                 placeholder="Selecciona un estado"
+                ariaDescribedBy={getFieldDescribedBy('access-enrollment-next-status')}
+                invalid={Boolean(getFieldError('access-enrollment-next-status'))}
               />
+              {renderFieldError('access-enrollment-next-status')}
             </label>
             <label className="modal-dialog__field">
               <span>Asignación ligada</span>
@@ -2081,22 +2653,46 @@ const AccessPage = () => {
                 variant="field"
                 showLabel={false}
                 value={enrollmentStatusForm.media_assignment_id}
-                options={activeAssignmentOptionsByCollaborator}
+                options={assignmentOptionsForEnrollmentStatus}
                 onChange={(value) => setEnrollmentStatusForm((current) => ({ ...current, media_assignment_id: value }))}
                 placeholder="Opcional"
               />
             </label>
-            <label className="modal-dialog__field">
+            <label className="modal-dialog__field" htmlFor="access-enrollment-activated-at">
               <span>Fecha de activación</span>
-              <input type="datetime-local" value={enrollmentStatusForm.activated_at} onChange={(event) => setEnrollmentStatusForm((current) => ({ ...current, activated_at: event.target.value }))} />
+              <input
+                id="access-enrollment-activated-at"
+                name="access_enrollment_activated_at"
+                type="datetime-local"
+                value={enrollmentStatusForm.activated_at}
+                onChange={(event) => setEnrollmentStatusForm((current) => ({ ...current, activated_at: event.target.value }))}
+                aria-invalid={getFieldError('access-enrollment-activated-at') ? 'true' : undefined}
+                aria-describedby={getFieldDescribedBy('access-enrollment-activated-at')}
+              />
+              {renderFieldError('access-enrollment-activated-at')}
             </label>
-            <label className="modal-dialog__field">
+            <label className="modal-dialog__field" htmlFor="access-enrollment-deactivated-at">
               <span>Fecha de baja</span>
-              <input type="datetime-local" value={enrollmentStatusForm.deactivated_at} onChange={(event) => setEnrollmentStatusForm((current) => ({ ...current, deactivated_at: event.target.value }))} />
+              <input
+                id="access-enrollment-deactivated-at"
+                name="access_enrollment_deactivated_at"
+                type="datetime-local"
+                value={enrollmentStatusForm.deactivated_at}
+                onChange={(event) => setEnrollmentStatusForm((current) => ({ ...current, deactivated_at: event.target.value }))}
+                aria-invalid={getFieldError('access-enrollment-deactivated-at') ? 'true' : undefined}
+                aria-describedby={getFieldDescribedBy('access-enrollment-deactivated-at')}
+              />
+              {renderFieldError('access-enrollment-deactivated-at')}
             </label>
-            <label className="modal-dialog__field modal-dialog__field--full">
+            <label className="modal-dialog__field modal-dialog__field--full" htmlFor="access-enrollment-status-notes">
               <span>Notas</span>
-              <textarea value={enrollmentStatusForm.notes} onChange={(event) => setEnrollmentStatusForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Contexto del cambio de estado" />
+              <textarea
+                id="access-enrollment-status-notes"
+                name="access_enrollment_status_notes"
+                value={enrollmentStatusForm.notes}
+                onChange={(event) => setEnrollmentStatusForm((current) => ({ ...current, notes: event.target.value }))}
+                placeholder="Contexto del cambio de estado"
+              />
             </label>
           </div>
           {modalError ? <InlineNotice tone="error">{modalError}</InlineNotice> : null}
@@ -2125,12 +2721,31 @@ const AccessPage = () => {
                 ]}
                 onChange={(value) => setOffboardForm((current) => ({ ...current, media_resolution: value }))}
                 placeholder="Selecciona una resolución"
-                disabled={!activeOffboardTarget?.assignments?.some((assignment) => assignment.status_key === 'active')}
+                disabled={!offboardHasActiveAssignments}
+                ariaDescribedBy={getFieldDescribedBy('access-offboard-resolution', 'access-offboard-resolution-help')}
+                invalid={Boolean(getFieldError('access-offboard-resolution'))}
               />
+              <p id="access-offboard-resolution-help" className="modal-dialog__field-help">
+                {offboardHasActiveAssignments
+                  ? offboardForm.media_resolution === 'not_returned'
+                    ? 'Se cerraran las asignaciones activas como no devueltas y las altas vigentes quedaran desactivadas.'
+                    : 'Se cerraran las asignaciones activas como devueltas, las altas vigentes quedaran desactivadas y el medio volvera a la ubicacion seleccionada.'
+                  : 'Este colaborador no tiene medios activos. La baja solo desactivara altas vigentes y registrara el evento.'}
+              </p>
+              {renderFieldError('access-offboard-resolution')}
             </label>
-            <label className="modal-dialog__field">
+            <label className="modal-dialog__field" htmlFor="access-offboarded-at">
               <span>Fecha de baja</span>
-              <input type="datetime-local" value={offboardForm.offboarded_at} onChange={(event) => setOffboardForm((current) => ({ ...current, offboarded_at: event.target.value }))} />
+              <input
+                id="access-offboarded-at"
+                name="access_offboarded_at"
+                type="datetime-local"
+                value={offboardForm.offboarded_at}
+                onChange={(event) => setOffboardForm((current) => ({ ...current, offboarded_at: event.target.value }))}
+                aria-invalid={getFieldError('access-offboarded-at') ? 'true' : undefined}
+                aria-describedby={getFieldDescribedBy('access-offboarded-at')}
+              />
+              {renderFieldError('access-offboarded-at')}
             </label>
             {offboardForm.media_resolution === 'returned' ? (
               <label className="modal-dialog__field modal-dialog__field--full">
@@ -2145,12 +2760,21 @@ const AccessPage = () => {
                   options={locationOptions}
                   onChange={(value) => setOffboardForm((current) => ({ ...current, location_id: value }))}
                   placeholder="Selecciona una ubicación"
+                  ariaDescribedBy={getFieldDescribedBy('access-offboard-location')}
+                  invalid={Boolean(getFieldError('access-offboard-location'))}
                 />
+                {renderFieldError('access-offboard-location')}
               </label>
             ) : null}
-            <label className="modal-dialog__field modal-dialog__field--full">
+            <label className="modal-dialog__field modal-dialog__field--full" htmlFor="access-offboard-notes">
               <span>Notas</span>
-              <textarea value={offboardForm.notes} onChange={(event) => setOffboardForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Describe el contexto de la baja operativa" />
+              <textarea
+                id="access-offboard-notes"
+                name="access_offboard_notes"
+                value={offboardForm.notes}
+                onChange={(event) => setOffboardForm((current) => ({ ...current, notes: event.target.value }))}
+                placeholder="Describe el contexto de la baja operativa"
+              />
             </label>
           </div>
           {modalError ? <InlineNotice tone="error">{modalError}</InlineNotice> : null}

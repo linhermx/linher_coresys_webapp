@@ -285,6 +285,7 @@ const toAssetUnitResponse = (row) => ({
   serial_number: row.serial_number || null,
   asset_name: row.asset_name || null,
   asset_internal_code: row.asset_internal_code || null,
+  asset_type_key: row.asset_type_key || null,
   asset_type_name: row.asset_type_name || null,
   asset_unit_status_id: Number(row.asset_unit_status_id),
   status_key: row.status_key,
@@ -1620,6 +1621,7 @@ export const InventoryService = {
     const rows = await inventoryModel.listAssetUnitsByStatus({
       statusKey,
       assetId,
+      assetTypeKey: normalizeText(query.asset_type_key).toLowerCase(),
       search: normalizeText(query.search)
     });
 

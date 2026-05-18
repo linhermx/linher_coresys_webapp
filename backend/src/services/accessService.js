@@ -785,7 +785,9 @@ export const AccessService = {
     ]);
 
     return {
-      systems: systems.map(toAccessSystemResponse),
+      systems: systems
+        .filter((system) => ['production', 'offices', 'bathroom'].includes(system.system_key))
+        .map(toAccessSystemResponse),
       medium_types: mediumTypes.map((row) => ({
         id: Number(row.id),
         type_key: row.type_key,

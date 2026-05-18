@@ -1066,16 +1066,23 @@ export class InventoryModel extends BaseModel {
   async listAssetUnitsByStatus({
     statusKey = 'available',
     assetId = null,
+    assetTypeKey = '',
     search = ''
   } = {}) {
     const normalizedSearch = normalizeSearch(search);
     const normalizedAssetId = Number.parseInt(assetId, 10);
+    const normalizedAssetTypeKey = normalizeSearch(assetTypeKey);
     const filters = ['aus.status_key = ?', 'au.deleted_at IS NULL', 'a.deleted_at IS NULL'];
     const params = [statusKey];
 
     if (Number.isInteger(normalizedAssetId) && normalizedAssetId > 0) {
       filters.push('au.asset_id = ?');
       params.push(normalizedAssetId);
+    }
+
+    if (normalizedAssetTypeKey) {
+      filters.push('at.type_key = ?');
+      params.push(normalizedAssetTypeKey);
     }
 
     if (normalizedSearch) {
@@ -1103,6 +1110,7 @@ export class InventoryModel extends BaseModel {
         l.name AS current_location_name,
         a.asset_name,
         a.internal_code AS asset_internal_code,
+        at.type_key AS asset_type_key,
         at.name AS asset_type_name,
         active_assignment.id AS active_assignment_id,
         active_assignment.status AS active_assignment_status,

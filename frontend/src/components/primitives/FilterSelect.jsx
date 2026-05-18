@@ -31,7 +31,9 @@ export const FilterSelect = forwardRef(function FilterSelect(
     variant = 'filter',
     labelId: externalLabelId,
     placeholder = '',
-    disabled = false
+    disabled = false,
+    ariaDescribedBy = '',
+    invalid = false
   },
   forwardedRef
 ) {
@@ -198,6 +200,8 @@ export const FilterSelect = forwardRef(function FilterSelect(
         aria-expanded={isOpen}
         aria-haspopup="listbox"
         aria-controls={listboxId}
+        aria-describedby={ariaDescribedBy || undefined}
+        aria-invalid={invalid || undefined}
         aria-labelledby={
           showLabel
             ? `${resolvedLabelId} ${baseId}-value`
@@ -273,5 +277,7 @@ FilterSelect.propTypes = {
   variant: PropTypes.oneOf(['filter', 'field']),
   labelId: PropTypes.string,
   placeholder: PropTypes.string,
-  disabled: PropTypes.bool
+  disabled: PropTypes.bool,
+  ariaDescribedBy: PropTypes.string,
+  invalid: PropTypes.bool
 };
