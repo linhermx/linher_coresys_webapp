@@ -31,6 +31,7 @@ import { OperationalTable } from '../components/primitives/OperationalTable.jsx'
 import { PaginationBar } from '../components/primitives/PaginationBar.jsx';
 import { SegmentedControl } from '../components/primitives/SegmentedControl.jsx';
 import { ToolbarSearchField } from '../components/primitives/ToolbarSearchField.jsx';
+import { WorkspaceActionMenu } from '../components/primitives/WorkspaceActionMenu.jsx';
 import { WorkspaceNoticeRail } from '../components/primitives/WorkspaceNoticeRail.jsx';
 import { WorkspaceSplitLayout } from '../components/primitives/WorkspaceSplitLayout.jsx';
 import { ModalDialog } from '../components/primitives/ModalDialog.jsx';
@@ -485,8 +486,10 @@ const InventoryPage = () => {
   const [catalogLocationTypeQuery, setCatalogLocationTypeQuery] = useState('');
   const createAssetTriggerRef = useRef(null);
   const createMovementTriggerRef = useRef(null);
+  const createMovementReturnFocusRef = useRef(null);
   const createLocationTriggerRef = useRef(null);
-  const catalogTriggerRef = useRef(null);
+  const inventoryOverflowTriggerRef = useRef(null);
+  const catalogReturnFocusRef = useRef(null);
   const catalogAssetTabRef = useRef(null);
   const catalogLocationTabRef = useRef(null);
   const createAssetTypeSelectRef = useRef(null);
@@ -1122,12 +1125,13 @@ const InventoryPage = () => {
     return resolvedAssignments;
   };
 
-  const openCatalogModal = () => {
+  const openCatalogModal = (triggerElement = null) => {
     if (!canManageCatalog) {
       return;
     }
 
     resetActionFeedback();
+    catalogReturnFocusRef.current = triggerElement || inventoryOverflowTriggerRef.current;
     setActiveCatalogTab('asset_types');
     setCatalogAssetTypeQuery('');
     setCatalogLocationTypeQuery('');
@@ -1136,6 +1140,22 @@ const InventoryPage = () => {
     setAssetTypeForm(defaultCatalogAssetTypeForm);
     setLocationTypeForm(defaultCatalogLocationTypeForm);
     setIsCatalogModalOpen(true);
+  };
+
+  const openCreateMovementModal = (triggerElement = null) => {
+    if (!canUpdateInventory) {
+      return;
+    }
+
+    resetActionFeedback();
+    createMovementReturnFocusRef.current = triggerElement || createMovementTriggerRef.current;
+    setMovementForm((currentForm) => ({
+      ...currentForm,
+      lines: currentForm.lines.length > 0
+        ? currentForm.lines
+        : [{ ...defaultMovementLine, asset_id: selectedAssetId ? String(selectedAssetId) : '' }]
+    }));
+    setIsCreateMovementOpen(true);
   };
 
   const scheduleCatalogEditorFocus = (tabKey, selectContent = false) => {
@@ -1991,35 +2011,18 @@ const InventoryPage = () => {
         </div>
         <div className="workspace-page__header-actions">
           {canManageCatalog ? (
-            <button
-              type="button"
-              className="workspace-action workspace-action--ghost"
-              ref={catalogTriggerRef}
-              onClick={openCatalogModal}
-            >
-              <Settings2 size={16} aria-hidden="true" />
-              <span>Configurar catálogos</span>
-            </button>
-          ) : null}
-          {canUpdateInventory ? (
-            <button
-              type="button"
-              className="workspace-action workspace-action--ghost"
-              ref={createMovementTriggerRef}
-              onClick={() => {
-                resetActionFeedback();
-                setMovementForm((currentForm) => ({
-                  ...currentForm,
-                  lines: currentForm.lines.length > 0
-                    ? currentForm.lines
-                    : [{ ...defaultMovementLine, asset_id: selectedAssetId ? String(selectedAssetId) : '' }]
-                }));
-                setIsCreateMovementOpen(true);
-              }}
-            >
-              <ArrowRightLeft size={16} aria-hidden="true" />
-              <span>Registrar movimiento</span>
-            </button>
+            <WorkspaceActionMenu
+              label="Más acciones"
+              items={[{
+                key: 'manage-catalogs',
+                label: 'Configurar catálogos',
+                icon: Settings2,
+                onSelect: () => openCatalogModal(inventoryOverflowTriggerRef.current)
+              }]}
+              className="workspace-page__header-menu"
+              triggerClassName="workspace-action workspace-action--ghost"
+              triggerRef={inventoryOverflowTriggerRef}
+            />
           ) : null}
           {canCreateInventory ? (
             <button
@@ -2585,12 +2588,25 @@ const InventoryPage = () => {
                   srLabel="Buscar movimientos"
                   className="workspace-search--operational"
                 />
+                <div className="workspace-page__actions">
+                  {canUpdateInventory ? (
+                    <button
+                      type="button"
+                      className="workspace-action workspace-action--ghost"
+                      ref={createMovementTriggerRef}
+                      onClick={(event) => openCreateMovementModal(event.currentTarget)}
+                    >
+                      <ArrowRightLeft size={16} aria-hidden="true" />
+                      <span>Registrar movimiento</span>
+                    </button>
+                  ) : null}
+                </div>
               </div>
               <div className="workspace-panel__viewport workspace-panel__viewport--flush workspace-panel__viewport--fixed">
                 {filteredMovements.length === 0 ? (
                   <EmptyState title={inventoryMovementsNoRecordsState.title} copy={inventoryMovementsNoRecordsState.copy} id="inventory-movements-empty" role="region">
                     {canUpdateInventory ? (
-                      <button type="button" className="workspace-action workspace-action--primary" onClick={() => setIsCreateMovementOpen(true)}>Registrar movimiento</button>
+                      <button type="button" className="workspace-action workspace-action--primary" onClick={(event) => openCreateMovementModal(event.currentTarget)}>Registrar movimiento</button>
                     ) : null}
                   </EmptyState>
                 ) : (
@@ -2823,7 +2839,7 @@ const InventoryPage = () => {
                   srLabel="Buscar ubicaciones"
                   className="workspace-search--operational"
                 />
-                <div className="workspace-page__filters workspace-page__filters--operational">
+                <div className="workspace-page__actions">
                   {canCreateInventory ? (
                     <button type="button" className="workspace-action workspace-action--ghost" ref={createLocationTriggerRef} onClick={openLocationCreate}>
                       <Building2 size={16} aria-hidden="true" />
@@ -3012,7 +3028,7 @@ const InventoryPage = () => {
         open={isCreateMovementOpen}
         title="Registrar movimiento"
         onClose={() => setIsCreateMovementOpen(false)}
-        returnFocusRef={createMovementTriggerRef}
+        returnFocusRef={createMovementReturnFocusRef}
         initialFocusRef={movementReasonTemplateFirstRef}
         size="wide"
       >
@@ -3299,7 +3315,7 @@ const InventoryPage = () => {
           setEditingAssetTypeId(null);
           setEditingLocationTypeId(null);
         }}
-        returnFocusRef={catalogTriggerRef}
+        returnFocusRef={catalogReturnFocusRef}
         initialFocusRef={activeCatalogTab === 'location_types' ? catalogLocationTabRef : catalogAssetTabRef}
         size="wide"
       >
