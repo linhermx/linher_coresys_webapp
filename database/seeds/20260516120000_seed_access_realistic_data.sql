@@ -34,7 +34,7 @@ VALUES
   (910203, 'Mateo', 'Cruz', 'Calidad', 'active'),
   (910204, 'Lucia', 'Campos', 'Ingenieria', 'active'),
   (910205, 'Andres', 'Ibarra', 'Operaciones', 'active'),
-  (910206, 'Sofia', 'Marin', 'Oficinas', 'active'),
+  (910206, 'Sofia', 'Marin', 'Produccion', 'active'),
   (910207, 'Pablo', 'Rios', 'Recursos compartidos', 'active'),
   (910208, 'Ines', 'Duarte', 'Direccion', 'active')
 ON DUPLICATE KEY UPDATE
@@ -180,7 +180,7 @@ VALUES
   ('004', 'chip', 'available', 'available', @demo_location_storage_code, CONCAT(@seed_marker, ' Unit 004 returned to storage.'), CONCAT(@seed_marker, ' Media 004 returned to storage.')),
   ('005', 'chip', 'not_returned', 'retired', @demo_location_retired_code, CONCAT(@seed_marker, ' Unit 005 not returned and retired.'), CONCAT(@seed_marker, ' Media 005 not returned.')),
   ('006', 'card', 'available', 'available', @demo_location_storage_code, CONCAT(@seed_marker, ' Unit 006 ready for assignment.'), CONCAT(@seed_marker, ' Media 006 available.')),
-  ('007', 'chip', 'assigned', 'assigned', @demo_location_office_code, CONCAT(@seed_marker, ' Unit 007 recent office assignment.'), CONCAT(@seed_marker, ' Media 007 recent office assignment.')),
+  ('007', 'chip', 'assigned', 'assigned', @demo_location_production_code, CONCAT(@seed_marker, ' Unit 007 recent production assignment.'), CONCAT(@seed_marker, ' Media 007 recent production assignment.')),
   ('008', 'card', 'available', 'available', @demo_location_storage_code, CONCAT(@seed_marker, ' Unit 008 ready for assignment.'), CONCAT(@seed_marker, ' Media 008 available.')),
   ('009', 'card', 'retired', 'retired', @demo_location_retired_code, CONCAT(@seed_marker, ' Unit 009 retired for reference.'), CONCAT(@seed_marker, ' Media 009 retired.'));
 
@@ -260,7 +260,7 @@ SELECT '004', 910204, 'returned', DATE_ADD(DATE_SUB(NOW(), INTERVAL 8 DAY), INTE
 UNION ALL
 SELECT '005', 910205, 'not_returned', DATE_ADD(DATE_SUB(NOW(), INTERVAL 10 DAY), INTERVAL 9 HOUR), DATE_ADD(DATE_SUB(NOW(), INTERVAL 3 DAY), INTERVAL 18 HOUR), DATE_ADD(DATE_SUB(NOW(), INTERVAL 3 DAY), INTERVAL 18 HOUR), CONCAT(@seed_marker, ' Assignment 005 linked to offboarding.'), CONCAT(@seed_marker, ' Assignment 005 closed as not returned.')
 UNION ALL
-SELECT '007', 910206, 'active', DATE_ADD(DATE_SUB(NOW(), INTERVAL 1 DAY), INTERVAL 12 HOUR), DATE_ADD(NOW(), INTERVAL 24 DAY), NULL, CONCAT(@seed_marker, ' Assignment 007 recent office activation.'), NULL;
+SELECT '007', 910206, 'active', DATE_ADD(DATE_SUB(NOW(), INTERVAL 1 DAY), INTERVAL 12 HOUR), DATE_ADD(NOW(), INTERVAL 24 DAY), NULL, CONCAT(@seed_marker, ' Assignment 007 recent production access.'), NULL;
 
 INSERT INTO access_media_assignments (
   access_media_id,
@@ -321,11 +321,11 @@ SELECT 'E002', 910201, 'bathroom', '001', 'active', DATE_ADD(DATE_SUB(NOW(), INT
 UNION ALL
 SELECT 'E003', 910202, 'offices', '002', 'active', DATE_ADD(DATE_SUB(NOW(), INTERVAL 3 DAY), INTERVAL 12 HOUR), NULL, CONCAT(@seed_marker, ' Enrollment E003 active offices.')
 UNION ALL
-SELECT 'E004', 910203, 'offices', '003', 'suspended', DATE_ADD(DATE_SUB(NOW(), INTERVAL 7 DAY), INTERVAL 9 HOUR), NULL, CONCAT(@seed_marker, ' Enrollment E004 suspended offices.')
+SELECT 'E004', 910203, 'offices', NULL, 'suspended', DATE_ADD(DATE_SUB(NOW(), INTERVAL 7 DAY), INTERVAL 9 HOUR), NULL, CONCAT(@seed_marker, ' Enrollment E004 suspended offices.')
 UNION ALL
 SELECT 'E005', 910204, 'production', '004', 'deactivated', DATE_ADD(DATE_SUB(NOW(), INTERVAL 8 DAY), INTERVAL 10 HOUR), DATE_ADD(DATE_SUB(NOW(), INTERVAL 4 DAY), INTERVAL 16 HOUR), CONCAT(@seed_marker, ' Enrollment E005 deactivated production.')
 UNION ALL
-SELECT 'E006', 910205, 'offices', '005', 'deactivated', DATE_ADD(DATE_SUB(NOW(), INTERVAL 10 DAY), INTERVAL 9 HOUR), DATE_ADD(DATE_SUB(NOW(), INTERVAL 3 DAY), INTERVAL 18 HOUR), CONCAT(@seed_marker, ' Enrollment E006 deactivated after not returned.')
+SELECT 'E006', 910205, 'bathroom', '005', 'deactivated', DATE_ADD(DATE_SUB(NOW(), INTERVAL 10 DAY), INTERVAL 9 HOUR), DATE_ADD(DATE_SUB(NOW(), INTERVAL 3 DAY), INTERVAL 18 HOUR), CONCAT(@seed_marker, ' Enrollment E006 deactivated after not returned.')
 UNION ALL
 SELECT 'E007', 910206, 'bathroom', '007', 'pending', DATE_ADD(DATE_SUB(NOW(), INTERVAL 1 DAY), INTERVAL 12 HOUR), NULL, CONCAT(@seed_marker, ' Enrollment E007 pending bathroom activation.')
 UNION ALL
@@ -363,7 +363,7 @@ LEFT JOIN access_media_assignments ama
    WHEN '003' THEN ' returned.'
    WHEN '004' THEN ' temporary chip.'
    WHEN '005' THEN ' linked to offboarding.'
-   WHEN '007' THEN ' recent office activation.'
+  WHEN '007' THEN ' recent production access.'
    ELSE ''
  END);
 
@@ -653,7 +653,7 @@ SELECT
   DATE_ADD(DATE_SUB(NOW(), INTERVAL 3 DAY), INTERVAL 18 HOUR)
 FROM collaborators c
 INNER JOIN access_systems sys
-  ON sys.system_key = 'offices'
+  ON sys.system_key = 'bathroom'
 INNER JOIN access_enrollments en
   ON en.collaborator_id = c.id
  AND en.notes = CONCAT(@seed_marker, ' Enrollment E006 deactivated after not returned.')

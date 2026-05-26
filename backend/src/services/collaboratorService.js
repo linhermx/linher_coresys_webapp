@@ -4,6 +4,8 @@ import { CollaboratorModel } from '../models/CollaboratorModel.js';
 import { AuditService } from './auditService.js';
 
 const collaboratorModel = new CollaboratorModel(pool);
+const EMPLOYEE_ID_MIN = 1;
+const EMPLOYEE_ID_MAX = 20000;
 
 const normalizeText = (value) => String(value || '').trim();
 
@@ -25,6 +27,13 @@ const parseEmployeeId = (value) => {
     throw new AppError('El employee_id debe ser numérico, único y mayor que cero.', {
       statusCode: 400,
       code: 'INVALID_EMPLOYEE_ID'
+    });
+  }
+
+  if (normalizedValue < EMPLOYEE_ID_MIN || normalizedValue > EMPLOYEE_ID_MAX) {
+    throw new AppError(`El employee_id debe estar entre ${EMPLOYEE_ID_MIN} y ${EMPLOYEE_ID_MAX}.`, {
+      statusCode: 400,
+      code: 'INVALID_EMPLOYEE_ID_RANGE'
     });
   }
 
@@ -103,7 +112,7 @@ export const CollaboratorService = {
     const normalizedAreaName = normalizeText(areaName) || null;
     const normalizedStatus = normalizeStatus(status);
 
-    const existingCollaborator = await collaboratorModel.findByEmployeeId(normalizedEmployeeId);
+    const existingCollaborator = await collaboratorModel.findAnyByEmployeeId(normalizedEmployeeId);
     if (existingCollaborator) {
       throw new AppError('Ya existe un colaborador con ese employee_id.', {
         statusCode: 409,
