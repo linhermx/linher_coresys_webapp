@@ -37,6 +37,7 @@ import { WorkspaceSplitLayout } from '../components/primitives/WorkspaceSplitLay
 import { ModalDialog } from '../components/primitives/ModalDialog.jsx';
 import { useAuth } from '../hooks/useAuth.js';
 import { hasPermission } from '../utils/accessControl.js';
+import { getVisibleAssetDescription, stripSeedMarkerCopy } from '../utils/detailCopy.js';
 import { getNextHorizontalTabIndex } from '../utils/tabNavigation.js';
 import {
   createWorkspaceErrorTitle,
@@ -910,7 +911,7 @@ const InventoryPage = () => {
       code: normalizePotentialMojibake(location.code),
       location_type_name: normalizePotentialMojibake(location.location_type_name),
       parent_location_name: normalizePotentialMojibake(location.parent_location_name),
-      description: normalizePotentialMojibake(location.description)
+      description: stripSeedMarkerCopy(normalizePotentialMojibake(location.description))
     }))
   ), [locations]);
 
@@ -1880,6 +1881,7 @@ const InventoryPage = () => {
   }, [actionError, actionSuccess]);
   const recentSummaryMovements = selectedAssetMovements.slice(0, 3);
   const isAssetDetailPanelOpen = activeView === 'assets' && Boolean(detailAsset);
+  const visibleAssetDescription = getVisibleAssetDescription(detailAsset?.description);
   const detailExistenceLabel = detailAsset
     ? (
       detailAsset.tracking_mode_key === 'stock'
@@ -2234,7 +2236,7 @@ const InventoryPage = () => {
                 )}
                 detail={detailAsset ? (
                   <div
-                    className="ticket-detail ticket-detail--tone-primary inventory-asset-detail"
+                    className="ticket-detail panel-detail ticket-detail--tone-primary inventory-asset-detail"
                     onKeyDownCapture={(event) => {
                       if (event.key !== 'Escape') {
                         return;
@@ -2245,9 +2247,9 @@ const InventoryPage = () => {
                       closeAssetDetail();
                     }}
                   >
-                    <header className="ticket-detail__header inventory-asset-detail__header">
-                      <div className="ticket-detail__header-top">
-                        <div className="ticket-detail__header-id inventory-asset-detail__header-id">
+                    <header className="ticket-detail__header panel-detail__header inventory-asset-detail__header">
+                      <div className="ticket-detail__header-top panel-detail__header-top">
+                        <div className="ticket-detail__header-id panel-detail__header-id inventory-asset-detail__header-id">
                           <span className="ticket-detail__ticket-id">
                             {detailAsset.internal_code || `AST-${String(detailAsset.id).padStart(6, '0')}`}
                           </span>
@@ -2255,7 +2257,7 @@ const InventoryPage = () => {
                             {detailAsset.operational_status_name || toOperationalStatusLabel(detailAsset.operational_status_key)}
                           </span>
                         </div>
-                        <div className="ticket-detail__header-actions inventory-asset-detail__header-actions">
+                        <div className="ticket-detail__header-actions panel-detail__header-actions inventory-asset-detail__header-actions">
                           {isLoadingAssetDetail ? (
                             <span
                               className="inventory-asset-detail__loading"
@@ -2290,21 +2292,21 @@ const InventoryPage = () => {
                       </div>
                       <h2
                         id={INVENTORY_ASSET_DETAIL_TITLE_ID}
-                        className="ticket-detail__title inventory-asset-detail__title"
+                        className="ticket-detail__title panel-detail__title inventory-asset-detail__title"
                       >
                         {detailAsset.asset_name}
                       </h2>
-                      <p className="ticket-detail__summary inventory-asset-detail__summary-copy">
+                      <p className="ticket-detail__summary panel-detail__summary-copy inventory-asset-detail__summary-copy">
                         {detailAsset.type_name} / {detailAsset.category_name} / {detailAsset.tracking_mode_name}
                       </p>
                     </header>
 
-                    <section className="ticket-detail__section ticket-detail__section--log inventory-asset-detail__log">
+                    <section className="ticket-detail__section ticket-detail__section--log panel-detail__section panel-detail__section--log inventory-asset-detail__log">
                       <DrawerTabs
                         label="Secciones de detalle del activo"
                         activeKey={activeDetailTab}
                         onChange={setActiveDetailTab}
-                        className="ticket-detail__tabs inventory-asset-detail__tabs-rail"
+                        className="ticket-detail__tabs panel-detail__tabs inventory-asset-detail__tabs-rail"
                         tabs={detailTabOptions.map((tabOption) => ({
                           key: tabOption.key,
                           label: tabOption.label,
@@ -2318,48 +2320,48 @@ const InventoryPage = () => {
                         }))}
                       />
 
-                      <div className="inventory-asset-detail__content">
+                      <div className="inventory-asset-detail__content panel-detail__content">
                         <section
                           id="inventory-detail-panel-summary"
                           role="tabpanel"
                           aria-labelledby="inventory-detail-tab-summary"
                           hidden={activeDetailTab !== 'summary'}
-                          className="ticket-detail__tab-panel inventory-asset-detail__panel inventory-asset-detail__summary"
+                          className="ticket-detail__tab-panel panel-detail__tab-panel inventory-asset-detail__panel inventory-asset-detail__summary"
                         >
-                          <section className="ticket-detail__section inventory-asset-detail__section">
-                            <div className="ticket-detail__section-headline inventory-asset-detail__section-headline">
-                              <h3 className="ticket-detail__section-title inventory-asset-detail__section-title">Estado operativo</h3>
+                          <section className="ticket-detail__section panel-detail__section inventory-asset-detail__section">
+                            <div className="ticket-detail__section-headline panel-detail__section-headline inventory-asset-detail__section-headline">
+                              <h3 className="ticket-detail__section-title panel-detail__section-title inventory-asset-detail__section-title">Estado operativo</h3>
                             </div>
-                            <dl className="ticket-detail__meta-grid inventory-asset-detail__meta-grid inventory-asset-detail__meta-grid--status">
-                              <div className="ticket-detail__meta-item">
-                                <dt className="ticket-detail__meta-label">Estado</dt>
+                            <dl className="ticket-detail__meta-grid panel-detail__facts inventory-asset-detail__meta-grid inventory-asset-detail__meta-grid--status">
+                              <div className="ticket-detail__meta-item panel-detail__fact">
+                                <dt className="ticket-detail__meta-label panel-detail__fact-label">Estado</dt>
                                 <dd>
                                   <span className={`inventory-status-chip inventory-status-chip--${toOperationalStatusTone(detailAsset.operational_status_key)}`}>
                                     {detailAsset.operational_status_name || toOperationalStatusLabel(detailAsset.operational_status_key)}
                                   </span>
                                 </dd>
                               </div>
-                              <div className="ticket-detail__meta-item">
-                                <dt className="ticket-detail__meta-label">Existencia actual</dt>
+                              <div className="ticket-detail__meta-item panel-detail__fact">
+                                <dt className="ticket-detail__meta-label panel-detail__fact-label">Existencia actual</dt>
                                 <dd>{detailExistenceLabel}</dd>
                               </div>
                               {detailAsset.tracking_mode_key === 'stock' ? (
-                                <div className="ticket-detail__meta-item">
-                                  <dt className="ticket-detail__meta-label">Stock mínimo</dt>
+                                <div className="ticket-detail__meta-item panel-detail__fact">
+                                  <dt className="ticket-detail__meta-label panel-detail__fact-label">Stock mínimo</dt>
                                   <dd>{detailAsset.min_quantity}</dd>
                                 </div>
                               ) : null}
-                              <div className="ticket-detail__meta-item">
-                                <dt className="ticket-detail__meta-label">Última actualización</dt>
+                              <div className="ticket-detail__meta-item panel-detail__fact">
+                                <dt className="ticket-detail__meta-label panel-detail__fact-label">Última actualización</dt>
                                 <dd>{formatDateTime(detailAsset.updated_at)}</dd>
                               </div>
                             </dl>
                           </section>
 
                           {recentSummaryMovements.length > 0 ? (
-                            <section className="ticket-detail__section inventory-asset-detail__section inventory-asset-detail__summary-activity" aria-label="Actividad reciente del activo">
-                              <div className="ticket-detail__section-headline inventory-asset-detail__section-headline">
-                                <h3 className="ticket-detail__section-title inventory-asset-detail__section-title">Actividad reciente</h3>
+                            <section className="ticket-detail__section panel-detail__section inventory-asset-detail__section inventory-asset-detail__summary-activity" aria-label="Actividad reciente del activo">
+                              <div className="ticket-detail__section-headline panel-detail__section-headline inventory-asset-detail__section-headline">
+                                <h3 className="ticket-detail__section-title panel-detail__section-title inventory-asset-detail__section-title">Actividad reciente</h3>
                                 <span className="ticket-detail__comment-history-count inventory-asset-detail__activity-count" aria-hidden="true">
                                   {selectedAssetMovements.length}
                                 </span>
@@ -2382,20 +2384,20 @@ const InventoryPage = () => {
                             </section>
                           ) : null}
 
-                          <section className="ticket-detail__section inventory-asset-detail__section">
-                            <div className="ticket-detail__section-headline inventory-asset-detail__section-headline">
-                              <h3 className="ticket-detail__section-title inventory-asset-detail__section-title">Ficha técnica</h3>
+                          <section className="ticket-detail__section panel-detail__section inventory-asset-detail__section">
+                            <div className="ticket-detail__section-headline panel-detail__section-headline inventory-asset-detail__section-headline">
+                              <h3 className="ticket-detail__section-title panel-detail__section-title inventory-asset-detail__section-title">Ficha técnica</h3>
                             </div>
-                            {detailAsset.description ? (
-                              <p className="inventory-asset-detail__section-copy">{detailAsset.description}</p>
+                            {visibleAssetDescription ? (
+                              <p className="inventory-asset-detail__section-copy">{visibleAssetDescription}</p>
                             ) : null}
-                            <dl className="ticket-detail__meta-grid inventory-asset-detail__meta-grid">
-                              <div className="ticket-detail__meta-item">
-                                <dt className="ticket-detail__meta-label">Código interno</dt>
+                            <dl className="ticket-detail__meta-grid panel-detail__facts inventory-asset-detail__meta-grid">
+                              <div className="ticket-detail__meta-item panel-detail__fact">
+                                <dt className="ticket-detail__meta-label panel-detail__fact-label">Código interno</dt>
                                 <dd>{detailAsset.internal_code || 'Sin código'}</dd>
                               </div>
-                              <div className="ticket-detail__meta-item">
-                                <dt className="ticket-detail__meta-label">Marca / Modelo</dt>
+                              <div className="ticket-detail__meta-item panel-detail__fact">
+                                <dt className="ticket-detail__meta-label panel-detail__fact-label">Marca / Modelo</dt>
                                 <dd>{[detailAsset.brand, detailAsset.model].filter(Boolean).join(' / ') || 'No registrado'}</dd>
                               </div>
                             </dl>
@@ -2407,12 +2409,12 @@ const InventoryPage = () => {
                           role="tabpanel"
                           aria-labelledby="inventory-detail-tab-units"
                           hidden={activeDetailTab !== 'units'}
-                          className="ticket-detail__tab-panel inventory-asset-detail__panel"
+                          className="ticket-detail__tab-panel panel-detail__tab-panel inventory-asset-detail__panel"
                         >
                           {detailAsset.tracking_mode_key === 'unit' ? (
-                            <div className="inventory-asset-detail__panel-header inventory-asset-detail__panel-header--units">
-                              <h3 className="inventory-asset-detail__panel-title">Unidades registradas</h3>
-                              <div className="inventory-asset-detail__toolbar">
+                            <div className="inventory-asset-detail__panel-header panel-detail__panel-header inventory-asset-detail__panel-header--units">
+                              <h3 className="inventory-asset-detail__panel-title panel-detail__panel-title">Unidades registradas</h3>
+                              <div className="inventory-asset-detail__toolbar panel-detail__toolbar">
                                 {canCreateInventory ? (
                                   <button type="button" className="workspace-action workspace-action--primary" onClick={openCreateUnitsModal}>
                                     <Tags size={14} aria-hidden="true" />
@@ -2420,11 +2422,11 @@ const InventoryPage = () => {
                                   </button>
                                 ) : null}
                                 {selectedAssetUnits.length > 0 && (hasAvailableAssetUnits || hasAssignedAssetUnits) ? (
-                                  <div className="inventory-asset-detail__toolbar-secondary">
+                                  <div className="inventory-asset-detail__toolbar-secondary panel-detail__toolbar-secondary">
                                     {hasAvailableAssetUnits && canAssignInventory ? (
                                       <button
                                         type="button"
-                                        className="inventory-asset-detail__toolbar-action"
+                                        className="inventory-asset-detail__toolbar-action panel-detail__toolbar-action"
                                         onClick={(event) => openCreateAssignmentModal(null, { triggerElement: event.currentTarget })}
                                       >
                                         <ShieldCheck size={14} aria-hidden="true" />
@@ -2434,7 +2436,7 @@ const InventoryPage = () => {
                                     {hasAssignedAssetUnits && canAssignInventory ? (
                                       <button
                                         type="button"
-                                        className="inventory-asset-detail__toolbar-action"
+                                        className="inventory-asset-detail__toolbar-action panel-detail__toolbar-action"
                                         onClick={() => void openCloseAssignmentModal()}
                                       >
                                         <Undo2 size={14} aria-hidden="true" />
@@ -2449,83 +2451,83 @@ const InventoryPage = () => {
                           {selectedAssetUnits.length === 0 ? (
                             <p className="inventory-asset-detail__empty-copy">Este activo no tiene unidades serializadas registradas.</p>
                           ) : (
-                            <ul className="inventory-asset-detail__list">
+                            <ul className="inventory-asset-detail__list panel-detail__list">
                               {selectedAssetUnits.map((unit) => {
                                 const canShowUnitSecondaryActions = canUpdateInventory
                                   && (unit.status_key === 'available' || unit.status_key === 'in_repair');
 
                                 return (
-                                <li key={unit.id} className="inventory-asset-detail__unit-item">
-                                  <div className="inventory-asset-detail__unit-head">
-                                    <div className="inventory-asset-detail__unit-identity">
-                                      <strong>{unit.asset_tag}</strong>
-                                      <span className={`inventory-status-chip inventory-status-chip--${toUnitStatusTone(unit.status_key)}`}>
-                                        {unit.status_name}
-                                      </span>
+                                  <li key={unit.id} className="inventory-asset-detail__unit-item">
+                                    <div className="inventory-asset-detail__unit-head">
+                                      <div className="inventory-asset-detail__unit-identity">
+                                        <strong>{unit.asset_tag}</strong>
+                                        <span className={`inventory-status-chip inventory-status-chip--${toUnitStatusTone(unit.status_key)}`}>
+                                          {unit.status_name}
+                                        </span>
+                                      </div>
                                     </div>
-                                  </div>
-                                  <div className="inventory-asset-detail__unit-meta">
-                                    <span className="inventory-asset-detail__unit-location">{unit.current_location_name || 'Sin ubicación'}</span>
-                                    {unit.active_assignment?.collaborator_name || unit.serial_number ? (
-                                      <div className="inventory-asset-detail__unit-detail-row">
-                                        {unit.active_assignment?.collaborator_name ? (
-                                          <span className="inventory-asset-detail__unit-serial">
-                                            Resguardo activo: {unit.active_assignment.collaborator_name}
-                                          </span>
+                                    <div className="inventory-asset-detail__unit-meta">
+                                      <span className="inventory-asset-detail__unit-location">{unit.current_location_name || 'Sin ubicación'}</span>
+                                      {unit.active_assignment?.collaborator_name || unit.serial_number ? (
+                                        <div className="inventory-asset-detail__unit-detail-row">
+                                          {unit.active_assignment?.collaborator_name ? (
+                                            <span className="inventory-asset-detail__unit-serial">
+                                              Resguardo activo: {unit.active_assignment.collaborator_name}
+                                            </span>
+                                          ) : null}
+                                          {unit.serial_number ? <span className="inventory-asset-detail__unit-serial">Serie: {unit.serial_number}</span> : null}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                    {canShowUnitSecondaryActions ? (
+                                      <div className="inventory-asset-detail__unit-actions">
+                                        {unit.status_key === 'available' ? (
+                                          <>
+                                            <button
+                                              type="button"
+                                              className="action-inline action-inline--secondary"
+                                              onClick={() => openUnitStatusModal(unit, 'in_repair')}
+                                              aria-label={`Enviar ${unit.asset_tag} a reparación`}
+                                            >
+                                              <Wrench size={14} aria-hidden="true" />
+                                              <span>En reparación</span>
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="action-inline action-inline--secondary"
+                                              onClick={() => openUnitStatusModal(unit, 'retired')}
+                                              aria-label={`Dar de baja ${unit.asset_tag}`}
+                                            >
+                                              <Archive size={14} aria-hidden="true" />
+                                              <span>Baja</span>
+                                            </button>
+                                          </>
                                         ) : null}
-                                        {unit.serial_number ? <span className="inventory-asset-detail__unit-serial">Serie: {unit.serial_number}</span> : null}
+                                        {unit.status_key === 'in_repair' ? (
+                                          <>
+                                            <button
+                                              type="button"
+                                              className="action-inline action-inline--secondary"
+                                              onClick={() => openUnitStatusModal(unit, 'available')}
+                                              aria-label={`Marcar ${unit.asset_tag} como disponible`}
+                                            >
+                                              <Check size={14} aria-hidden="true" />
+                                              <span>Marcar disponible</span>
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="action-inline action-inline--secondary"
+                                              onClick={() => openUnitStatusModal(unit, 'retired')}
+                                              aria-label={`Dar de baja ${unit.asset_tag}`}
+                                            >
+                                              <CircleOff size={14} aria-hidden="true" />
+                                              <span>Baja</span>
+                                            </button>
+                                          </>
+                                        ) : null}
                                       </div>
                                     ) : null}
-                                  </div>
-                                  {canShowUnitSecondaryActions ? (
-                                    <div className="inventory-asset-detail__unit-actions">
-                                      {unit.status_key === 'available' ? (
-                                        <>
-                                          <button
-                                            type="button"
-                                            className="action-inline action-inline--secondary"
-                                            onClick={() => openUnitStatusModal(unit, 'in_repair')}
-                                            aria-label={`Enviar ${unit.asset_tag} a reparación`}
-                                          >
-                                            <Wrench size={14} aria-hidden="true" />
-                                            <span>En reparación</span>
-                                          </button>
-                                          <button
-                                            type="button"
-                                            className="action-inline action-inline--secondary"
-                                            onClick={() => openUnitStatusModal(unit, 'retired')}
-                                            aria-label={`Dar de baja ${unit.asset_tag}`}
-                                          >
-                                            <Archive size={14} aria-hidden="true" />
-                                            <span>Baja</span>
-                                          </button>
-                                        </>
-                                      ) : null}
-                                      {unit.status_key === 'in_repair' ? (
-                                        <>
-                                          <button
-                                            type="button"
-                                            className="action-inline action-inline--secondary"
-                                            onClick={() => openUnitStatusModal(unit, 'available')}
-                                            aria-label={`Marcar ${unit.asset_tag} como disponible`}
-                                          >
-                                            <Check size={14} aria-hidden="true" />
-                                            <span>Marcar disponible</span>
-                                          </button>
-                                          <button
-                                            type="button"
-                                            className="action-inline action-inline--secondary"
-                                            onClick={() => openUnitStatusModal(unit, 'retired')}
-                                            aria-label={`Dar de baja ${unit.asset_tag}`}
-                                          >
-                                            <CircleOff size={14} aria-hidden="true" />
-                                            <span>Baja</span>
-                                          </button>
-                                        </>
-                                      ) : null}
-                                    </div>
-                                  ) : null}
-                                </li>
+                                  </li>
                                 );
                               })}
                             </ul>
@@ -2537,7 +2539,7 @@ const InventoryPage = () => {
                           role="tabpanel"
                           aria-labelledby="inventory-detail-tab-movements"
                           hidden={activeDetailTab !== 'movements'}
-                          className="ticket-detail__tab-panel inventory-asset-detail__panel"
+                          className="ticket-detail__tab-panel panel-detail__tab-panel inventory-asset-detail__panel"
                         >
                           {selectedAssetMovements.length === 0 ? (
                             <p className="inventory-asset-detail__empty-copy">Este activo aún no tiene movimientos registrados.</p>

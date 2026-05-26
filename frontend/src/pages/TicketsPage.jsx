@@ -34,6 +34,7 @@ import {
   updateTicketStatus
 } from '../services/ticketsService.js';
 import { useAuth } from '../hooks/useAuth.js';
+import { getVisibleTicketSummary } from '../utils/detailCopy.js';
 import {
   createWorkspaceErrorTitle,
   createWorkspaceLoadingState,
@@ -117,7 +118,7 @@ const defaultAdvancedFilters = {
 };
 
 const statusKeys = Object.keys(statusMeta);
-const detailTabs = ['comments', 'activity', 'attachments'];
+const detailTabs = ['summary', 'comments', 'activity', 'attachments'];
 
 const summarizeByStatus = (tickets) => {
   const counts = statusKeys.reduce((accumulator, statusKey) => {
@@ -674,13 +675,14 @@ const TicketDetailPanel = ({
   onUploadAttachment,
   isUploadingAttachment,
   attachmentError,
-  closeButtonRef
+  closeButtonRef,
+  showPipelineHint = false
 }) => {
   const attachmentInputRef = useRef(null);
   const detailTabRefs = useRef({});
   const [nextStatus, setNextStatus] = useState(ticket?.status || 'nuevo');
   const [commentDraft, setCommentDraft] = useState('');
-  const [detailTab, setDetailTab] = useState('comments');
+  const [detailTab, setDetailTab] = useState('summary');
 
   useEffect(() => {
     if (!ticket) {
@@ -689,12 +691,12 @@ const TicketDetailPanel = ({
 
     setNextStatus(ticket.status);
     setCommentDraft('');
-    setDetailTab('comments');
+    setDetailTab('summary');
   }, [ticket]);
 
   if (!ticket) {
     return (
-      <aside className="ticket-detail ticket-detail--empty" aria-label="Detalle del ticket">
+      <aside className="ticket-detail panel-detail ticket-detail--empty" aria-label="Detalle del ticket">
         <p className="ticket-detail__empty-title">Selecciona un ticket</p>
         <p className="ticket-detail__empty-copy">
           El detalle, la actividad, los comentarios y los adjuntos aparecerán aquí.
@@ -705,6 +707,7 @@ const TicketDetailPanel = ({
 
   const isStatusUnchanged = nextStatus === ticket.status;
   const ticketDomId = String(ticket.id || 'ticket').toLowerCase().replace(/[^a-z0-9_-]+/g, '-');
+  const visibleTicketSummary = getVisibleTicketSummary(ticket.summary);
   const getDetailTabId = (tabKey) => `ticket-detail-tab-${ticketDomId}-${tabKey}`;
   const getDetailPanelId = (tabKey) => `ticket-detail-panel-${ticketDomId}-${tabKey}`;
 
@@ -742,6 +745,16 @@ const TicketDetailPanel = ({
 
   const detailTabsConfig = [
     {
+      key: 'summary',
+      label: 'Resumen',
+      id: getDetailTabId('summary'),
+      controls: getDetailPanelId('summary'),
+      onKeyDown: (event) => handleDetailTabKeyDown(event, 'summary'),
+      ref: (node) => {
+        detailTabRefs.current.summary = node;
+      }
+    },
+    {
       key: 'comments',
       label: 'Comentarios',
       count: ticket.comments.length,
@@ -778,16 +791,16 @@ const TicketDetailPanel = ({
 
   return (
     <aside
-      className={`ticket-detail ticket-detail--tone-${statusMeta[ticket.status]?.tone || 'neutral'}`}
+      className={`ticket-detail panel-detail ticket-detail--tone-${statusMeta[ticket.status]?.tone || 'neutral'}`}
       aria-label={`Detalle de ${ticket.id}`}
     >
-      <div className="ticket-detail__header">
-        <div className="ticket-detail__header-top">
-          <div className="ticket-detail__header-id">
+      <div className="ticket-detail__header panel-detail__header">
+        <div className="ticket-detail__header-top panel-detail__header-top">
+          <div className="ticket-detail__header-id panel-detail__header-id">
             <span className="ticket-detail__ticket-id">{ticket.id}</span>
             <TicketBadge label={statusMeta[ticket.status].label} tone={statusMeta[ticket.status].tone} />
           </div>
-          <div className="ticket-detail__header-actions">
+          <div className="ticket-detail__header-actions panel-detail__header-actions">
             <button
               type="button"
               className="ticket-detail__edit"
@@ -806,30 +819,14 @@ const TicketDetailPanel = ({
             </button>
           </div>
         </div>
-        <h2 className="ticket-detail__title">{ticket.title}</h2>
-        <p className="ticket-detail__summary">{ticket.summary}</p>
+        <h2 className="ticket-detail__title panel-detail__title">{ticket.title}</h2>
+        {visibleTicketSummary ? (
+          <p className="ticket-detail__summary panel-detail__summary-copy">{visibleTicketSummary}</p>
+        ) : null}
       </div>
 
-      <div className="ticket-detail__meta-grid">
-        <div className="ticket-detail__meta-item">
-          <span className="ticket-detail__meta-label">Solicitante</span>
-          <strong>{ticket.requester}</strong>
-        </div>
-        <div className="ticket-detail__meta-item">
-          <span className="ticket-detail__meta-label">Responsable</span>
-          <strong>{ticket.assignee}</strong>
-        </div>
-        <div className="ticket-detail__meta-item">
-          <span className="ticket-detail__meta-label">Tipo</span>
-          <strong>{typeMeta[ticket.type].label}</strong>
-        </div>
-        <div className="ticket-detail__meta-item">
-          <span className="ticket-detail__meta-label">Prioridad</span>
-          <strong>{priorityMeta[ticket.priority].label}</strong>
-        </div>
-      </div>
-
-      <section className="ticket-detail__section ticket-detail__section--status">
+      {false ? (
+        <section className="ticket-detail__section ticket-detail__section--status">
         <div className="ticket-detail__section-headline">
           <div className="ticket-detail__section-title">
             <ArrowRightLeft size={16} aria-hidden="true" />
@@ -872,33 +869,121 @@ const TicketDetailPanel = ({
           </button>
         </form>
 
-        <p className="ticket-detail__status-help">
-          En pipeline también puedes mover este ticket arrastrándolo al carril de destino.
-        </p>
+        {showPipelineHint ? (
+          <p className="ticket-detail__status-help">
+            También puedes mover este ticket desde pipeline arrastrándolo al carril de destino.
+          </p>
+        ) : null}
 
         {statusChangeError ? (
           <p className="ticket-detail__attach-error" role="alert">{statusChangeError}</p>
         ) : null}
-      </section>
+        </section>
+      ) : null}
 
-      <section className="ticket-detail__section ticket-detail__section--log">
+      <section className="ticket-detail__section ticket-detail__section--log panel-detail__section panel-detail__section--log">
         <DrawerTabs
           label="Registro del ticket"
           tabs={detailTabsConfig}
           activeKey={detailTab}
           onChange={setDetailTab}
-          className="ticket-detail__tabs"
+          className="ticket-detail__tabs panel-detail__tabs"
         />
+
+        {detailTab === 'summary' ? (
+          <div
+            className="ticket-detail__tab-panel panel-detail__tab-panel"
+            id={getDetailPanelId('summary')}
+            role="tabpanel"
+            aria-labelledby={getDetailTabId('summary')}
+            tabIndex={0}
+          >
+            <div className="panel-detail__summary-layout">
+              <div className="ticket-detail__meta-grid panel-detail__facts">
+                <div className="ticket-detail__meta-item panel-detail__fact">
+                  <span className="ticket-detail__meta-label panel-detail__fact-label">Solicitante</span>
+                  <strong>{ticket.requester}</strong>
+                </div>
+                <div className="ticket-detail__meta-item panel-detail__fact">
+                  <span className="ticket-detail__meta-label panel-detail__fact-label">Responsable</span>
+                  <strong>{ticket.assignee}</strong>
+                </div>
+                <div className="ticket-detail__meta-item panel-detail__fact">
+                  <span className="ticket-detail__meta-label panel-detail__fact-label">Tipo</span>
+                  <strong>{typeMeta[ticket.type].label}</strong>
+                </div>
+                <div className="ticket-detail__meta-item panel-detail__fact">
+                  <span className="ticket-detail__meta-label panel-detail__fact-label">Prioridad</span>
+                  <strong>{priorityMeta[ticket.priority].label}</strong>
+                </div>
+              </div>
+
+              <section className="ticket-detail__section ticket-detail__section--status panel-detail__section">
+                <div className="ticket-detail__section-headline panel-detail__section-headline">
+                  <div className="ticket-detail__section-title panel-detail__section-title">
+                    <ArrowRightLeft size={16} aria-hidden="true" />
+                    <span>Estado operativo</span>
+                  </div>
+                </div>
+                <form
+                  className="ticket-detail__status-controls"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void onChangeStatus(nextStatus);
+                  }}
+                >
+                  <label className="ticket-detail__status-field" htmlFor="ticket-detail-next-status">
+                    <span className="sr-only">Seleccionar nuevo estado</span>
+                    <select
+                      id="ticket-detail-next-status"
+                      name="ticket_detail_next_status"
+                      value={nextStatus}
+                      onChange={(event) => setNextStatus(event.target.value)}
+                      disabled={isStatusSubmitting}
+                    >
+                      {Object.entries(statusMeta).map(([statusKey, statusValue]) => (
+                        <option key={statusKey} value={statusKey}>
+                          {statusValue.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="submit"
+                    className="ticket-detail__status-submit"
+                    disabled={isStatusSubmitting || isStatusUnchanged}
+                  >
+                    <span>
+                      {isStatusSubmitting
+                        ? 'Actualizando...'
+                        : (isStatusUnchanged ? 'Sin cambios' : 'Guardar estado')}
+                    </span>
+                  </button>
+                </form>
+
+                {showPipelineHint ? (
+                  <p className="ticket-detail__status-help">
+                    También puedes mover este ticket desde pipeline arrastrándolo al carril de destino.
+                  </p>
+                ) : null}
+
+                {statusChangeError ? (
+                  <p className="ticket-detail__attach-error" role="alert">{statusChangeError}</p>
+                ) : null}
+              </section>
+            </div>
+          </div>
+        ) : null}
 
         {detailTab === 'comments' ? (
           <div
-            className="ticket-detail__tab-panel"
+            className="ticket-detail__tab-panel panel-detail__tab-panel"
             id={getDetailPanelId('comments')}
             role="tabpanel"
             aria-labelledby={getDetailTabId('comments')}
             tabIndex={0}
           >
-            <section className="ticket-detail__section ticket-detail__section--comments">
+            <section className="ticket-detail__section ticket-detail__section--comments panel-detail__section">
               <form
                 className="ticket-detail__comment-form"
                 onSubmit={async (event) => {
@@ -970,13 +1055,13 @@ const TicketDetailPanel = ({
 
         {detailTab === 'activity' ? (
           <div
-            className="ticket-detail__tab-panel"
+            className="ticket-detail__tab-panel panel-detail__tab-panel"
             id={getDetailPanelId('activity')}
             role="tabpanel"
             aria-labelledby={getDetailTabId('activity')}
             tabIndex={0}
           >
-            <section className="ticket-detail__section ticket-detail__section--activity">
+            <section className="ticket-detail__section ticket-detail__section--activity panel-detail__section">
               <ul className="ticket-activity">
                 {ticket.activity.map((event) => (
                   <li key={event.id} className="ticket-activity__item">
@@ -994,14 +1079,14 @@ const TicketDetailPanel = ({
 
         {detailTab === 'attachments' ? (
           <div
-            className="ticket-detail__tab-panel"
+            className="ticket-detail__tab-panel panel-detail__tab-panel"
             id={getDetailPanelId('attachments')}
             role="tabpanel"
             aria-labelledby={getDetailTabId('attachments')}
             tabIndex={0}
           >
-            <section className="ticket-detail__section ticket-detail__section--attachments">
-              <div className="ticket-detail__section-headline">
+            <section className="ticket-detail__section ticket-detail__section--attachments panel-detail__section">
+              <div className="ticket-detail__section-headline panel-detail__section-headline">
                 <input
                   ref={attachmentInputRef}
                   type="file"
@@ -1077,7 +1162,7 @@ const TicketDetailContextState = ({
   onClose,
   closeButtonRef
 }) => (
-  <aside className="ticket-detail ticket-detail--empty" aria-label="Estado del detalle del ticket">
+  <aside className="ticket-detail panel-detail ticket-detail--empty" aria-label="Estado del detalle del ticket">
     <p className="ticket-detail__empty-title">El ticket seleccionado quedó fuera de esta vista</p>
     <p className="sr-only" aria-live="polite">
       {reason === 'page'
@@ -1818,6 +1903,7 @@ const TicketsPage = () => {
       isUploadingAttachment={isAttachmentUploading}
       attachmentError={attachmentUploadError}
       closeButtonRef={detailCloseButtonRef}
+      showPipelineHint={activeView === 'pipeline'}
     />
   ) : hasDetailPanel ? (
     <TicketDetailContextState

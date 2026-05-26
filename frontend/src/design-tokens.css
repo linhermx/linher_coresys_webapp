@@ -22,6 +22,10 @@
   --control-height-compact: 38px;
   --control-height-regular: 40px;
   --control-height-touch: 44px;
+  --status-chip-height: 26px;
+  --status-chip-inline-size: 8rem;
+  --status-chip-padding-inline: 10px;
+  --status-chip-font-size: 0.74rem;
 
   --sidebar-width: 248px;
   --topbar-height: 60px;

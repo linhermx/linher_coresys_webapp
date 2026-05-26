@@ -1,12 +1,15 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
-  ArrowRightLeft,
+  Bath,
+  Building2,
   CircleOff,
+  Factory,
   History,
   IdCard,
   Plus,
   ShieldCheck,
+  X,
   Undo2,
   UserCog,
   UserPlus,
@@ -15,6 +18,7 @@ import {
 } from 'lucide-react';
 
 import { EmptyState } from '../components/primitives/EmptyState.jsx';
+import { DrawerTabs } from '../components/primitives/DrawerTabs.jsx';
 import { FilterChipGroup } from '../components/primitives/FilterChipGroup.jsx';
 import { FilterSelect } from '../components/primitives/FilterSelect.jsx';
 import { InlineNotice } from '../components/primitives/InlineNotice.jsx';
@@ -23,14 +27,13 @@ import { OperationalTablePanel } from '../components/primitives/OperationalTable
 import { PaginationBar } from '../components/primitives/PaginationBar.jsx';
 import { SegmentedControl } from '../components/primitives/SegmentedControl.jsx';
 import { ToolbarSearchField } from '../components/primitives/ToolbarSearchField.jsx';
-import { WorkspaceActionMenu } from '../components/primitives/WorkspaceActionMenu.jsx';
 import { WorkspaceNoticeRail } from '../components/primitives/WorkspaceNoticeRail.jsx';
 import { WorkspaceSplitLayout } from '../components/primitives/WorkspaceSplitLayout.jsx';
 import { useAuth } from '../hooks/useAuth.js';
 import {
-  assignAccessMedia,
   createAccessEnrollment,
   createAccessMedia,
+  grantCollaboratorAccess,
   getAccessCatalog,
   isAccessAuthError,
   listAccessEnrollments,
@@ -45,6 +48,7 @@ import {
 import { createCollaborator, isCollaboratorAuthError, listCollaborators } from '../services/collaboratorService.js';
 import { isAuthError as isInventoryAuthError, listInventoryAssetUnits, listLocations } from '../services/inventoryService.js';
 import { hasPermission } from '../utils/accessControl.js';
+import { stripSeedMarkerCopy } from '../utils/detailCopy.js';
 import {
   createWorkspaceErrorTitle,
   createWorkspaceLoadingState,
@@ -52,16 +56,21 @@ import {
 } from '../utils/workspaceStateCopy.js';
 
 const accessViewOptions = [
-  { key: 'assignments', label: 'Asignaciones', icon: ShieldCheck },
+  { key: 'enrollments', label: 'Colaboradores', icon: UserCog },
   { key: 'media', label: 'Medios', icon: IdCard },
-  { key: 'enrollments', label: 'Altas', icon: UserCog },
   { key: 'history', label: 'Historial', icon: History }
 ];
+
+const visibleAccessSystemKeys = ['production', 'offices', 'bathroom'];
 
 const validAccessViewKeys = new Set(accessViewOptions.map((option) => option.key));
 const resolveAccessView = (value) => {
   const normalized = String(value || '').trim();
-  return validAccessViewKeys.has(normalized) ? normalized : 'assignments';
+  if (normalized === 'assignments') {
+    return 'enrollments';
+  }
+
+  return validAccessViewKeys.has(normalized) ? normalized : 'enrollments';
 };
 
 const assignmentStatusOptions = [
@@ -88,15 +97,15 @@ const accessLoadingState = createWorkspaceLoadingState('accesos');
 const accessLoadErrorTitle = createWorkspaceErrorTitle('los accesos');
 const accessAssignmentsNoRecordsState = createWorkspaceNoRecordsState(
   'asignaciones',
-  'Asigna el primer chip o tarjeta para comenzar a controlar la entrega operativa de medios.'
+  'Da acceso al primer colaborador para comenzar a controlar la entrega operativa de medios y altas.'
 );
 const accessMediaNoRecordsState = createWorkspaceNoRecordsState(
   'medios',
-  'Vincula los chips y tarjetas RFID que ya viven en Inventario para poder asignarlos y darles seguimiento operativo.'
+  'Los RFID se registran automáticamente cuando se asignan desde Dar acceso.'
 );
 const accessEnrollmentsNoRecordsState = createWorkspaceNoRecordsState(
-  'altas',
-  'Crea la primera alta por sistema para mantener visible quién está activo en Producción, Oficinas o Baño.'
+  'colaboradores con acceso',
+  'Usa Dar acceso para habilitar el primer acceso operativo.'
 );
 const accessEventsNoRecordsState = createWorkspaceNoRecordsState(
   'eventos',
@@ -108,22 +117,22 @@ const defaultCatalog = {
   medium_types: [],
   media_statuses: [],
   assignment_statuses: [],
-  enrollment_statuses: []
+  enrollment_statuses: [],
+  employee_id_availability: {
+    min_employee_id: 1,
+    max_employee_id: 20000,
+    next_available_id: null,
+    used_count: 0,
+    available_count: 20000,
+    preview_ranges: [],
+    has_more_ranges: false
+  }
 };
 
 const defaultCreateMediaForm = {
   medium_type_key: 'chip',
   asset_unit_id: '',
   tag_code: '',
-  notes: ''
-};
-
-const defaultAssignForm = {
-  access_media_id: '',
-  collaborator_id: '',
-  assigned_at: '',
-  expected_return_at: '',
-  location_id: '',
   notes: ''
 };
 
@@ -141,6 +150,17 @@ const defaultCreateCollaboratorForm = {
   first_name: '',
   last_name: '',
   area_name: ''
+};
+
+const defaultGrantAccessForm = {
+  collaborator_id: '',
+  collaborator_create: { ...defaultCreateCollaboratorForm },
+  deactivate_enrollment_ids: [],
+  asset_unit_id: '',
+  requires_rfid_override: false,
+  systems: [],
+  assigned_at: '',
+  notes: ''
 };
 
 const defaultReturnForm = {
@@ -182,6 +202,26 @@ const toPositiveNumberOrNull = (value) => {
   }
 
   return normalized;
+};
+
+const formatListConjunction = (values) => {
+  const items = Array.isArray(values)
+    ? values.map((value) => String(value || '').trim()).filter(Boolean)
+    : [];
+
+  if (items.length === 0) {
+    return '';
+  }
+
+  if (items.length === 1) {
+    return items[0];
+  }
+
+  if (items.length === 2) {
+    return `${items[0]} y ${items[1]}`;
+  }
+
+  return `${items.slice(0, -1).join(', ')} y ${items[items.length - 1]}`;
 };
 
 const buildFieldErrorId = (fieldId) => `${fieldId}-error`;
@@ -249,6 +289,91 @@ const compareByNewest = (left, right, key) => {
   const leftTime = new Date(left?.[key] || 0).getTime() || 0;
   const rightTime = new Date(right?.[key] || 0).getTime() || 0;
   return rightTime - leftTime;
+};
+
+const getAccessSystemSortOrder = (systemKey) => {
+  switch (systemKey) {
+    case 'production':
+      return 0;
+    case 'bathroom':
+      return 1;
+    case 'offices':
+      return 2;
+    default:
+      return 9;
+  }
+};
+
+const getEnrollmentStatusSortOrder = (statusKey) => {
+  switch (statusKey) {
+    case 'active':
+      return 0;
+    case 'pending':
+      return 1;
+    case 'suspended':
+      return 2;
+    default:
+      return 3;
+  }
+};
+
+const getAssignmentStatusSortOrder = (statusKey) => {
+  switch (statusKey) {
+    case 'active':
+      return 0;
+    case 'returned':
+      return 1;
+    case 'not_returned':
+      return 2;
+    default:
+      return 3;
+  }
+};
+
+const getEnrollmentTimelineTime = (enrollment) => {
+  const rawValue = (
+    enrollment?.deactivated_at
+    || enrollment?.activated_at
+    || enrollment?.updated_at
+    || enrollment?.created_at
+    || 0
+  );
+  return new Date(rawValue).getTime() || 0;
+};
+
+const getAssignmentTimelineTime = (assignment) => {
+  const rawValue = (
+    assignment?.resolved_at
+    || assignment?.returned_at
+    || assignment?.assigned_at
+    || assignment?.updated_at
+    || assignment?.created_at
+    || 0
+  );
+  return new Date(rawValue).getTime() || 0;
+};
+
+const compareAccessEnrollments = (left, right) => {
+  const statusOrder = getEnrollmentStatusSortOrder(left?.status_key) - getEnrollmentStatusSortOrder(right?.status_key);
+  if (statusOrder !== 0) {
+    return statusOrder;
+  }
+
+  const systemOrder = getAccessSystemSortOrder(left?.access_system?.system_key) - getAccessSystemSortOrder(right?.access_system?.system_key);
+  if (systemOrder !== 0) {
+    return systemOrder;
+  }
+
+  return getEnrollmentTimelineTime(right) - getEnrollmentTimelineTime(left);
+};
+
+const compareAccessAssignments = (left, right) => {
+  const statusOrder = getAssignmentStatusSortOrder(left?.status_key) - getAssignmentStatusSortOrder(right?.status_key);
+  if (statusOrder !== 0) {
+    return statusOrder;
+  }
+
+  return getAssignmentTimelineTime(right) - getAssignmentTimelineTime(left);
 };
 
 const getMediumStatusToneClass = (statusKey) => {
@@ -337,6 +462,24 @@ const toMediaLabel = (media) => {
   return `${media.tag_code || 'Sin tag'} · ${media.asset_unit?.asset_tag || media.asset_tag || 'Sin unidad'}`;
 };
 
+const toAccessSupportNote = (note) => {
+  const cleanedNote = stripSeedMarkerCopy(note);
+  return cleanedNote || null;
+};
+
+const toAccessEventNote = (note) => {
+  const cleanedNote = stripSeedMarkerCopy(note);
+  if (!cleanedNote) {
+    return null;
+  }
+
+  if (/^event\b/i.test(cleanedNote)) {
+    return null;
+  }
+
+  return cleanedNote;
+};
+
 const AccessPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const { authUser, clearSession } = useAuth();
@@ -378,20 +521,27 @@ const AccessPage = () => {
 
   const [selectedAssignmentId, setSelectedAssignmentId] = useState(null);
   const [selectedMediaId, setSelectedMediaId] = useState(null);
-  const [selectedEnrollmentId, setSelectedEnrollmentId] = useState(null);
+  const [selectedEnrollmentCollaboratorId, setSelectedEnrollmentCollaboratorId] = useState(null);
   const [selectedEventId, setSelectedEventId] = useState(null);
+  const [activeAccessDetailTab, setActiveAccessDetailTab] = useState('summary');
 
   const [isCreateMediaOpen, setIsCreateMediaOpen] = useState(false);
-  const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+  const [isGrantAccessOpen, setIsGrantAccessOpen] = useState(false);
   const [isCreateEnrollmentOpen, setIsCreateEnrollmentOpen] = useState(false);
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
   const [isNotReturnedModalOpen, setIsNotReturnedModalOpen] = useState(false);
   const [isEnrollmentStatusOpen, setIsEnrollmentStatusOpen] = useState(false);
   const [isOffboardOpen, setIsOffboardOpen] = useState(false);
-  const [isCreateCollaboratorOpen, setIsCreateCollaboratorOpen] = useState(false);
+  const [isEnrollmentCollaboratorInlineOpen, setIsEnrollmentCollaboratorInlineOpen] = useState(false);
+  const [isGrantExistingCollaborator, setIsGrantExistingCollaborator] = useState(true);
+  const [isEnrollmentNotesOpen, setIsEnrollmentNotesOpen] = useState(false);
+  const [isGrantNotesOpen, setIsGrantNotesOpen] = useState(false);
+  const [isOffboardNotesOpen, setIsOffboardNotesOpen] = useState(false);
+  const [createMediaOrigin, setCreateMediaOrigin] = useState('manual');
+  const [grantLockedCollaboratorId, setGrantLockedCollaboratorId] = useState(null);
 
   const [createMediaForm, setCreateMediaForm] = useState(defaultCreateMediaForm);
-  const [assignForm, setAssignForm] = useState(defaultAssignForm);
+  const [grantAccessForm, setGrantAccessForm] = useState(defaultGrantAccessForm);
   const [createEnrollmentForm, setCreateEnrollmentForm] = useState(defaultEnrollmentForm);
   const [createCollaboratorForm, setCreateCollaboratorForm] = useState(defaultCreateCollaboratorForm);
   const [returnForm, setReturnForm] = useState(defaultReturnForm);
@@ -407,18 +557,21 @@ const AccessPage = () => {
   const [activeOffboardTarget, setActiveOffboardTarget] = useState(null);
   const [collaboratorCreationTarget, setCollaboratorCreationTarget] = useState(null);
 
-  const createAssignmentTriggerRef = useRef(null);
+  const grantAccessTriggerRef = useRef(null);
   const createMediaTriggerRef = useRef(null);
   const createEnrollmentTriggerRef = useRef(null);
-  const accessOverflowTriggerRef = useRef(null);
-  const createAssignmentReturnFocusRef = useRef(null);
+  const grantAccessReturnFocusRef = useRef(null);
   const createMediaReturnFocusRef = useRef(null);
   const createEnrollmentReturnFocusRef = useRef(null);
-  const createCollaboratorReturnFocusRef = useRef(null);
+  const accessDetailCloseButtonRef = useRef(null);
+  const accessDetailTriggerRef = useRef(null);
+  const shouldAutoFocusAccessDetailRef = useRef(false);
+  const accessDetailKeyboardIntentRef = useRef(false);
 
   const activeView = resolveAccessView(searchParams.get('view'));
   const canCreateAccess = hasPermission(authUser, 'access.create');
   const canAssignAccess = hasPermission(authUser, 'access.assign');
+  const canGrantAccess = canCreateAccess && canAssignAccess;
   const canUpdateAccess = hasPermission(authUser, 'access.update');
   const canCreateCollaborators = hasPermission(authUser, 'collaborators.create');
   const hasActionNotice = Boolean(actionError || actionSuccess);
@@ -465,6 +618,25 @@ const AccessPage = () => {
       </p>
     );
   }, [formErrors]);
+  const renderFieldSupport = useCallback((fieldId = '') => {
+    if (fieldId) {
+      const message = formErrors[fieldId];
+      if (message) {
+        return (
+          <p id={buildFieldErrorId(fieldId)} className="modal-dialog__field-help modal-dialog__field-help--error" role="alert">
+            {message}
+          </p>
+        );
+      }
+    }
+
+    return <span className="modal-dialog__field-help modal-dialog__field-help--slot" aria-hidden="true">&nbsp;</span>;
+  }, [formErrors]);
+  const renderModalNoticeSlot = useCallback((reserve = false) => (
+    <div className={`modal-dialog__notice-slot${reserve ? ' modal-dialog__notice-slot--reserved' : ''}`}>
+      {modalError ? <InlineNotice tone="error" className="modal-dialog__notice">{modalError}</InlineNotice> : null}
+    </div>
+  ), [modalError]);
   const focusFirstInvalidField = useCallback((errors) => {
     const firstFieldId = Object.keys(errors)[0];
     if (!firstFieldId) {
@@ -493,14 +665,11 @@ const AccessPage = () => {
 
     try {
       const units = await listInventoryAssetUnits({ status: 'available', assetTypeKey: 'rfid_tag' });
-      const linkedUnitIds = new Set(media.map((item) => Number(item.asset_unit_id)));
-      setAvailableInventoryUnits(units.filter((unit) => (
-        unit.asset_type_key === 'rfid_tag' && !linkedUnitIds.has(Number(unit.id))
-      )));
+      setAvailableInventoryUnits(units.filter((unit) => unit.asset_type_key === 'rfid_tag'));
     } finally {
       setIsLoadingUnits(false);
     }
-  }, [media]);
+  }, []);
 
   const loadCoreData = useCallback(async () => {
     setScreenLoading(true);
@@ -570,10 +739,21 @@ const AccessPage = () => {
   }, [eventSearchTerm]);
 
   useEffect(() => {
+    const requestedView = String(searchParams.get('view') || '').trim();
+    if (requestedView === activeView) {
+      return;
+    }
+
+    setSearchParams({ view: activeView }, { replace: true });
+  }, [activeView, searchParams, setSearchParams]);
+
+  useEffect(() => {
     setSelectedAssignmentId(null);
     setSelectedMediaId(null);
-    setSelectedEnrollmentId(null);
+    setSelectedEnrollmentCollaboratorId(null);
     setSelectedEventId(null);
+    setActiveAccessDetailTab('summary');
+    shouldAutoFocusAccessDetailRef.current = false;
   }, [activeView]);
 
   const collaboratorOptions = useMemo(() => ([
@@ -584,12 +764,41 @@ const AccessPage = () => {
     }))
   ]), [collaborators]);
 
+  const employeeIdAvailability = catalog.employee_id_availability || defaultCatalog.employee_id_availability;
+  const suggestedEmployeeId = employeeIdAvailability.next_available_id ? String(employeeIdAvailability.next_available_id) : '';
+  const employeeIdPrimaryRangeLabel = useMemo(() => {
+    const ranges = Array.isArray(employeeIdAvailability.preview_ranges) ? employeeIdAvailability.preview_ranges : [];
+    if (ranges.length === 0) {
+      return '';
+    }
+
+    const primaryRange = ranges[0];
+    return Number(primaryRange.start) === Number(primaryRange.end)
+      ? String(primaryRange.start)
+      : `${primaryRange.start}-${primaryRange.end}`;
+  }, [employeeIdAvailability]);
+  const employeeIdHasMorePreviewRanges = useMemo(() => {
+    const ranges = Array.isArray(employeeIdAvailability.preview_ranges) ? employeeIdAvailability.preview_ranges : [];
+    return ranges.length > 1 || Boolean(employeeIdAvailability.has_more_ranges);
+  }, [employeeIdAvailability]);
+  const employeeIdAvailabilityLabel = useMemo(() => {
+    if (!employeeIdPrimaryRangeLabel) {
+      return 'Sin IDs disponibles en el rango operativo.';
+    }
+
+    return employeeIdHasMorePreviewRanges
+      ? `Rango abierto: ${employeeIdPrimaryRangeLabel} y más`
+      : `Rango abierto: ${employeeIdPrimaryRangeLabel}`;
+  }, [employeeIdPrimaryRangeLabel, employeeIdHasMorePreviewRanges]);
+
   const systemFilterOptions = useMemo(() => ([
     { key: 'all', label: 'Todos los sistemas' },
-    ...catalog.systems.map((system) => ({
+    ...catalog.systems
+      .filter((system) => visibleAccessSystemKeys.includes(system.system_key))
+      .map((system) => ({
       key: String(system.id),
       label: system.name
-    }))
+      }))
   ]), [catalog.systems]);
 
   const mediumTypeFilterOptions = useMemo(() => ([
@@ -608,22 +817,34 @@ const AccessPage = () => {
     }))
   ]), [catalog.media_statuses]);
 
-  const assignmentMediumOptions = useMemo(() => ([
-    { key: '', label: 'Selecciona un medio disponible' },
-    ...media
-      .filter((item) => item.status_key === 'available')
-      .map((item) => ({
-        key: String(item.id),
-        label: `${item.tag_code} · ${item.medium_type_name}`
-      }))
-  ]), [media]);
+  const grantSystemOptions = useMemo(() => {
+    const systemMap = new Map(catalog.systems.map((system) => [system.system_key, system]));
+    const systemVisualMap = {
+      production: { icon: Factory, helper: 'Checador + RFID' },
+      offices: { icon: Building2, helper: 'No requiere RFID' },
+      bathroom: { icon: Bath, helper: 'Baño + RFID' }
+    };
+
+    return visibleAccessSystemKeys
+      .map((systemKey) => systemMap.get(systemKey))
+      .filter(Boolean)
+      .map((system) => ({
+        key: system.system_key,
+        label: system.name,
+        description: system.description || null,
+        icon: systemVisualMap[system.system_key]?.icon || ShieldCheck,
+        helper: systemVisualMap[system.system_key]?.helper || ''
+      }));
+  }, [catalog.systems]);
 
   const enrollmentSystemOptions = useMemo(() => ([
     { key: '', label: 'Selecciona un sistema' },
-    ...catalog.systems.map((system) => ({
+    ...catalog.systems
+      .filter((system) => visibleAccessSystemKeys.includes(system.system_key))
+      .map((system) => ({
       key: String(system.id),
       label: system.name
-    }))
+      }))
   ]), [catalog.systems]);
 
   const locationOptions = useMemo(() => ([
@@ -634,13 +855,38 @@ const AccessPage = () => {
     }))
   ]), [locations]);
 
-  const availableUnitOptions = useMemo(() => ([
+  const mediaByAssetUnitId = useMemo(() => new Map(
+    media.map((item) => [Number(item.asset_unit_id), item])
+  ), [media]);
+
+  const inventoryUnitById = useMemo(() => new Map(
+    availableInventoryUnits.map((unit) => [Number(unit.id), unit])
+  ), [availableInventoryUnits]);
+
+  const registerableUnitOptions = useMemo(() => ([
     { key: '', label: isLoadingUnits ? 'Cargando unidades disponibles...' : 'Selecciona una unidad RFID' },
-    ...availableInventoryUnits.map((unit) => ({
-      key: String(unit.id),
-      label: `${unit.asset_tag} · ${unit.asset_name || 'Sin activo'}${unit.serial_number ? ` · ${unit.serial_number}` : ''}`
-    }))
-  ]), [availableInventoryUnits, isLoadingUnits]);
+    ...availableInventoryUnits
+      .filter((unit) => !mediaByAssetUnitId.has(Number(unit.id)))
+      .map((unit) => ({
+        key: String(unit.id),
+        label: `${unit.asset_tag} · ${unit.asset_name || 'RFID'}${unit.serial_number ? ` · ${unit.serial_number}` : ''}`
+      }))
+  ]), [availableInventoryUnits, isLoadingUnits, mediaByAssetUnitId]);
+
+  const grantInventoryUnitOptions = useMemo(() => ([
+    { key: '', label: isLoadingUnits ? 'Cargando RFID disponibles...' : 'Selecciona una unidad RFID' },
+    ...availableInventoryUnits.map((unit) => {
+      const linkedMedia = mediaByAssetUnitId.get(Number(unit.id));
+      const primaryLabel = linkedMedia?.tag_code || unit.asset_tag;
+
+      return {
+        key: String(unit.id),
+        label: linkedMedia?.tag_code && linkedMedia.tag_code !== unit.asset_tag
+          ? `${primaryLabel} · ${unit.asset_name || 'RFID'} · ${unit.asset_tag}`
+          : `${primaryLabel} · ${unit.asset_name || 'RFID'}`
+      };
+    })
+  ]), [availableInventoryUnits, isLoadingUnits, mediaByAssetUnitId]);
 
   const activeAssignmentOptionsByCollaborator = useMemo(() => {
     const collaboratorId = Number(createEnrollmentForm.collaborator_id || 0);
@@ -648,16 +894,103 @@ const AccessPage = () => {
       ? assignments.filter((assignment) => (
         assignment.status_key === 'active' && Number(assignment.collaborator?.id) === collaboratorId
       ))
-      : assignments.filter((assignment) => assignment.status_key === 'active');
+      : [];
 
     return [
-      { key: '', label: 'Sin medio ligado' },
+      { key: '', label: collaboratorId > 0 ? 'Sin RFID ligado' : 'Selecciona colaborador primero' },
       ...filteredAssignments.map((assignment) => ({
         key: String(assignment.id),
-        label: `${assignment.media?.tag_code || 'Sin tag'} · ${assignment.collaborator?.full_name || 'Sin colaborador'}`
+        label: assignment.media?.tag_code || 'Sin tag'
       }))
     ];
   }, [assignments, createEnrollmentForm.collaborator_id]);
+
+  const selectedGrantCollaborator = useMemo(() => (
+    collaborators.find((collaborator) => Number(collaborator.id) === Number(grantAccessForm.collaborator_id || 0)) || null
+  ), [collaborators, grantAccessForm.collaborator_id]);
+
+  const activeAssignmentsForGrantCollaborator = useMemo(() => {
+    const collaboratorId = Number(grantAccessForm.collaborator_id || 0);
+    return collaboratorId > 0
+      ? assignments.filter((assignment) => (
+        assignment.status_key === 'active' && Number(assignment.collaborator?.id) === collaboratorId
+      ))
+      : [];
+  }, [assignments, grantAccessForm.collaborator_id]);
+
+  const activeEnrollmentsForGrantCollaborator = useMemo(() => {
+    const collaboratorId = Number(grantAccessForm.collaborator_id || 0);
+    return collaboratorId > 0
+      ? enrollments.filter((enrollment) => (
+        Number(enrollment.collaborator?.id) === collaboratorId && enrollment.status_key !== 'deactivated'
+      ))
+      : [];
+  }, [enrollments, grantAccessForm.collaborator_id]);
+
+  const activeSystemEnrollmentsForGrantCollaborator = useMemo(() => (
+    activeEnrollmentsForGrantCollaborator.filter((enrollment) => enrollment.status_key === 'active')
+  ), [activeEnrollmentsForGrantCollaborator]);
+
+  const activeSystemKeysForGrantCollaborator = useMemo(() => (
+    Array.from(new Set(
+      activeSystemEnrollmentsForGrantCollaborator
+        .map((enrollment) => enrollment.access_system?.system_key || '')
+        .filter(Boolean)
+    ))
+  ), [activeSystemEnrollmentsForGrantCollaborator]);
+
+  const activeSystemLabelsForGrantCollaborator = useMemo(() => (
+    Array.from(new Set(
+      activeSystemEnrollmentsForGrantCollaborator
+        .map((enrollment) => enrollment.access_system?.name || '')
+        .filter(Boolean)
+    ))
+  ), [activeSystemEnrollmentsForGrantCollaborator]);
+
+  const grantSelectedSystemLabels = useMemo(() => (
+    grantSystemOptions
+      .filter((system) => grantAccessForm.systems.includes(system.key))
+      .map((system) => system.label)
+  ), [grantSystemOptions, grantAccessForm.systems]);
+
+  const grantHasFieldAccessSelection = useMemo(() => (
+    grantAccessForm.systems.includes('production') || grantAccessForm.systems.includes('bathroom')
+  ), [grantAccessForm.systems]);
+
+  const grantAutoCloseOptions = useMemo(() => {
+    if (!isGrantExistingCollaborator || !grantHasFieldAccessSelection) {
+      return [];
+    }
+
+    return activeSystemEnrollmentsForGrantCollaborator.filter((enrollment) => (
+      enrollment.access_system?.system_key === 'offices'
+    ));
+  }, [activeSystemEnrollmentsForGrantCollaborator, grantHasFieldAccessSelection, isGrantExistingCollaborator]);
+
+  const grantHasReusableActiveAssignment = useMemo(() => (
+    isGrantExistingCollaborator && activeAssignmentsForGrantCollaborator.length > 0
+  ), [activeAssignmentsForGrantCollaborator.length, isGrantExistingCollaborator]);
+
+  const grantActiveSystemsText = useMemo(() => (
+    formatListConjunction(activeSystemLabelsForGrantCollaborator)
+  ), [activeSystemLabelsForGrantCollaborator]);
+
+  const grantSelectedSystemsText = useMemo(() => (
+    formatListConjunction(grantSelectedSystemLabels)
+  ), [grantSelectedSystemLabels]);
+
+  const grantAutoCloseSystemsText = useMemo(() => (
+    formatListConjunction(
+      grantAutoCloseOptions.map((enrollment) => enrollment.access_system?.name || 'Sin sistema')
+    )
+  ), [grantAutoCloseOptions]);
+
+  const isGrantCollaboratorLocked = Boolean(grantLockedCollaboratorId);
+  const isGrantMigrationFlow = isGrantCollaboratorLocked && grantAutoCloseOptions.length > 0;
+
+  const grantReusableMediaLabel = useMemo(() => (
+    activeAssignmentsForGrantCollaborator[0]?.media ? toMediaLabel(activeAssignmentsForGrantCollaborator[0].media) : ''
+  ), [activeAssignmentsForGrantCollaborator]);
 
   const assignmentOptionsForEnrollmentStatus = useMemo(() => {
     const collaboratorId = Number(activeEnrollmentAction?.collaborator?.id || 0);
@@ -668,13 +1001,80 @@ const AccessPage = () => {
       : assignments.filter((assignment) => assignment.status_key === 'active');
 
     return [
-      { key: '', label: 'Sin medio ligado' },
+      { key: '', label: 'Sin RFID ligado' },
       ...filteredAssignments.map((assignment) => ({
         key: String(assignment.id),
-        label: `${assignment.media?.tag_code || 'Sin tag'} · ${assignment.collaborator?.full_name || 'Sin colaborador'}`
+        label: assignment.media?.tag_code || 'Sin tag'
       }))
     ];
   }, [activeEnrollmentAction, assignments]);
+
+  const grantHasOfficeOnlySelection = useMemo(() => (
+    grantAccessForm.systems.includes('offices')
+    && !grantAccessForm.systems.includes('production')
+    && !grantAccessForm.systems.includes('bathroom')
+  ), [grantAccessForm.systems]);
+
+  const grantRequiresRfid = useMemo(() => (
+    grantAccessForm.systems.includes('production')
+    || grantAccessForm.systems.includes('bathroom')
+    || Boolean(grantAccessForm.requires_rfid_override)
+  ), [grantAccessForm.requires_rfid_override, grantAccessForm.systems]);
+
+  const selectedEnrollmentSystem = useMemo(() => (
+    catalog.systems.find((system) => Number(system.id) === Number(createEnrollmentForm.access_system_id || 0)) || null
+  ), [catalog.systems, createEnrollmentForm.access_system_id]);
+
+  const enrollmentRequiresRfid = useMemo(() => (
+    selectedEnrollmentSystem?.system_key === 'production' || selectedEnrollmentSystem?.system_key === 'bathroom'
+  ), [selectedEnrollmentSystem]);
+
+  useEffect(() => {
+    if (!isGrantExistingCollaborator || !grantAccessForm.systems.length || !activeSystemKeysForGrantCollaborator.length) {
+      return;
+    }
+
+    setGrantAccessForm((current) => {
+      const nextSystems = current.systems.filter((systemKey) => !activeSystemKeysForGrantCollaborator.includes(systemKey));
+      if (nextSystems.length === current.systems.length) {
+        return current;
+      }
+
+      const nextHasOfficeOnlySelection = (
+        nextSystems.includes('offices')
+        && !nextSystems.includes('production')
+        && !nextSystems.includes('bathroom')
+      );
+      const nextRequiresRfidOverride = nextHasOfficeOnlySelection ? current.requires_rfid_override : false;
+      const nextRequiresRfid = (
+        nextSystems.includes('production')
+        || nextSystems.includes('bathroom')
+        || Boolean(nextRequiresRfidOverride)
+      );
+
+      return {
+        ...current,
+        systems: nextSystems,
+        requires_rfid_override: nextRequiresRfidOverride,
+        asset_unit_id: nextRequiresRfid ? current.asset_unit_id : ''
+      };
+    });
+  }, [activeSystemKeysForGrantCollaborator, grantAccessForm.systems, isGrantExistingCollaborator]);
+
+  useEffect(() => {
+    const nextIds = grantAutoCloseOptions.map((enrollment) => Number(enrollment.id));
+    setGrantAccessForm((current) => {
+      const currentIds = current.deactivate_enrollment_ids.map((enrollmentId) => Number(enrollmentId));
+      const didChange = (
+        nextIds.length !== currentIds.length
+        || nextIds.some((enrollmentId, index) => enrollmentId !== currentIds[index])
+      );
+
+      return didChange ? { ...current, deactivate_enrollment_ids: nextIds } : current;
+    });
+  }, [grantAutoCloseOptions]);
+
+  const hasGrantMediaOptions = grantInventoryUnitOptions.length > 1;
 
   const filteredAssignments = useMemo(() => assignments.filter((assignment) => {
     if (assignmentStatusFilter !== 'all' && assignment.status_key !== assignmentStatusFilter) {
@@ -710,23 +1110,141 @@ const AccessPage = () => {
     ]);
   }), [media, mediaSearchTerm, mediaStatusFilter, mediumTypeFilter]);
 
-  const filteredEnrollments = useMemo(() => enrollments.filter((enrollment) => {
-    if (enrollmentStatusFilter !== 'all' && enrollment.status_key !== enrollmentStatusFilter) {
+  const enrollmentCollaboratorRows = useMemo(() => {
+    const assignmentsByCollaboratorId = new Map();
+    assignments.forEach((assignment) => {
+      const collaboratorId = Number(assignment.collaborator?.id || 0);
+      if (collaboratorId <= 0) {
+        return;
+      }
+
+      if (!assignmentsByCollaboratorId.has(collaboratorId)) {
+        assignmentsByCollaboratorId.set(collaboratorId, []);
+      }
+
+      assignmentsByCollaboratorId.get(collaboratorId).push(assignment);
+    });
+
+    const rowsByCollaboratorId = new Map();
+    enrollments.forEach((enrollment) => {
+      const collaboratorId = Number(enrollment.collaborator?.id || 0);
+      if (collaboratorId <= 0) {
+        return;
+      }
+
+      if (!rowsByCollaboratorId.has(collaboratorId)) {
+        rowsByCollaboratorId.set(collaboratorId, {
+          collaborator: enrollment.collaborator || null,
+          enrollments: []
+        });
+      }
+
+      const currentRow = rowsByCollaboratorId.get(collaboratorId);
+      if (currentRow.collaborator == null && enrollment.collaborator) {
+        currentRow.collaborator = enrollment.collaborator;
+      }
+      currentRow.enrollments.push(enrollment);
+    });
+
+    return Array.from(rowsByCollaboratorId.entries())
+      .map(([collaboratorId, row]) => {
+        const collaborator = row.collaborator
+          || collaborators.find((entry) => Number(entry.id) === Number(collaboratorId))
+          || null;
+        const sortedEnrollments = [...row.enrollments].sort(compareAccessEnrollments);
+        const activeEnrollments = sortedEnrollments.filter((enrollment) => enrollment.status_key === 'active');
+        const openEnrollments = sortedEnrollments.filter((enrollment) => enrollment.status_key !== 'deactivated');
+        const currentEnrollments = activeEnrollments.length > 0 ? activeEnrollments : openEnrollments;
+        const primaryEnrollment = currentEnrollments[0] || sortedEnrollments[0] || null;
+        const collaboratorAssignments = [
+          ...(assignmentsByCollaboratorId.get(Number(collaboratorId)) || [])
+        ].sort(compareAccessAssignments);
+        const primaryAssignment = collaboratorAssignments[0] || null;
+        const primaryMedia = (
+          primaryAssignment?.media
+          || primaryEnrollment?.media
+          || primaryEnrollment?.media_assignment?.media
+          || null
+        );
+        const visibleSystemEnrollments = currentEnrollments.length > 0
+          ? currentEnrollments
+          : (primaryEnrollment ? [primaryEnrollment] : []);
+        const systemLabels = Array.from(new Set(
+          visibleSystemEnrollments
+            .map((enrollment) => enrollment.access_system?.name || '')
+            .filter(Boolean)
+        ));
+        const systemIds = Array.from(new Set(
+          visibleSystemEnrollments
+            .map((enrollment) => String(enrollment.access_system?.id || ''))
+            .filter(Boolean)
+        ));
+        const latestActivityTime = sortedEnrollments.reduce(
+          (latest, enrollment) => Math.max(latest, getEnrollmentTimelineTime(enrollment)),
+          0
+        );
+
+        let statusNote = 'Sin alta vigente';
+        if (activeEnrollments.length > 1) {
+          statusNote = `${activeEnrollments.length} sistemas activos`;
+        } else if (activeEnrollments.length === 1) {
+          statusNote = '1 sistema activo';
+        } else if (openEnrollments.length > 1) {
+          statusNote = `${openEnrollments.length} altas en seguimiento`;
+        } else if (openEnrollments.length === 1) {
+          statusNote = '1 alta en seguimiento';
+        } else if (sortedEnrollments.length > 1) {
+          statusNote = `${sortedEnrollments.length} altas registradas`;
+        } else if (sortedEnrollments.length === 1) {
+          statusNote = '1 alta registrada';
+        }
+
+        return {
+          collaborator,
+          collaborator_id: Number(collaboratorId),
+          enrollments: sortedEnrollments,
+          assignments: collaboratorAssignments,
+          assignment: primaryAssignment,
+          enrollment: primaryEnrollment,
+          media: primaryMedia,
+          currentEnrollments,
+          currentSystemIds: systemIds,
+          currentSystemsText: formatListConjunction(systemLabels),
+          latestActivityTime,
+          latestActivityLabel: latestActivityTime > 0 ? formatDateTime(latestActivityTime) : 'Sin fecha',
+          status_key: primaryEnrollment?.status_key || 'deactivated',
+          status_name: primaryEnrollment?.status_name || 'Desactivado',
+          status_note: statusNote
+        };
+      })
+      .sort((left, right) => {
+        if (right.latestActivityTime !== left.latestActivityTime) {
+          return right.latestActivityTime - left.latestActivityTime;
+        }
+
+        return String(left.collaborator?.full_name || '').localeCompare(String(right.collaborator?.full_name || ''), 'es-MX');
+      });
+  }, [assignments, collaborators, enrollments]);
+
+  const filteredEnrollmentRows = useMemo(() => enrollmentCollaboratorRows.filter((row) => {
+    if (enrollmentStatusFilter !== 'all' && row.status_key !== enrollmentStatusFilter) {
       return false;
     }
 
-    if (enrollmentSystemFilter !== 'all' && String(enrollment.access_system?.id) !== enrollmentSystemFilter) {
+    if (enrollmentSystemFilter !== 'all' && !row.currentSystemIds.includes(enrollmentSystemFilter)) {
       return false;
     }
 
     return matchesSearch(enrollmentSearchTerm, [
-      enrollment.collaborator?.full_name,
-      enrollment.collaborator?.employee_id,
-      enrollment.access_system?.name,
-      enrollment.media?.tag_code,
-      enrollment.notes
+      row.collaborator?.full_name,
+      row.collaborator?.employee_id,
+      row.collaborator?.area_name,
+      row.currentSystemsText,
+      row.media?.tag_code,
+      row.media?.asset_unit?.asset_tag,
+      ...row.enrollments.map((enrollment) => enrollment.notes)
     ]);
-  }), [enrollments, enrollmentSearchTerm, enrollmentStatusFilter, enrollmentSystemFilter]);
+  }), [enrollmentCollaboratorRows, enrollmentSearchTerm, enrollmentStatusFilter, enrollmentSystemFilter]);
 
   const filteredEvents = useMemo(() => events.filter((eventRow) => matchesSearch(eventSearchTerm, [
     toEventLabel(eventRow.event_type),
@@ -747,8 +1265,8 @@ const AccessPage = () => {
     [filteredMedia, mediaCurrentPage, mediaPageSize]
   );
   const enrollmentPage = useMemo(
-    () => paginateRows(filteredEnrollments, enrollmentCurrentPage, enrollmentPageSize),
-    [filteredEnrollments, enrollmentCurrentPage, enrollmentPageSize]
+    () => paginateRows(filteredEnrollmentRows, enrollmentCurrentPage, enrollmentPageSize),
+    [filteredEnrollmentRows, enrollmentCurrentPage, enrollmentPageSize]
   );
   const eventPage = useMemo(
     () => paginateRows(filteredEvents, eventCurrentPage, eventPageSize),
@@ -763,9 +1281,9 @@ const AccessPage = () => {
     () => media.find((item) => Number(item.id) === Number(selectedMediaId)) || null,
     [media, selectedMediaId]
   );
-  const selectedEnrollment = useMemo(
-    () => enrollments.find((enrollment) => Number(enrollment.id) === Number(selectedEnrollmentId)) || null,
-    [enrollments, selectedEnrollmentId]
+  const selectedEnrollmentRow = useMemo(
+    () => enrollmentCollaboratorRows.find((row) => Number(row.collaborator_id) === Number(selectedEnrollmentCollaboratorId)) || null,
+    [enrollmentCollaboratorRows, selectedEnrollmentCollaboratorId]
   );
   const selectedEvent = useMemo(
     () => events.find((eventRow) => Number(eventRow.id) === Number(selectedEventId)) || null,
@@ -814,24 +1332,23 @@ const AccessPage = () => {
       };
     }
 
-    if (activeView === 'enrollments' && selectedEnrollment) {
-      const collaboratorId = Number(selectedEnrollment.collaborator?.id || 0);
-      const accessMediaId = Number(selectedEnrollment.media?.id || 0);
-
+    if (activeView === 'enrollments' && selectedEnrollmentRow) {
+      const collaboratorId = Number(selectedEnrollmentRow.collaborator_id || 0);
       return {
         type: 'enrollment',
-        title: selectedEnrollment.collaborator?.full_name || selectedEnrollment.access_system?.name || 'Alta',
-        subtitle: `${selectedEnrollment.access_system?.name || 'Sistema'} · ${selectedEnrollment.status_name}`,
-        collaborator: selectedEnrollment.collaborator || null,
-        media: accessMediaId > 0 ? media.find((item) => Number(item.id) === accessMediaId) || null : null,
-        assignment: assignments.find((assignment) => Number(assignment.collaborator?.id || 0) === collaboratorId && assignment.status_key === 'active') || null,
-        enrollment: selectedEnrollment,
+        title: selectedEnrollmentRow.collaborator?.full_name || 'Colaborador sin nombre',
+        subtitle: selectedEnrollmentRow.currentSystemsText
+          ? `${selectedEnrollmentRow.currentSystemsText} · ${selectedEnrollmentRow.status_name}`
+          : selectedEnrollmentRow.status_name,
+        collaborator: selectedEnrollmentRow.collaborator || null,
+        media: selectedEnrollmentRow.media || null,
+        assignment: selectedEnrollmentRow.assignment || null,
+        enrollment: selectedEnrollmentRow.enrollment || null,
+        currentEnrollments: selectedEnrollmentRow.currentEnrollments,
         event: null,
-        events: events.filter((eventRow) => (
-          Number(eventRow.access_enrollment_id || 0) === Number(selectedEnrollment.id) || Number(eventRow.collaborator_id || 0) === collaboratorId
-        )).slice(0, 12),
-        enrollments: enrollments.filter((enrollment) => Number(enrollment.collaborator?.id || 0) === collaboratorId),
-        assignments: assignments.filter((assignment) => Number(assignment.collaborator?.id || 0) === collaboratorId)
+        events: events.filter((eventRow) => Number(eventRow.collaborator_id || 0) === collaboratorId).slice(0, 12),
+        enrollments: selectedEnrollmentRow.enrollments,
+        assignments: selectedEnrollmentRow.assignments
       };
     }
 
@@ -863,7 +1380,112 @@ const AccessPage = () => {
     }
 
     return null;
-  }, [activeView, assignments, collaborators, enrollments, events, media, selectedAssignment, selectedEnrollment, selectedEvent, selectedMedia]);
+  }, [activeView, assignments, collaborators, events, media, selectedAssignment, selectedEnrollmentRow, selectedEvent, selectedMedia]);
+
+  const detailOpen = Boolean(detailContext);
+
+  const clearAccessDetailSelection = useCallback(() => {
+    setSelectedAssignmentId(null);
+    setSelectedMediaId(null);
+    setSelectedEnrollmentCollaboratorId(null);
+    setSelectedEventId(null);
+  }, []);
+
+  const openAccessDetail = useCallback((type, entityId, triggerElement, options = {}) => {
+    const { shouldAutoFocus = false } = options;
+    const resolvedShouldAutoFocus = Boolean(shouldAutoFocus || accessDetailKeyboardIntentRef.current);
+
+    if (typeof HTMLElement !== 'undefined' && triggerElement instanceof HTMLElement) {
+      accessDetailTriggerRef.current = triggerElement;
+    }
+
+    shouldAutoFocusAccessDetailRef.current = resolvedShouldAutoFocus;
+    accessDetailKeyboardIntentRef.current = false;
+    setActiveAccessDetailTab('summary');
+    clearAccessDetailSelection();
+
+    if (type === 'assignment') {
+      setSelectedAssignmentId(Number(entityId));
+      return;
+    }
+
+    if (type === 'media') {
+      setSelectedMediaId(Number(entityId));
+      return;
+    }
+
+    if (type === 'enrollment') {
+      setSelectedEnrollmentCollaboratorId(Number(entityId));
+      return;
+    }
+
+    if (type === 'event') {
+      setSelectedEventId(Number(entityId));
+    }
+  }, [clearAccessDetailSelection]);
+
+  const closeAccessDetail = useCallback((shouldRestoreFocus = true) => {
+    clearAccessDetailSelection();
+    setActiveAccessDetailTab('summary');
+    shouldAutoFocusAccessDetailRef.current = false;
+    accessDetailKeyboardIntentRef.current = false;
+
+    if (shouldRestoreFocus) {
+      window.requestAnimationFrame(() => {
+        accessDetailTriggerRef.current?.focus();
+      });
+    }
+  }, [clearAccessDetailSelection]);
+
+  useEffect(() => {
+    if (!detailOpen || !shouldAutoFocusAccessDetailRef.current) {
+      return undefined;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      accessDetailCloseButtonRef.current?.focus();
+      shouldAutoFocusAccessDetailRef.current = false;
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [detailOpen]);
+
+  useEffect(() => {
+    if (
+      !detailOpen
+      || isCreateMediaOpen
+      || isGrantAccessOpen
+      || isCreateEnrollmentOpen
+      || isReturnModalOpen
+      || isNotReturnedModalOpen
+      || isEnrollmentStatusOpen
+      || isOffboardOpen
+    ) {
+      return undefined;
+    }
+
+    const handleKeyDown = (event) => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+
+      event.preventDefault();
+      closeAccessDetail();
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    closeAccessDetail,
+    detailOpen,
+    isCreateEnrollmentOpen,
+    isCreateMediaOpen,
+    isEnrollmentStatusOpen,
+    isGrantAccessOpen,
+    isNotReturnedModalOpen,
+    isOffboardOpen,
+    isReturnModalOpen
+  ]);
 
   const handleViewChange = (viewKey) => {
     setSearchParams({ view: viewKey }, { replace: true });
@@ -871,13 +1493,18 @@ const AccessPage = () => {
 
   const closeAllModals = () => {
     setIsCreateMediaOpen(false);
-    setIsAssignModalOpen(false);
+    setIsGrantAccessOpen(false);
     setIsCreateEnrollmentOpen(false);
     setIsReturnModalOpen(false);
     setIsNotReturnedModalOpen(false);
     setIsEnrollmentStatusOpen(false);
     setIsOffboardOpen(false);
-    setIsCreateCollaboratorOpen(false);
+    setIsEnrollmentCollaboratorInlineOpen(false);
+    setIsGrantExistingCollaborator(collaborators.length > 0);
+    setGrantLockedCollaboratorId(null);
+    setIsEnrollmentNotesOpen(false);
+    setIsGrantNotesOpen(false);
+    setCreateMediaOrigin('manual');
     setModalError('');
     setFormErrors({});
     setIsSubmitting(false);
@@ -887,50 +1514,168 @@ const AccessPage = () => {
     setCollaboratorCreationTarget(null);
   };
 
-  const openCreateMediaModal = async (triggerElement = null) => {
+  const closeCreateMediaModal = () => {
+    setIsCreateMediaOpen(false);
+    setCreateMediaOrigin('manual');
+    setModalError('');
+    setFormErrors({});
+    setIsSubmitting(false);
+  };
+
+  const openCreateMediaModal = async (triggerElement = null, origin = 'manual') => {
     resetFeedback();
-    createMediaReturnFocusRef.current = triggerElement || createMediaTriggerRef.current || accessOverflowTriggerRef.current;
+    setModalError('');
+    setFormErrors({});
+    createMediaReturnFocusRef.current = triggerElement || createMediaTriggerRef.current || grantAccessTriggerRef.current;
+    setCreateMediaOrigin(origin);
     setCreateMediaForm(defaultCreateMediaForm);
     setIsCreateMediaOpen(true);
     await loadAvailableUnits();
   };
 
-  const openAssignModal = (prefillMediaId = null, triggerElement = null) => {
+  const openGrantAccessModal = async ({
+    assetUnitId = null,
+    collaboratorId = null,
+    lockCollaborator = false,
+    systems = [],
+    deactivateEnrollmentIds = [],
+    triggerElement = null
+  } = {}) => {
     resetFeedback();
-    createAssignmentReturnFocusRef.current = triggerElement || createAssignmentTriggerRef.current;
-    setAssignForm({
-      ...defaultAssignForm,
-      access_media_id: prefillMediaId ? String(prefillMediaId) : '',
+    setModalError('');
+    setFormErrors({});
+    const normalizedCollaboratorId = collaboratorId ? String(collaboratorId) : '';
+    const shouldUseExistingCollaborator = lockCollaborator
+      || Boolean(normalizedCollaboratorId)
+      || collaborators.length > 0;
+    const normalizedSystems = Array.isArray(systems) ? Array.from(new Set(systems.filter(Boolean))) : [];
+    const normalizedDeactivateEnrollmentIds = Array.isArray(deactivateEnrollmentIds)
+      ? Array.from(new Set(
+        deactivateEnrollmentIds
+          .map((enrollmentId) => Number(enrollmentId))
+          .filter((enrollmentId) => Number.isInteger(enrollmentId) && enrollmentId > 0)
+      ))
+      : [];
+    grantAccessReturnFocusRef.current = triggerElement || grantAccessTriggerRef.current;
+    setGrantLockedCollaboratorId(lockCollaborator && normalizedCollaboratorId ? Number(normalizedCollaboratorId) : null);
+    setGrantAccessForm({
+      ...defaultGrantAccessForm,
+      collaborator_id: normalizedCollaboratorId,
+      collaborator_create: {
+        ...defaultCreateCollaboratorForm,
+        employee_id: shouldUseExistingCollaborator ? '' : suggestedEmployeeId
+      },
+      deactivate_enrollment_ids: normalizedDeactivateEnrollmentIds,
+      asset_unit_id: assetUnitId ? String(assetUnitId) : '',
+      requires_rfid_override: Boolean(assetUnitId),
+      systems: normalizedSystems,
       assigned_at: toDateTimeLocalValue()
     });
-    setIsAssignModalOpen(true);
+    setIsGrantExistingCollaborator(shouldUseExistingCollaborator);
+    setIsGrantNotesOpen(false);
+    setIsGrantAccessOpen(true);
+    await loadAvailableUnits();
+  };
+
+  const toggleGrantCollaboratorMode = () => {
+    if (grantLockedCollaboratorId) {
+      return;
+    }
+
+    resetFeedback();
+    setModalError('');
+    setFormErrors({});
+    const nextIsExisting = !isGrantExistingCollaborator;
+    setIsGrantExistingCollaborator(nextIsExisting);
+    setGrantAccessForm((current) => ({
+      ...current,
+      collaborator_id: '',
+      deactivate_enrollment_ids: [],
+      collaborator_create: {
+        ...defaultCreateCollaboratorForm,
+        employee_id: nextIsExisting ? '' : suggestedEmployeeId
+      }
+    }));
   };
 
   const openCreateEnrollmentModal = (context = null, triggerElement = null) => {
     resetFeedback();
-    createEnrollmentReturnFocusRef.current = triggerElement || createEnrollmentTriggerRef.current || accessOverflowTriggerRef.current;
+    setModalError('');
+    setFormErrors({});
+    createEnrollmentReturnFocusRef.current = triggerElement || createEnrollmentTriggerRef.current || grantAccessTriggerRef.current;
     setCreateEnrollmentForm({
       ...defaultEnrollmentForm,
       collaborator_id: context?.collaborator?.id ? String(context.collaborator.id) : '',
       media_assignment_id: context?.assignment?.id ? String(context.assignment.id) : '',
       activated_at: toDateTimeLocalValue()
     });
+    setCreateCollaboratorForm({
+      ...defaultCreateCollaboratorForm,
+      employee_id: suggestedEmployeeId
+    });
+    setIsEnrollmentCollaboratorInlineOpen(false);
+    setIsEnrollmentNotesOpen(false);
+    setCollaboratorCreationTarget(null);
     setIsCreateEnrollmentOpen(true);
   };
 
-  const openCreateCollaboratorModal = (target = null, triggerElement = null) => {
+  const toggleEnrollmentCollaboratorInline = () => {
     resetFeedback();
-    createCollaboratorReturnFocusRef.current = triggerElement || accessOverflowTriggerRef.current;
-    setCreateCollaboratorForm(defaultCreateCollaboratorForm);
-    setCollaboratorCreationTarget(target);
-    setIsCreateCollaboratorOpen(true);
-  };
-
-  const closeCreateCollaboratorModal = () => {
-    setIsCreateCollaboratorOpen(false);
-    setCollaboratorCreationTarget(null);
     setModalError('');
     setFormErrors({});
+    const nextOpen = !isEnrollmentCollaboratorInlineOpen;
+    setIsEnrollmentCollaboratorInlineOpen(nextOpen);
+    setCollaboratorCreationTarget(nextOpen ? 'enrollment-inline' : null);
+    setCreateCollaboratorForm({
+      ...defaultCreateCollaboratorForm,
+      employee_id: suggestedEmployeeId
+    });
+  };
+
+  const handleEnrollmentCollaboratorInlineKeyDown = (event) => {
+    if (event.key !== 'Enter' || event.target.tagName === 'TEXTAREA') {
+      return;
+    }
+
+    event.preventDefault();
+    void submitCreateCollaborator();
+  };
+
+  const toggleGrantSystem = (systemKey) => {
+    setGrantAccessForm((current) => {
+      const currentSystems = Array.isArray(current.systems) ? current.systems : [];
+      const exists = currentSystems.includes(systemKey);
+      let nextSystems = currentSystems;
+
+      if (systemKey === 'production') {
+        nextSystems = exists
+          ? currentSystems.filter((entry) => entry !== 'production')
+          : Array.from(new Set([...currentSystems, 'production', 'bathroom']));
+      } else {
+        nextSystems = exists
+          ? currentSystems.filter((entry) => entry !== systemKey)
+          : [...currentSystems, systemKey];
+      }
+
+      const nextHasOfficeOnlySelection = (
+        nextSystems.includes('offices')
+        && !nextSystems.includes('production')
+        && !nextSystems.includes('bathroom')
+      );
+      const nextRequiresRfidOverride = nextHasOfficeOnlySelection ? current.requires_rfid_override : false;
+      const nextRequiresRfid = (
+        nextSystems.includes('production')
+        || nextSystems.includes('bathroom')
+        || Boolean(nextRequiresRfidOverride)
+      );
+
+      return {
+        ...current,
+        systems: nextSystems,
+        requires_rfid_override: nextRequiresRfidOverride,
+        asset_unit_id: nextRequiresRfid ? current.asset_unit_id : ''
+      };
+    });
   };
 
   const openReturnModal = (assignment) => {
@@ -980,6 +1725,7 @@ const AccessPage = () => {
       offboarded_at: toDateTimeLocalValue(),
       notes: 'Baja operativa del colaborador en Accesos.'
     });
+    setIsOffboardNotesOpen(false);
     setIsOffboardOpen(true);
   };
 
@@ -995,45 +1741,65 @@ const AccessPage = () => {
     }
 
     if (!normalizeFieldValue(createMediaForm.tag_code)) {
-      errors['access-create-media-tag'] = 'Captura el tag o codigo del medio.';
+      errors['access-create-media-tag'] = 'Captura el tag o código.';
     }
 
     return errors;
   };
 
-  const validateCreateCollaboratorForm = () => {
+  const validateCollaboratorFields = (formState, fieldPrefix) => {
     const errors = {};
 
-    if (!normalizeFieldValue(createCollaboratorForm.employee_id)) {
-      errors['access-create-collaborator-employee-id'] = 'Captura el ID operativo del colaborador.';
-    } else if (!toPositiveNumberOrNull(createCollaboratorForm.employee_id)) {
-      errors['access-create-collaborator-employee-id'] = 'El ID operativo debe ser un número entero mayor a cero.';
+    if (!normalizeFieldValue(formState.employee_id)) {
+      errors[`${fieldPrefix}-employee-id`] = 'Captura el ID operativo.';
+    } else if (!toPositiveNumberOrNull(formState.employee_id)) {
+      errors[`${fieldPrefix}-employee-id`] = 'El ID operativo debe ser un número entero mayor a cero.';
+    } else if (employeeIdAvailability.min_employee_id && toPositiveNumberOrNull(formState.employee_id) < employeeIdAvailability.min_employee_id) {
+      errors[`${fieldPrefix}-employee-id`] = `El ID operativo debe ser ${employeeIdAvailability.min_employee_id} o mayor.`;
+    } else if (employeeIdAvailability.max_employee_id && toPositiveNumberOrNull(formState.employee_id) > employeeIdAvailability.max_employee_id) {
+      errors[`${fieldPrefix}-employee-id`] = `El ID operativo no puede exceder ${employeeIdAvailability.max_employee_id}.`;
     }
 
-    if (!normalizeFieldValue(createCollaboratorForm.first_name)) {
-      errors['access-create-collaborator-first-name'] = 'Captura el nombre del colaborador.';
+    if (!normalizeFieldValue(formState.first_name)) {
+      errors[`${fieldPrefix}-first-name`] = 'Captura el nombre.';
     }
 
-    if (!normalizeFieldValue(createCollaboratorForm.last_name)) {
-      errors['access-create-collaborator-last-name'] = 'Captura los apellidos del colaborador.';
+    if (!normalizeFieldValue(formState.last_name)) {
+      errors[`${fieldPrefix}-last-name`] = 'Captura los apellidos.';
     }
 
     return errors;
   };
 
-  const validateAssignForm = () => {
+  const validateCreateCollaboratorForm = () => validateCollaboratorFields(
+    createCollaboratorForm,
+    'access-create-collaborator'
+  );
+
+  const validateGrantAccessForm = () => {
     const errors = {};
 
-    if (!toPositiveNumberOrNull(assignForm.access_media_id)) {
-      errors['access-assign-media'] = 'Selecciona un medio disponible.';
+    if (isGrantExistingCollaborator) {
+      if (!toPositiveNumberOrNull(grantAccessForm.collaborator_id)) {
+        errors['access-grant-collaborator'] = 'Selecciona un colaborador.';
+      }
+    } else {
+      Object.assign(errors, validateCollaboratorFields(
+        grantAccessForm.collaborator_create,
+        'access-grant-collaborator'
+      ));
     }
 
-    if (!toPositiveNumberOrNull(assignForm.collaborator_id)) {
-      errors['access-assign-collaborator'] = 'Selecciona un colaborador.';
+    if (grantRequiresRfid && !grantHasReusableActiveAssignment && !toPositiveNumberOrNull(grantAccessForm.asset_unit_id)) {
+      errors['access-grant-media'] = 'Selecciona un RFID disponible.';
     }
 
-    if (!normalizeFieldValue(assignForm.assigned_at)) {
-      errors['access-assign-assigned-at'] = 'Indica la fecha de asignacion.';
+    if (!normalizeFieldValue(grantAccessForm.assigned_at)) {
+      errors['access-grant-assigned-at'] = 'Indica la fecha de entrega del acceso.';
+    }
+
+    if (!Array.isArray(grantAccessForm.systems) || grantAccessForm.systems.length === 0) {
+      errors['access-grant-systems'] = 'Selecciona al menos un sistema a habilitar.';
     }
 
     return errors;
@@ -1050,12 +1816,12 @@ const AccessPage = () => {
       errors['access-create-enrollment-system'] = 'Selecciona un sistema.';
     }
 
-    if (!normalizeFieldValue(createEnrollmentForm.status_key)) {
-      errors['access-create-enrollment-status'] = 'Selecciona un estado inicial.';
+    if (createEnrollmentForm.status_key === 'active' && !normalizeFieldValue(createEnrollmentForm.activated_at)) {
+      errors['access-create-enrollment-activated-at'] = 'Indica la activación.';
     }
 
-    if (createEnrollmentForm.status_key === 'active' && !normalizeFieldValue(createEnrollmentForm.activated_at)) {
-      errors['access-create-enrollment-activated-at'] = 'Indica la fecha de activacion del alta.';
+    if (enrollmentRequiresRfid && !toPositiveNumberOrNull(createEnrollmentForm.media_assignment_id)) {
+      errors['access-create-enrollment-assignment'] = 'Selecciona un RFID activo.';
     }
 
     return errors;
@@ -1157,20 +1923,49 @@ const AccessPage = () => {
       return;
     }
 
-    await runMutation(() => createAccessMedia({
-      medium_type_key: createMediaForm.medium_type_key,
-      asset_unit_id: toPositiveNumberOrNull(createMediaForm.asset_unit_id),
-      tag_code: normalizeFieldValue(createMediaForm.tag_code),
-      notes: normalizeFieldValue(createMediaForm.notes) || undefined
-    }), 'Medio de acceso vinculado correctamente.');
+    setIsSubmitting(true);
+    setModalError('');
+    resetFeedback();
+
+    try {
+      const createdMedia = await createAccessMedia({
+        medium_type_key: createMediaForm.medium_type_key,
+        asset_unit_id: toPositiveNumberOrNull(createMediaForm.asset_unit_id),
+        tag_code: normalizeFieldValue(createMediaForm.tag_code),
+        notes: normalizeFieldValue(createMediaForm.notes) || undefined
+      });
+
+      await loadCoreData();
+
+      if (createMediaOrigin === 'grant') {
+        setGrantAccessForm((current) => ({
+          ...current,
+          asset_unit_id: createdMedia.asset_unit_id ? String(createdMedia.asset_unit_id) : current.asset_unit_id,
+          requires_rfid_override: true
+        }));
+        closeCreateMediaModal();
+      } else {
+        closeAllModals();
+      }
+
+      setActionSuccess('RFID registrado en Accesos.');
+    } catch (error) {
+      if (isAccessAuthError(error) || isCollaboratorAuthError(error) || isInventoryAuthError(error)) {
+        clearSession();
+        return;
+      }
+
+      setModalError(normalizeErrorMessage(error, 'No fue posible registrar el RFID.'));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleCreateCollaboratorSubmit = async (event) => {
-    event.preventDefault();
+  const submitCreateCollaborator = async () => {
     const errors = validateCreateCollaboratorForm();
     if (Object.keys(errors).length > 0) {
       applyValidationErrors(errors);
-      return;
+      return false;
     }
 
     setIsSubmitting(true);
@@ -1188,51 +1983,91 @@ const AccessPage = () => {
       const collaboratorRows = await listCollaborators({ status: 'active' });
       setCollaborators(collaboratorRows);
 
-      if (collaboratorCreationTarget === 'assign') {
-        setAssignForm((current) => ({
-          ...current,
-          collaborator_id: String(createdCollaborator.id)
-        }));
-      }
-
-      if (collaboratorCreationTarget === 'enrollment') {
+      if (collaboratorCreationTarget === 'enrollment-inline') {
         setCreateEnrollmentForm((current) => ({
           ...current,
           collaborator_id: String(createdCollaborator.id),
           media_assignment_id: ''
         }));
+        setIsEnrollmentCollaboratorInlineOpen(false);
+        setCreateCollaboratorForm(defaultCreateCollaboratorForm);
+        setCollaboratorCreationTarget(null);
+        setFormErrors({});
+        setModalError('');
       }
 
-      closeCreateCollaboratorModal();
       setActionSuccess('Colaborador registrado correctamente.');
+      return true;
+    } catch (error) {
+      if (isAccessAuthError(error) || isCollaboratorAuthError(error) || isInventoryAuthError(error)) {
+        clearSession();
+        return false;
+      }
+
+      setModalError(normalizeErrorMessage(error, 'No fue posible registrar el colaborador.'));
+      return false;
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleGrantAccessSubmit = async (event) => {
+    event.preventDefault();
+    const errors = validateGrantAccessForm();
+    if (Object.keys(errors).length > 0) {
+      applyValidationErrors(errors);
+      return;
+    }
+
+    setIsSubmitting(true);
+    setModalError('');
+    resetFeedback();
+
+    try {
+      const response = await grantCollaboratorAccess({
+        collaborator_id: isGrantExistingCollaborator ? toPositiveNumberOrNull(grantAccessForm.collaborator_id) : undefined,
+        collaborator_create: isGrantExistingCollaborator ? undefined : {
+          employee_id: toPositiveNumberOrNull(grantAccessForm.collaborator_create.employee_id),
+          first_name: normalizeFieldValue(grantAccessForm.collaborator_create.first_name),
+          last_name: normalizeFieldValue(grantAccessForm.collaborator_create.last_name),
+          area_name: normalizeFieldValue(grantAccessForm.collaborator_create.area_name) || undefined
+        },
+        deactivate_enrollment_ids: grantAccessForm.deactivate_enrollment_ids,
+        asset_unit_id: grantRequiresRfid && !grantHasReusableActiveAssignment
+          ? toPositiveNumberOrNull(grantAccessForm.asset_unit_id)
+          : undefined,
+        requires_rfid_override: grantHasOfficeOnlySelection ? Boolean(grantAccessForm.requires_rfid_override) : undefined,
+        systems: grantAccessForm.systems,
+        assigned_at: normalizeFieldValue(grantAccessForm.assigned_at) || undefined,
+        notes: normalizeFieldValue(grantAccessForm.notes) || undefined
+      });
+
+      const createdEnrollments = Array.isArray(response?.enrollments) ? response.enrollments : [];
+      const preferredEnrollment = grantAccessForm.systems
+        .map((systemKey) => createdEnrollments.find((enrollment) => enrollment.access_system?.system_key === systemKey))
+        .find(Boolean) || createdEnrollments[0] || null;
+      const resolvedCollaboratorId = (
+        toPositiveNumberOrNull(response?.collaborator?.id)
+        || toPositiveNumberOrNull(preferredEnrollment?.collaborator?.id)
+        || toPositiveNumberOrNull(grantAccessForm.collaborator_id)
+      );
+
+      await loadCoreData();
+      closeAllModals();
+      if (resolvedCollaboratorId) {
+        openAccessDetail('enrollment', resolvedCollaboratorId, grantAccessTriggerRef.current);
+      }
+      setActionSuccess('Acceso otorgado correctamente.');
     } catch (error) {
       if (isAccessAuthError(error) || isCollaboratorAuthError(error) || isInventoryAuthError(error)) {
         clearSession();
         return;
       }
 
-      setModalError(normalizeErrorMessage(error, 'No fue posible registrar el colaborador.'));
+      setModalError(normalizeErrorMessage(error, 'No fue posible otorgar el acceso solicitado.'));
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleAssignSubmit = async (event) => {
-    event.preventDefault();
-    const errors = validateAssignForm();
-    if (Object.keys(errors).length > 0) {
-      applyValidationErrors(errors);
-      return;
-    }
-
-    await runMutation(() => assignAccessMedia({
-      access_media_id: toPositiveNumberOrNull(assignForm.access_media_id),
-      collaborator_id: toPositiveNumberOrNull(assignForm.collaborator_id),
-      assigned_at: normalizeFieldValue(assignForm.assigned_at) || undefined,
-      expected_return_at: normalizeFieldValue(assignForm.expected_return_at) || undefined,
-      location_id: toPositiveNumberOrNull(assignForm.location_id) || undefined,
-      notes: normalizeFieldValue(assignForm.notes) || undefined
-    }), 'Medio asignado correctamente.');
   };
 
   const handleCreateEnrollmentSubmit = async (event) => {
@@ -1328,52 +2163,20 @@ const AccessPage = () => {
         : undefined,
       offboarded_at: normalizeFieldValue(offboardForm.offboarded_at) || undefined,
       notes: normalizeFieldValue(offboardForm.notes) || undefined
-    }), 'La baja de accesos se procesó correctamente.');
+    }), 'El acceso se cerró correctamente.');
   };
-
-  const accessOverflowActions = [
-    canCreateAccess ? {
-      key: 'link-media',
-      label: 'Vincular medio',
-      icon: IdCard,
-      onSelect: () => {
-        void openCreateMediaModal(accessOverflowTriggerRef.current);
-      }
-    } : null,
-    canCreateAccess ? {
-      key: 'create-enrollment',
-      label: 'Registrar alta',
-      icon: UserCog,
-      onSelect: () => openCreateEnrollmentModal(null, accessOverflowTriggerRef.current)
-    } : null,
-    canCreateCollaborators ? {
-      key: 'create-collaborator',
-      label: 'Registrar colaborador',
-      icon: UserPlus,
-      onSelect: () => openCreateCollaboratorModal(null, accessOverflowTriggerRef.current)
-    } : null
-  ].filter(Boolean);
 
   const headerActions = (
     <>
-      {accessOverflowActions.length ? (
-        <WorkspaceActionMenu
-          label="Más acciones"
-          items={accessOverflowActions}
-          className="workspace-page__header-menu"
-          triggerClassName="workspace-action workspace-action--ghost"
-          triggerRef={accessOverflowTriggerRef}
-        />
-      ) : null}
-      {canAssignAccess ? (
+      {canGrantAccess ? (
         <button
           type="button"
           className="workspace-action workspace-action--primary"
-          ref={createAssignmentTriggerRef}
-          onClick={(event) => openAssignModal(null, event.currentTarget)}
+          ref={grantAccessTriggerRef}
+          onClick={(event) => openGrantAccessModal({ triggerElement: event.currentTarget })}
         >
-          <Plus size={16} aria-hidden="true" />
-          <span>Asignar medio</span>
+          <ShieldCheck size={16} aria-hidden="true" />
+          <span>Dar acceso</span>
         </button>
       ) : null}
     </>
@@ -1399,18 +2202,26 @@ const AccessPage = () => {
             <tr
               key={assignment.id}
               className={`data-table__row inventory-table__row${isActiveRow ? ' data-table__row--active' : ''}`}
-              tabIndex={0}
-              onClick={() => setSelectedAssignmentId(assignment.id)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  setSelectedAssignmentId(assignment.id);
-                }
-              }}
             >
               <td className="data-table__cell">
-                <span className="data-table__item-title">{assignment.collaborator?.full_name || 'Sin colaborador'}</span>
-                <span className="data-table__item-meta access-table__meta">{assignment.collaborator?.employee_id ? `ID ${assignment.collaborator.employee_id}` : 'Sin ID'}</span>
+                <button
+                  type="button"
+                  className="data-table__row-action"
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      accessDetailKeyboardIntentRef.current = true;
+                    }
+                  }}
+                  onClick={(event) => openAccessDetail('assignment', assignment.id, event.currentTarget, {
+                    shouldAutoFocus: event.detail === 0
+                  })}
+                  aria-label={`Ver detalle de la asignación de ${assignment.collaborator?.full_name || 'colaborador sin nombre'}`}
+                  aria-controls={ACCESS_DETAIL_ID}
+                  aria-expanded={activeView === 'assignments' && isActiveRow}
+                >
+                  <span className="data-table__item-title">{assignment.collaborator?.full_name || 'Sin colaborador'}</span>
+                  <span className="data-table__item-meta access-table__meta">{assignment.collaborator?.employee_id ? `ID ${assignment.collaborator.employee_id}` : 'Sin ID'}</span>
+                </button>
               </td>
               <td className="data-table__cell">
                 <span className="data-table__item-title">{assignment.media?.tag_code || 'Sin tag'}</span>
@@ -1474,18 +2285,26 @@ const AccessPage = () => {
             <tr
               key={item.id}
               className={`data-table__row inventory-table__row${isActiveRow ? ' data-table__row--active' : ''}`}
-              tabIndex={0}
-              onClick={() => setSelectedMediaId(item.id)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  setSelectedMediaId(item.id);
-                }
-              }}
             >
               <td className="data-table__cell">
-                <span className="data-table__item-title">{item.tag_code}</span>
-                <span className="data-table__item-meta access-table__meta">{item.notes || 'Sin observaciones'}</span>
+                <button
+                  type="button"
+                  className="data-table__row-action"
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      accessDetailKeyboardIntentRef.current = true;
+                    }
+                  }}
+                  onClick={(event) => openAccessDetail('media', item.id, event.currentTarget, {
+                    shouldAutoFocus: event.detail === 0
+                  })}
+                  aria-label={`Ver detalle del RFID ${item.tag_code}`}
+                  aria-controls={ACCESS_DETAIL_ID}
+                  aria-expanded={activeView === 'media' && isActiveRow}
+                >
+                  <span className="data-table__item-title">{item.tag_code}</span>
+                  <span className="data-table__item-meta access-table__meta">{toAccessSupportNote(item.notes) || 'Sin observaciones'}</span>
+                </button>
               </td>
               <td className="data-table__cell">{item.medium_type_name}</td>
               <td className="data-table__cell">
@@ -1500,13 +2319,16 @@ const AccessPage = () => {
               </td>
               <td className="data-table__cell">
                 <div className="inventory-table__actions access-table__actions">
-                  {item.status_key === 'available' && canAssignAccess ? (
+                  {item.status_key === 'available' && canGrantAccess ? (
                     <button type="button" className="action-inline action-inline--primary" onClick={(event) => {
                       event.stopPropagation();
-                      openAssignModal(item.id, event.currentTarget);
+                      openGrantAccessModal({
+                        assetUnitId: item.asset_unit?.id || item.asset_unit_id,
+                        triggerElement: event.currentTarget
+                      });
                     }}>
-                      <ArrowRightLeft size={14} aria-hidden="true" />
-                      <span>Asignar</span>
+                      <ShieldCheck size={14} aria-hidden="true" />
+                      <span>Dar acceso</span>
                     </button>
                   ) : null}
                 </div>
@@ -1523,55 +2345,71 @@ const AccessPage = () => {
       <thead>
         <tr>
           <th scope="col">Colaborador</th>
-          <th scope="col">Sistema</th>
-          <th scope="col">Medio</th>
-          <th scope="col">Estado</th>
-          <th scope="col">Activado</th>
-          <th scope="col">Acción</th>
+          <th scope="col">Sistemas vigentes</th>
+          <th scope="col">RFID</th>
+          <th scope="col">Estado operativo</th>
+          <th scope="col">Último movimiento</th>
         </tr>
       </thead>
       <tbody>
-        {enrollmentPage.rows.map((enrollment) => {
-          const isActiveRow = Number(selectedEnrollmentId) === Number(enrollment.id);
+        {enrollmentPage.rows.map((row) => {
+          const isActiveRow = Number(selectedEnrollmentCollaboratorId) === Number(row.collaborator_id);
+          const collaboratorName = row.collaborator?.full_name || 'Sin colaborador';
+          const collaboratorMeta = [
+            row.collaborator?.employee_id ? `ID ${row.collaborator.employee_id}` : 'Sin ID',
+            row.collaborator?.area_name || ''
+          ].filter(Boolean).join(' · ');
+          const systemsText = row.currentSystemsText || row.enrollment?.access_system?.name || 'Sin sistema vigente';
+          const enrollmentCountLabel = row.enrollments.length === 1
+            ? '1 alta registrada'
+            : `${row.enrollments.length} altas registradas`;
+          const mediaTitle = row.media?.tag_code || 'Sin RFID ligado';
+          const mediaMeta = row.media?.asset_unit?.asset_tag || row.media?.asset_tag || 'Sin unidad física vinculada';
 
           return (
             <tr
-              key={enrollment.id}
+              key={row.collaborator_id}
               className={`data-table__row inventory-table__row${isActiveRow ? ' data-table__row--active' : ''}`}
-              tabIndex={0}
-              onClick={() => setSelectedEnrollmentId(enrollment.id)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  setSelectedEnrollmentId(enrollment.id);
-                }
-              }}
             >
               <td className="data-table__cell">
-                <span className="data-table__item-title">{enrollment.collaborator?.full_name || 'Sin colaborador'}</span>
-                <span className="data-table__item-meta access-table__meta">{enrollment.collaborator?.employee_id ? `ID ${enrollment.collaborator.employee_id}` : 'Sin ID'}</span>
+                <button
+                  type="button"
+                  className="data-table__row-action"
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      accessDetailKeyboardIntentRef.current = true;
+                    }
+                  }}
+                  onClick={(event) => openAccessDetail('enrollment', row.collaborator_id, event.currentTarget, {
+                    shouldAutoFocus: event.detail === 0
+                  })}
+                  aria-label={`Ver detalle de accesos de ${collaboratorName}`}
+                  aria-controls={ACCESS_DETAIL_ID}
+                  aria-expanded={activeView === 'enrollments' && isActiveRow}
+                >
+                  <span className="data-table__item-title">{collaboratorName}</span>
+                  <span className="data-table__item-meta access-table__meta">{collaboratorMeta}</span>
+                </button>
               </td>
-              <td className="data-table__cell">{enrollment.access_system?.name || 'Sin sistema'}</td>
-              <td className="data-table__cell">{enrollment.media?.tag_code || 'Sin medio ligado'}</td>
               <td className="data-table__cell">
-                <span className={getEnrollmentStatusToneClass(enrollment.status_key)}>{enrollment.status_name}</span>
-              </td>
-              <td className="data-table__cell">
-                <span className="access-table__supporting">{enrollment.activated_at ? formatDateTime(enrollment.activated_at) : 'Sin fecha'}</span>
-              </td>
-              <td className="data-table__cell">
-                <div className="inventory-table__actions access-table__actions">
-                  {enrollment.status_key !== 'deactivated' && canUpdateAccess ? (
-                    <button type="button" className="action-inline action-inline--primary" onClick={(event) => {
-                      event.stopPropagation();
-                      openEnrollmentStatusModal(enrollment);
-                    }}>
-                      <Wrench size={14} aria-hidden="true" />
-                      <span>Cambiar estado</span>
-                    </button>
-                  ) : null}
+                <div className="access-table__stack">
+                  <span className="data-table__item-title">{systemsText}</span>
+                  <span className="data-table__item-meta access-table__meta">{enrollmentCountLabel}</span>
                 </div>
               </td>
+              <td className="data-table__cell">
+                <div className="access-table__stack">
+                  <span className="data-table__item-title">{mediaTitle}</span>
+                  <span className="data-table__item-meta access-table__meta">{mediaMeta}</span>
+                </div>
+              </td>
+              <td className="data-table__cell">
+                <div className="access-table__stack">
+                  <span className={getEnrollmentStatusToneClass(row.status_key)}>{row.status_name}</span>
+                  <span className="access-table__supporting">{row.status_note}</span>
+                </div>
+              </td>
+              <td className="data-table__cell"><span className="access-table__supporting">{row.latestActivityLabel}</span></td>
             </tr>
           );
         })}
@@ -1599,18 +2437,26 @@ const AccessPage = () => {
             <tr
               key={eventRow.id}
               className={`data-table__row inventory-table__row${isActiveRow ? ' data-table__row--active' : ''}`}
-              tabIndex={0}
-              onClick={() => setSelectedEventId(eventRow.id)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault();
-                  setSelectedEventId(eventRow.id);
-                }
-              }}
             >
               <td className="data-table__cell">
-                <span className="data-table__item-title">{toEventLabel(eventRow.event_type)}</span>
-                <span className="data-table__item-meta access-table__meta">{eventRow.notes || 'Sin observaciones'}</span>
+                <button
+                  type="button"
+                  className="data-table__row-action"
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      accessDetailKeyboardIntentRef.current = true;
+                    }
+                  }}
+                  onClick={(event) => openAccessDetail('event', eventRow.id, event.currentTarget, {
+                    shouldAutoFocus: event.detail === 0
+                  })}
+                  aria-label={`Ver detalle del evento ${toEventLabel(eventRow.event_type)}`}
+                  aria-controls={ACCESS_DETAIL_ID}
+                  aria-expanded={activeView === 'history' && isActiveRow}
+                >
+                  <span className="data-table__item-title">{toEventLabel(eventRow.event_type)}</span>
+                  <span className="data-table__item-meta access-table__meta">{toAccessEventNote(eventRow.notes) || 'Sin observaciones'}</span>
+                </button>
               </td>
               <td className="data-table__cell">{eventRow.collaborator_name || 'Sin colaborador'}</td>
               <td className="data-table__cell">{eventRow.access_system_name || 'Sin sistema'}</td>
@@ -1624,193 +2470,370 @@ const AccessPage = () => {
     </table>
   );
 
-  const detailOpen = Boolean(detailContext);
   const offboardHasActiveAssignments = Boolean(
     activeOffboardTarget?.assignments?.some((assignment) => assignment.status_key === 'active')
   );
   const activeAssignmentsForDetail = detailContext?.assignments?.filter((assignment) => assignment.status_key === 'active') || [];
+  const detailCurrentEnrollments = detailContext?.currentEnrollments?.length
+    ? detailContext.currentEnrollments
+    : (detailContext?.enrollment ? [detailContext.enrollment] : []);
+  const detailHasFieldAccess = detailCurrentEnrollments.some((enrollment) => {
+    const systemKey = enrollment.access_system?.system_key;
+    return systemKey === 'production' || systemKey === 'bathroom';
+  });
+  const detailEnrollmentCanMigrate = detailCurrentEnrollments.some((enrollment) => (
+    enrollment.status_key === 'active' && enrollment.access_system?.system_key === 'offices'
+  )) && !detailHasFieldAccess;
+  const detailHasActiveOperationalRecord = detailContext?.assignment?.status_key === 'active'
+    || detailCurrentEnrollments.some((enrollment) => enrollment.status_key === 'active');
+  const canGrantFromDetail = Boolean(detailContext?.collaborator?.id)
+    && canGrantAccess
+    && !detailHasActiveOperationalRecord;
+  const canMigrateFromDetail = Boolean(detailContext?.collaborator?.id) && canGrantAccess && detailEnrollmentCanMigrate;
   const canOffboardFromDetail = Boolean(detailContext?.collaborator?.id)
     && (detailContext?.enrollments?.some((enrollment) => enrollment.status_key !== 'deactivated') || activeAssignmentsForDetail.length > 0);
+  const accessDetailHasActions = Boolean(
+    (detailContext?.media?.status_key === 'available' && canGrantAccess)
+    || (detailContext?.assignment?.status_key === 'active' && canAssignAccess)
+    || canMigrateFromDetail
+    || canGrantFromDetail
+    || canOffboardFromDetail
+  );
+
+  const accessDetailStatus = detailContext?.type === 'assignment' && detailContext?.assignment ? {
+    label: detailContext.assignment.status_name,
+    className: getAssignmentStatusToneClass(detailContext.assignment.status_key)
+  } : detailContext?.enrollment ? {
+    label: detailContext.enrollment.status_name,
+    className: getEnrollmentStatusToneClass(detailContext.enrollment.status_key)
+  } : detailContext?.assignment ? {
+    label: detailContext.assignment.status_name,
+    className: getAssignmentStatusToneClass(detailContext.assignment.status_key)
+  } : detailContext?.media ? {
+    label: detailContext.media.status_name,
+    className: getMediumStatusToneClass(detailContext.media.status_key)
+  } : detailContext?.event ? {
+    label: toEventLabel(detailContext.event.event_type),
+    className: 'inventory-status-chip inventory-status-chip--neutral'
+  } : null;
+
+  const accessDetailIdentifier = detailContext?.collaborator?.employee_id
+    ? `ID ${detailContext.collaborator.employee_id}`
+    : detailContext?.media?.asset_unit?.asset_tag
+      || detailContext?.media?.tag_code
+      || 'Accesos';
+  const accessDetailCurrentSystemsText = formatListConjunction(
+    detailCurrentEnrollments
+      .map((enrollment) => enrollment.access_system?.name || '')
+      .filter(Boolean)
+  );
+
+  const accessDetailToolbar = accessDetailHasActions ? (
+    <div className="inventory-asset-detail__toolbar panel-detail__toolbar access-detail__toolbar" aria-label="Acciones operativas del acceso">
+      {detailContext?.media?.status_key === 'available' && canGrantAccess ? (
+        <button
+          type="button"
+          className="workspace-action workspace-action--primary"
+          onClick={(event) => openGrantAccessModal({
+            assetUnitId: detailContext.media.asset_unit?.id || detailContext.media.asset_unit_id,
+            triggerElement: event.currentTarget
+          })}
+        >
+          <ShieldCheck size={14} aria-hidden="true" />
+          <span>Dar acceso</span>
+        </button>
+      ) : null}
+      {canMigrateFromDetail ? (
+        <button
+          type="button"
+          className="workspace-action workspace-action--primary"
+          onClick={(event) => openGrantAccessModal({
+            collaboratorId: detailContext.collaborator.id,
+            lockCollaborator: true,
+            systems: ['production', 'bathroom'],
+            triggerElement: event.currentTarget
+          })}
+        >
+          <ShieldCheck size={14} aria-hidden="true" />
+          <span>Migrar acceso</span>
+        </button>
+      ) : null}
+      {canGrantFromDetail ? (
+        <button
+          type="button"
+          className="workspace-action workspace-action--primary"
+          onClick={(event) => openGrantAccessModal({
+            collaboratorId: detailContext.collaborator.id,
+            lockCollaborator: true,
+            triggerElement: event.currentTarget
+          })}
+        >
+          <ShieldCheck size={14} aria-hidden="true" />
+          <span>Dar acceso</span>
+        </button>
+      ) : null}
+      {detailContext?.assignment?.status_key === 'active' && canAssignAccess ? (
+        <button
+          type="button"
+          className="workspace-action workspace-action--primary"
+          onClick={() => openReturnModal(detailContext.assignment)}
+        >
+          <Undo2 size={14} aria-hidden="true" />
+          <span>Devolver</span>
+        </button>
+      ) : null}
+      {((detailContext?.assignment?.status_key === 'active' && canAssignAccess) || (canOffboardFromDetail && canAssignAccess)) ? (
+        <div className="inventory-asset-detail__toolbar-secondary panel-detail__toolbar-secondary access-detail__toolbar-secondary">
+          {detailContext?.assignment?.status_key === 'active' && canAssignAccess ? (
+            <button
+              type="button"
+              className="inventory-asset-detail__toolbar-action panel-detail__toolbar-action"
+              onClick={() => openNotReturnedModal(detailContext.assignment)}
+            >
+              <CircleOff size={14} aria-hidden="true" />
+              <span>No devuelto</span>
+            </button>
+          ) : null}
+          {canOffboardFromDetail && canAssignAccess ? (
+            <button
+              type="button"
+              className="inventory-asset-detail__toolbar-action panel-detail__toolbar-action"
+              onClick={() => openOffboardModal(detailContext)}
+            >
+              <UserMinus size={14} aria-hidden="true" />
+              <span>Cerrar acceso</span>
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  ) : null;
+
+  const hasAccessRelatedContext = Boolean(
+    detailContext?.assignment
+    || detailContext?.media
+    || detailContext?.enrollment
+    || detailContext?.event
+  );
+
+  const accessDetailTabOptions = [
+    { key: 'summary', label: 'Resumen' },
+    { key: 'enrollments', label: 'Altas', count: detailContext?.enrollments?.length || 0 },
+    { key: 'history', label: 'Historial', count: detailContext?.events?.length || 0 }
+  ];
+
   const accessDetailPanel = detailContext ? (
-    <aside className="ticket-detail ticket-detail--tone-primary access-detail" aria-labelledby={ACCESS_DETAIL_TITLE_ID}>
-      <div className="ticket-detail__summary">
-        <header className="ticket-detail__header">
-          <div className="ticket-detail__header-top">
-            <div>
-              <div className="ticket-detail__header-id">
-                <span className="ticket-detail__ticket-id">Detalle</span>
-              </div>
-              <h2 id={ACCESS_DETAIL_TITLE_ID} className="ticket-detail__title">{detailContext.title}</h2>
-              <p className="ticket-detail__summary access-detail__summary-copy">{detailContext.subtitle}</p>
-            </div>
-            <div className="ticket-detail__header-actions">
-              {detailContext.media?.status_key === 'available' && canAssignAccess ? (
-                <button type="button" className="ticket-detail__edit" onClick={(event) => openAssignModal(detailContext.media.id, event.currentTarget)}>
-                  <ArrowRightLeft size={14} aria-hidden="true" />
-                  <span>Asignar</span>
-                </button>
-              ) : null}
-              {detailContext.assignment?.status_key === 'active' && canAssignAccess ? (
-                <button type="button" className="ticket-detail__edit" onClick={() => openReturnModal(detailContext.assignment)}>
-                  <Undo2 size={14} aria-hidden="true" />
-                  <span>Devolver</span>
-                </button>
-              ) : null}
-              {detailContext.assignment?.status_key === 'active' && canAssignAccess ? (
-                <button type="button" className="ticket-detail__edit" onClick={() => openNotReturnedModal(detailContext.assignment)}>
-                  <CircleOff size={14} aria-hidden="true" />
-                  <span>No devuelto</span>
-                </button>
-              ) : null}
-              {detailContext.collaborator?.id && canCreateAccess ? (
-                <button type="button" className="ticket-detail__edit" onClick={(event) => openCreateEnrollmentModal(detailContext, event.currentTarget)}>
-                  <UserCog size={14} aria-hidden="true" />
-                  <span>Registrar alta</span>
-                </button>
-              ) : null}
-              {canOffboardFromDetail && canAssignAccess ? (
-                <button type="button" className="ticket-detail__edit" onClick={() => openOffboardModal(detailContext)}>
-                  <UserMinus size={14} aria-hidden="true" />
-                  <span>Dar de baja accesos</span>
-                </button>
-              ) : null}
-              <button
-                type="button"
-                className="ticket-detail__close"
-                onClick={() => {
-                  setSelectedAssignmentId(null);
-                  setSelectedMediaId(null);
-                  setSelectedEnrollmentId(null);
-                  setSelectedEventId(null);
-                }}
-                aria-label="Cerrar detalle de accesos"
-              >
-                <CircleOff size={16} aria-hidden="true" />
-              </button>
-            </div>
-          </div>
+    <div
+      className="ticket-detail panel-detail ticket-detail--tone-primary inventory-asset-detail access-detail"
+      onKeyDownCapture={(event) => {
+        if (event.key !== 'Escape') {
+          return;
+        }
 
-          <dl className="ticket-detail__meta-grid">
-            <div className="ticket-detail__meta-item">
-              <dt className="ticket-detail__meta-label">Colaborador</dt>
-              <dd>{detailContext.collaborator?.full_name || 'Sin colaborador ligado'}</dd>
-            </div>
-            <div className="ticket-detail__meta-item">
-              <dt className="ticket-detail__meta-label">ID operativo</dt>
-              <dd>{detailContext.collaborator?.employee_id || 'Sin ID'}</dd>
-            </div>
-            <div className="ticket-detail__meta-item">
-              <dt className="ticket-detail__meta-label">Medio</dt>
-              <dd>{detailContext.media ? toMediaLabel(detailContext.media) : 'Sin medio ligado'}</dd>
-            </div>
-            <div className="ticket-detail__meta-item">
-              <dt className="ticket-detail__meta-label">Estado principal</dt>
-              <dd>
-                {detailContext.assignment ? (
-                  <span className={getAssignmentStatusToneClass(detailContext.assignment.status_key)}>{detailContext.assignment.status_name}</span>
-                ) : detailContext.enrollment ? (
-                  <span className={getEnrollmentStatusToneClass(detailContext.enrollment.status_key)}>{detailContext.enrollment.status_name}</span>
-                ) : detailContext.media ? (
-                  <span className={getMediumStatusToneClass(detailContext.media.status_key)}>{detailContext.media.status_name}</span>
-                ) : detailContext.event ? (
-                  <span className="inventory-status-chip inventory-status-chip--neutral">{toEventLabel(detailContext.event.event_type)}</span>
-                ) : 'Sin contexto'}
-              </dd>
-            </div>
-          </dl>
-        </header>
-
-        <section className="ticket-detail__section">
-          <div className="ticket-detail__section-headline">
-            <h3 className="ticket-detail__section-title">Resumen operativo</h3>
+        event.preventDefault();
+        event.stopPropagation();
+        closeAccessDetail();
+      }}
+    >
+      <header className="ticket-detail__header panel-detail__header inventory-asset-detail__header access-detail__header">
+        <div className="ticket-detail__header-top panel-detail__header-top">
+          <div className="ticket-detail__header-id panel-detail__header-id inventory-asset-detail__header-id access-detail__header-id">
+            <span className="ticket-detail__ticket-id">{accessDetailIdentifier}</span>
+            {accessDetailStatus ? (
+              <span className={accessDetailStatus.className}>{accessDetailStatus.label}</span>
+            ) : null}
           </div>
-          <ul className="access-detail__list">
-            {detailContext.assignment ? (
-              <li>
-                <strong>Asignación vigente</strong>
-                <span>Asignado el {formatDateTime(detailContext.assignment.assigned_at)}</span>
-                <span>{detailContext.assignment.expected_return_at ? `Retorno esperado: ${formatDateOnly(detailContext.assignment.expected_return_at)}` : 'Sin fecha de retorno comprometida'}</span>
-              </li>
-            ) : null}
-            {detailContext.media ? (
-              <li>
-                <strong>Unidad física vinculada</strong>
-                <span>{detailContext.media.asset_unit?.asset_tag || detailContext.media.asset_unit_id}</span>
-                <span>{detailContext.media.asset_unit?.serial_number || 'Sin número de serie registrado'}</span>
-              </li>
-            ) : null}
-            {detailContext.enrollment ? (
-              <li>
-                <strong>Alta actual</strong>
-                <span>{detailContext.enrollment.access_system?.name || 'Sin sistema'}</span>
-                <span>{detailContext.enrollment.activated_at ? `Activo desde ${formatDateTime(detailContext.enrollment.activated_at)}` : 'Sin fecha de activación registrada'}</span>
-              </li>
-            ) : null}
-            {detailContext.event ? (
-              <li>
-                <strong>Evento seleccionado</strong>
-                <span>{formatDateTime(detailContext.event.happened_at)}</span>
-                <span>{detailContext.event.notes || 'Sin observaciones adicionales'}</span>
-              </li>
-            ) : null}
-          </ul>
-        </section>
-
-        <section className="ticket-detail__section">
-          <div className="ticket-detail__section-headline">
-            <h3 className="ticket-detail__section-title">Altas relacionadas</h3>
+          <div className="ticket-detail__header-actions panel-detail__header-actions inventory-asset-detail__header-actions access-detail__header-actions">
+            <button
+              type="button"
+              className="ticket-detail__close access-detail__close"
+              ref={accessDetailCloseButtonRef}
+              onClick={() => closeAccessDetail()}
+              aria-label="Cerrar detalle de accesos"
+            >
+              <X size={16} aria-hidden="true" />
+            </button>
           </div>
-          {detailContext.enrollments?.length ? (
-            <ul className="access-detail__list">
-              {detailContext.enrollments.map((enrollment) => (
-                <li key={enrollment.id}>
-                  <strong>{enrollment.access_system?.name || 'Sin sistema'}</strong>
-                  <span>{enrollment.media?.tag_code || 'Sin medio ligado'}</span>
-                  <div className="access-detail__list-inline">
-                    <span className={getEnrollmentStatusToneClass(enrollment.status_key)}>{enrollment.status_name}</span>
-                    {enrollment.status_key !== 'deactivated' && canUpdateAccess ? (
-                      <button type="button" className="action-inline action-inline--secondary" onClick={() => openEnrollmentStatusModal(enrollment)}>
-                        <Wrench size={14} aria-hidden="true" />
-                        <span>Cambiar estado</span>
-                      </button>
-                    ) : null}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="inventory-asset-detail__empty-copy">No hay altas relacionadas para este contexto todavía.</p>
-          )}
-        </section>
+        </div>
+        <h2 id={ACCESS_DETAIL_TITLE_ID} className="ticket-detail__title panel-detail__title inventory-asset-detail__title">{detailContext.title}</h2>
+        <p className="ticket-detail__summary panel-detail__summary-copy inventory-asset-detail__summary-copy access-detail__summary-copy">{detailContext.subtitle}</p>
+      </header>
 
-        <section className="ticket-detail__section ticket-detail__section--activity">
-          <div className="ticket-detail__section-headline">
-            <h3 className="ticket-detail__section-title">Historial reciente</h3>
-          </div>
-          {detailContext.events?.length ? (
-            <ul className="ticket-activity inventory-asset-detail__activity-list" aria-label="Historial reciente de accesos">
-              {detailContext.events.map((eventRow) => (
-                <li key={eventRow.id} className="ticket-activity__item">
-                  <span className="ticket-activity__dot" aria-hidden="true" />
+      <section className="ticket-detail__section ticket-detail__section--log panel-detail__section panel-detail__section--log inventory-asset-detail__log access-detail__log">
+        <DrawerTabs
+          label="Secciones del detalle de acceso"
+          activeKey={activeAccessDetailTab}
+          onChange={setActiveAccessDetailTab}
+          className="ticket-detail__tabs panel-detail__tabs inventory-asset-detail__tabs-rail access-detail__tabs-rail"
+          tabs={accessDetailTabOptions.map((tabOption) => ({
+            key: tabOption.key,
+            label: tabOption.label,
+            id: `access-detail-tab-${tabOption.key}`,
+            controls: `access-detail-panel-${tabOption.key}`,
+            count: tabOption.count
+          }))}
+        />
+
+        <div className="inventory-asset-detail__content panel-detail__content access-detail__content">
+          <section
+            id="access-detail-panel-summary"
+            role="tabpanel"
+            aria-labelledby="access-detail-tab-summary"
+            hidden={activeAccessDetailTab !== 'summary'}
+            className="ticket-detail__tab-panel panel-detail__tab-panel inventory-asset-detail__panel access-detail__panel"
+          >
+            <div className="panel-detail__summary-layout access-detail__summary-layout">
+              <section className="ticket-detail__section panel-detail__section inventory-asset-detail__section access-detail__section">
+                <div className="inventory-asset-detail__panel-header panel-detail__panel-header access-detail__panel-header">
                   <div>
-                    <p className="ticket-activity__title">{toEventLabel(eventRow.event_type)}</p>
-                    <p className="ticket-activity__meta">
-                      <span className="inventory-asset-detail__activity-impact">{eventRow.access_system_name || eventRow.tag_code || eventRow.collaborator_name || 'Accesos'}</span>
-                      <span className="inventory-asset-detail__activity-when">{formatDateTime(eventRow.happened_at)}</span>
+                    <h3 className="inventory-asset-detail__panel-title panel-detail__panel-title access-detail__panel-title">Estado operativo</h3>
+                    <p className="inventory-asset-detail__status-caption access-detail__status-caption">
+                      Consulta el estado, el medio ligado y las acciones disponibles.
                     </p>
-                    {eventRow.notes ? (
-                      <p className="ticket-detail__comment-history-caption">{eventRow.notes}</p>
-                    ) : null}
                   </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="inventory-asset-detail__empty-copy">Aún no hay eventos relacionados que mostrar.</p>
-          )}
-        </section>
-      </div>
-    </aside>
+                  {accessDetailToolbar}
+                </div>
+
+                <dl className="ticket-detail__meta-grid panel-detail__facts inventory-asset-detail__meta-grid access-detail__meta-grid">
+                  <div className="ticket-detail__meta-item panel-detail__fact">
+                    <dt className="ticket-detail__meta-label panel-detail__fact-label">Colaborador</dt>
+                    <dd>{detailContext.collaborator?.full_name || 'Sin colaborador ligado'}</dd>
+                  </div>
+                  <div className="ticket-detail__meta-item panel-detail__fact">
+                    <dt className="ticket-detail__meta-label panel-detail__fact-label">ID operativo</dt>
+                    <dd>{detailContext.collaborator?.employee_id || 'Sin ID'}</dd>
+                  </div>
+                  <div className="ticket-detail__meta-item panel-detail__fact">
+                    <dt className="ticket-detail__meta-label panel-detail__fact-label">RFID</dt>
+                    <dd>{detailContext.media ? toMediaLabel(detailContext.media) : 'Sin RFID ligado'}</dd>
+                  </div>
+                  <div className="ticket-detail__meta-item panel-detail__fact">
+                    <dt className="ticket-detail__meta-label panel-detail__fact-label">Estado principal</dt>
+                    <dd>{accessDetailStatus ? <span className={accessDetailStatus.className}>{accessDetailStatus.label}</span> : 'Sin contexto'}</dd>
+                  </div>
+                </dl>
+              </section>
+
+              {hasAccessRelatedContext ? (
+                <section className="ticket-detail__section panel-detail__section inventory-asset-detail__section access-detail__section access-detail__section--related">
+                  <div className="ticket-detail__section-headline panel-detail__section-headline inventory-asset-detail__section-headline access-detail__section-headline">
+                    <h3 className="ticket-detail__section-title panel-detail__section-title inventory-asset-detail__section-title access-detail__section-title">
+                      Contexto relacionado
+                    </h3>
+                  </div>
+
+                  <ul className="access-detail__list inventory-asset-detail__list panel-detail__list">
+                    {detailContext.assignment ? (
+                      <li>
+                        <strong>Asignación vigente</strong>
+                        <span>Asignado el {formatDateTime(detailContext.assignment.assigned_at)}</span>
+                        <span>{detailContext.assignment.expected_return_at ? `Retorno esperado: ${formatDateOnly(detailContext.assignment.expected_return_at)}` : 'Sin fecha de retorno comprometida'}</span>
+                      </li>
+                    ) : null}
+                    {detailContext.media ? (
+                      <li>
+                        <strong>Unidad física vinculada</strong>
+                        <span>{detailContext.media.asset_unit?.asset_tag || detailContext.media.asset_unit_id}</span>
+                        <span>{detailContext.media.asset_unit?.serial_number || 'Sin número de serie registrado'}</span>
+                      </li>
+                    ) : null}
+                    {detailContext.enrollment ? (
+                      <li>
+                        <strong>{detailCurrentEnrollments.length > 0 ? 'Sistemas vigentes' : 'Última alta registrada'}</strong>
+                        <span>{accessDetailCurrentSystemsText || detailContext.enrollment.access_system?.name || 'Sin sistema'}</span>
+                        <span>
+                          {detailContext.enrollment.activated_at
+                            ? `Activo desde ${formatDateTime(detailContext.enrollment.activated_at)}`
+                            : 'Sin fecha de activación registrada'}
+                        </span>
+                      </li>
+                    ) : null}
+                    {detailContext.event ? (
+                      <li>
+                        <strong>Evento seleccionado</strong>
+                        <span>{formatDateTime(detailContext.event.happened_at)}</span>
+                        <span>{toAccessEventNote(detailContext.event.notes) || 'Sin observaciones adicionales'}</span>
+                      </li>
+                    ) : null}
+                  </ul>
+                </section>
+              ) : null}
+            </div>
+          </section>
+
+          <section
+            id="access-detail-panel-enrollments"
+            role="tabpanel"
+            aria-labelledby="access-detail-tab-enrollments"
+            hidden={activeAccessDetailTab !== 'enrollments'}
+            className="ticket-detail__tab-panel panel-detail__tab-panel inventory-asset-detail__panel access-detail__panel"
+          >
+            <section className="ticket-detail__section panel-detail__section inventory-asset-detail__section access-detail__section">
+              <div className="ticket-detail__section-headline panel-detail__section-headline inventory-asset-detail__section-headline">
+                <h3 className="ticket-detail__section-title panel-detail__section-title inventory-asset-detail__section-title">Altas relacionadas</h3>
+              </div>
+              {detailContext.enrollments?.length ? (
+                <ul className="access-detail__list inventory-asset-detail__list panel-detail__list">
+                  {detailContext.enrollments.map((enrollment) => (
+                    <li key={enrollment.id}>
+                      <strong>{enrollment.access_system?.name || 'Sin sistema'}</strong>
+                      <span>{enrollment.media?.tag_code || 'Sin medio ligado'}</span>
+                      <div className="access-detail__list-inline">
+                        <span className={getEnrollmentStatusToneClass(enrollment.status_key)}>{enrollment.status_name}</span>
+                        {enrollment.status_key !== 'deactivated' && canUpdateAccess ? (
+                          <button type="button" className="action-inline action-inline--secondary" onClick={() => openEnrollmentStatusModal(enrollment)}>
+                            <Wrench size={14} aria-hidden="true" />
+                            <span>Cambiar estado</span>
+                          </button>
+                        ) : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="inventory-asset-detail__empty-copy access-detail__empty-copy">No hay altas relacionadas para este contexto.</p>
+              )}
+            </section>
+          </section>
+
+          <section
+            id="access-detail-panel-history"
+            role="tabpanel"
+            aria-labelledby="access-detail-tab-history"
+            hidden={activeAccessDetailTab !== 'history'}
+            className="ticket-detail__tab-panel panel-detail__tab-panel inventory-asset-detail__panel access-detail__panel"
+          >
+            <section className="ticket-detail__section ticket-detail__section--activity panel-detail__section inventory-asset-detail__section access-detail__section">
+              <div className="ticket-detail__section-headline panel-detail__section-headline inventory-asset-detail__section-headline">
+                <h3 className="ticket-detail__section-title panel-detail__section-title inventory-asset-detail__section-title">Historial reciente</h3>
+              </div>
+              {detailContext.events?.length ? (
+                <ul className="ticket-activity inventory-asset-detail__activity-list access-detail__activity-list" aria-label="Historial reciente de accesos">
+                  {detailContext.events.map((eventRow) => (
+                    <li key={eventRow.id} className="ticket-activity__item">
+                      <span className="ticket-activity__dot" aria-hidden="true" />
+                      <div>
+                        <p className="ticket-activity__title">{toEventLabel(eventRow.event_type)}</p>
+                        <p className="ticket-activity__meta">
+                          <span className="inventory-asset-detail__activity-impact">{eventRow.access_system_name || eventRow.tag_code || eventRow.collaborator_name || 'Accesos'}</span>
+                          <span className="ticket-activity__meta-separator"> · </span>
+                          <span className="inventory-asset-detail__activity-when">{formatDateTime(eventRow.happened_at)}</span>
+                        </p>
+                        {toAccessEventNote(eventRow.notes) ? (
+                          <p className="ticket-detail__comment-history-caption">{toAccessEventNote(eventRow.notes)}</p>
+                        ) : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="inventory-asset-detail__empty-copy access-detail__empty-copy">Aún no hay eventos relacionados que mostrar.</p>
+              )}
+            </section>
+          </section>
+        </div>
+      </section>
+    </div>
   ) : null;
 
   return (
@@ -1913,10 +2936,14 @@ const AccessPage = () => {
                       )}
                       emptyTitle={accessAssignmentsNoRecordsState.title}
                       emptyCopy={accessAssignmentsNoRecordsState.copy}
-                      emptyActions={canAssignAccess ? (
-                        <button type="button" className="workspace-action workspace-action--primary" onClick={(event) => openAssignModal(null, event.currentTarget)}>
+                      emptyActions={canGrantAccess ? (
+                        <button
+                          type="button"
+                          className="workspace-action workspace-action--primary"
+                          onClick={(event) => openGrantAccessModal({ triggerElement: event.currentTarget })}
+                        >
                           <Plus size={14} aria-hidden="true" />
-                          <span>Asignar medio</span>
+                          <span>Dar acceso</span>
                         </button>
                       ) : null}
                     />
@@ -1960,19 +2987,6 @@ const AccessPage = () => {
                   />
                 </div>
                 <div className="workspace-page__actions">
-                  {canCreateAccess ? (
-                    <button
-                      type="button"
-                      className="workspace-action workspace-action--ghost"
-                      ref={createMediaTriggerRef}
-                      onClick={(event) => {
-                        void openCreateMediaModal(event.currentTarget);
-                      }}
-                    >
-                      <IdCard size={16} aria-hidden="true" />
-                      <span>Vincular medio</span>
-                    </button>
-                  ) : null}
                 </div>
               </div>
 
@@ -2018,12 +3032,7 @@ const AccessPage = () => {
                       )}
                       emptyTitle={accessMediaNoRecordsState.title}
                       emptyCopy={accessMediaNoRecordsState.copy}
-                      emptyActions={canCreateAccess ? (
-                        <button type="button" className="workspace-action workspace-action--primary" onClick={(event) => void openCreateMediaModal(event.currentTarget)}>
-                          <Plus size={14} aria-hidden="true" />
-                          <span>Vincular medio</span>
-                        </button>
-                      ) : null}
+                      emptyActions={null}
                     />
                   </div>
                 )}
@@ -2038,13 +3047,13 @@ const AccessPage = () => {
                   name="access-enrollments-search"
                   value={enrollmentSearchTerm}
                   onChange={setEnrollmentSearchTerm}
-                  placeholder="Buscar por colaborador, sistema o tag..."
-                  srLabel="Buscar altas"
+                  placeholder="Buscar por colaborador, sistema o RFID..."
+                  srLabel="Buscar colaboradores con acceso"
                   className="workspace-search--operational"
                 />
                 <div className="workspace-page__filters workspace-page__filters--operational">
                   <FilterChipGroup
-                    label="Filtro por estado de alta"
+                    label="Filtro por estado operativo"
                     options={enrollmentStatusOptions}
                     activeKey={enrollmentStatusFilter}
                     onSelect={setEnrollmentStatusFilter}
@@ -2063,19 +3072,6 @@ const AccessPage = () => {
                     className="filter-select filter-select--operational"
                   />
                 </div>
-                <div className="workspace-page__actions">
-                  {canCreateAccess ? (
-                    <button
-                      type="button"
-                      className="workspace-action workspace-action--ghost"
-                      ref={createEnrollmentTriggerRef}
-                      onClick={(event) => openCreateEnrollmentModal(null, event.currentTarget)}
-                    >
-                      <UserCog size={16} aria-hidden="true" />
-                      <span>Registrar alta</span>
-                    </button>
-                  ) : null}
-                </div>
               </div>
 
               <WorkspaceSplitLayout
@@ -2090,20 +3086,20 @@ const AccessPage = () => {
                     <OperationalTablePanel
                       preserveShell
                       isLoading={screenLoading}
-                      hasData={filteredEnrollments.length > 0}
+                      hasData={filteredEnrollmentRows.length > 0}
                       tone="neutral"
                       className="access-panel__table"
-                      ariaLabel="Listado de altas de acceso"
+                      ariaLabel="Listado de colaboradores con acceso"
                       scrollClassName="data-table__scroll workspace-scroll-wrap--fill"
                       loadingTitle={accessLoadingState.title}
                       loadingCopy={accessLoadingState.copy}
                       table={renderEnrollmentTable()}
                       pagination={(
                         <PaginationBar
-                          ariaLabel="Paginación de altas"
+                          ariaLabel="Paginación de colaboradores con acceso"
                           start={enrollmentPage.start + 1}
-                          end={Math.min(enrollmentPage.start + enrollmentPageSize, filteredEnrollments.length)}
-                          total={filteredEnrollments.length}
+                          end={Math.min(enrollmentPage.start + enrollmentPageSize, filteredEnrollmentRows.length)}
+                          total={filteredEnrollmentRows.length}
                           pageSize={enrollmentPageSize}
                           pageSizeOptions={ACCESS_PAGE_SIZE_OPTIONS}
                           pageSizeId="access-enrollments-page-size"
@@ -2120,10 +3116,10 @@ const AccessPage = () => {
                       )}
                       emptyTitle={accessEnrollmentsNoRecordsState.title}
                       emptyCopy={accessEnrollmentsNoRecordsState.copy}
-                      emptyActions={canCreateAccess ? (
-                        <button type="button" className="workspace-action workspace-action--primary" onClick={(event) => openCreateEnrollmentModal(null, event.currentTarget)}>
+                      emptyActions={canGrantAccess ? (
+                        <button type="button" className="workspace-action workspace-action--primary" onClick={(event) => openGrantAccessModal({ triggerElement: event.currentTarget })}>
                           <Plus size={14} aria-hidden="true" />
-                          <span>Registrar alta</span>
+                          <span>Dar acceso</span>
                         </button>
                       ) : null}
                     />
@@ -2199,345 +3195,647 @@ const AccessPage = () => {
       </section>
 
       {/* Modals intentionally follow the existing modal system for consistency. */}
-      <ModalDialog open={isCreateMediaOpen} title="Vincular medio de acceso" onClose={closeAllModals} returnFocusRef={createMediaReturnFocusRef} size="wide">
-        <form className="modal-dialog__form" onSubmit={(event) => void handleCreateMediaSubmit(event)}>
-          <div className="modal-dialog__grid">
-            <label className="modal-dialog__field">
-              <span>Tipo de medio</span>
-              <FilterSelect
-                id="access-create-media-type"
-                name="access_create_media_type"
-                label="Tipo de medio"
-                variant="field"
-                showLabel={false}
-                value={createMediaForm.medium_type_key}
-                options={catalog.medium_types.map((mediumType) => ({ key: mediumType.type_key, label: mediumType.name }))}
-                onChange={(value) => setCreateMediaForm((current) => ({ ...current, medium_type_key: value }))}
-                placeholder="Selecciona un tipo"
-                ariaDescribedBy={getFieldDescribedBy('access-create-media-type')}
-                invalid={Boolean(getFieldError('access-create-media-type'))}
-              />
-              {renderFieldError('access-create-media-type')}
-            </label>
-            <label className="modal-dialog__field">
-              <span>Unidad RFID</span>
-              <FilterSelect
-                id="access-create-media-unit"
-                name="access_create_media_unit"
-                label="Unidad RFID"
-                variant="field"
-                showLabel={false}
-                value={createMediaForm.asset_unit_id}
-                options={availableUnitOptions}
-                onChange={(value) => setCreateMediaForm((current) => ({ ...current, asset_unit_id: value }))}
-                placeholder="Selecciona una unidad"
-                disabled={isLoadingUnits}
-                ariaDescribedBy={getFieldDescribedBy('access-create-media-unit')}
-                invalid={Boolean(getFieldError('access-create-media-unit'))}
-              />
-              {renderFieldError('access-create-media-unit')}
-              <p className="modal-dialog__field-help">Solo se muestran unidades RFID disponibles que ya existen en Inventario.</p>
-            </label>
-            <label className="modal-dialog__field" htmlFor="access-create-media-tag">
-              <span>Tag o código</span>
-              <input
-                id="access-create-media-tag"
-                name="access_create_media_tag"
-                type="text"
-                value={createMediaForm.tag_code}
-                onChange={(event) => setCreateMediaForm((current) => ({ ...current, tag_code: event.target.value.toUpperCase() }))}
-                placeholder="Ej. 5373445"
-                aria-invalid={getFieldError('access-create-media-tag') ? 'true' : undefined}
-                aria-describedby={getFieldDescribedBy('access-create-media-tag')}
-              />
-              {renderFieldError('access-create-media-tag')}
-            </label>
-            <label className="modal-dialog__field modal-dialog__field--full" htmlFor="access-create-media-notes">
-              <span>Observaciones</span>
-              <textarea
-                id="access-create-media-notes"
-                name="access_create_media_notes"
-                value={createMediaForm.notes}
-                onChange={(event) => setCreateMediaForm((current) => ({ ...current, notes: event.target.value }))}
-                placeholder="Contexto opcional del medio de acceso"
-              />
-            </label>
-          </div>
-          {modalError ? <InlineNotice tone="error">{modalError}</InlineNotice> : null}
-          <div className="modal-dialog__actions">
-            <button type="button" className="workspace-action workspace-action--ghost" onClick={closeAllModals}>Cancelar</button>
-            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmitting}>{isSubmitting ? 'Vinculando...' : 'Vincular medio'}</button>
-          </div>
-        </form>
-      </ModalDialog>
-
-      <ModalDialog open={isAssignModalOpen} title="Asignar medio" onClose={closeAllModals} returnFocusRef={createAssignmentReturnFocusRef} size="wide">
-        <form className="modal-dialog__form" onSubmit={(event) => void handleAssignSubmit(event)}>
-          <div className="modal-dialog__grid">
-            <label className="modal-dialog__field">
-              <span>Medio disponible</span>
-              <FilterSelect
-                id="access-assign-media"
-                name="access_assign_media"
-                label="Medio"
-                variant="field"
-                showLabel={false}
-                value={assignForm.access_media_id}
-                options={assignmentMediumOptions}
-                onChange={(value) => setAssignForm((current) => ({ ...current, access_media_id: value }))}
-                placeholder="Selecciona un medio"
-                ariaDescribedBy={getFieldDescribedBy('access-assign-media')}
-                invalid={Boolean(getFieldError('access-assign-media'))}
-              />
-              {renderFieldError('access-assign-media')}
-            </label>
-            <label className="modal-dialog__field">
-              <div className="access-modal__field-headline">
-                <span>Colaborador</span>
-                {canCreateCollaborators ? (
-                  <button type="button" className="action-inline action-inline--secondary" onClick={(event) => openCreateCollaboratorModal('assign', event.currentTarget)}>
-                    <UserPlus size={14} aria-hidden="true" />
-                    <span>Registrar colaborador</span>
-                  </button>
-                ) : null}
+      <ModalDialog open={isCreateMediaOpen} title="Registrar RFID" onClose={closeCreateMediaModal} returnFocusRef={createMediaReturnFocusRef} size="narrow">
+        <form className="modal-dialog__form access-modal access-modal--compact" onSubmit={(event) => void handleCreateMediaSubmit(event)}>
+          <section className="access-modal__panel">
+            {catalog.medium_types.length > 1 ? (
+              <div className="modal-dialog__field modal-dialog__field--full">
+                <span>Formato</span>
+                <FilterChipGroup
+                  label="Formato del medio"
+                  options={catalog.medium_types.map((mediumType) => ({ key: mediumType.type_key, label: mediumType.name }))}
+                  activeKey={createMediaForm.medium_type_key}
+                  onSelect={(value) => setCreateMediaForm((current) => ({ ...current, medium_type_key: value }))}
+                  className="workspace-chip-group workspace-chip-group--compact access-modal__type-group"
+                  chipClassName="workspace-chip"
+                  activeChipClassName="workspace-chip--active"
+                />
               </div>
-              <FilterSelect
-                id="access-assign-collaborator"
-                name="access_assign_collaborator"
-                label="Colaborador"
-                variant="field"
-                showLabel={false}
-                value={assignForm.collaborator_id}
-                options={collaboratorOptions}
-                onChange={(value) => setAssignForm((current) => ({ ...current, collaborator_id: value }))}
-                placeholder="Selecciona un colaborador"
-                ariaDescribedBy={getFieldDescribedBy('access-assign-collaborator')}
-                invalid={Boolean(getFieldError('access-assign-collaborator'))}
-              />
-              {renderFieldError('access-assign-collaborator')}
-            </label>
-            <label className="modal-dialog__field" htmlFor="access-assign-assigned-at">
-              <span>Fecha de asignación</span>
-              <input
-                id="access-assign-assigned-at"
-                name="access_assign_assigned_at"
-                type="datetime-local"
-                value={assignForm.assigned_at}
-                onChange={(event) => setAssignForm((current) => ({ ...current, assigned_at: event.target.value }))}
-                aria-invalid={getFieldError('access-assign-assigned-at') ? 'true' : undefined}
-                aria-describedby={getFieldDescribedBy('access-assign-assigned-at')}
-              />
-              {renderFieldError('access-assign-assigned-at')}
-            </label>
-            <label className="modal-dialog__field" htmlFor="access-assign-expected-return-at">
-              <span>Retorno esperado</span>
-              <input
-                id="access-assign-expected-return-at"
-                name="access_assign_expected_return_at"
-                type="datetime-local"
-                value={assignForm.expected_return_at}
-                onChange={(event) => setAssignForm((current) => ({ ...current, expected_return_at: event.target.value }))}
-              />
-            </label>
-            <label className="modal-dialog__field modal-dialog__field--full" htmlFor="access-assign-notes">
-              <span>Notas</span>
-              <textarea
-                id="access-assign-notes"
-                name="access_assign_notes"
-                value={assignForm.notes}
-                onChange={(event) => setAssignForm((current) => ({ ...current, notes: event.target.value }))}
-                placeholder="Entrega personal del chip o tarjeta al colaborador"
-              />
-            </label>
-          </div>
-          {modalError ? <InlineNotice tone="error">{modalError}</InlineNotice> : null}
-          <div className="modal-dialog__actions">
-            <button type="button" className="workspace-action workspace-action--ghost" onClick={closeAllModals}>Cancelar</button>
-            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmitting}>{isSubmitting ? 'Asignando...' : 'Confirmar asignación'}</button>
-          </div>
-        </form>
-      </ModalDialog>
+            ) : null}
 
-      <ModalDialog open={isCreateEnrollmentOpen} title="Registrar alta" onClose={closeAllModals} returnFocusRef={createEnrollmentReturnFocusRef} size="wide">
-        <form className="modal-dialog__form" onSubmit={(event) => void handleCreateEnrollmentSubmit(event)}>
-          <div className="modal-dialog__grid">
-            <label className="modal-dialog__field">
-              <div className="access-modal__field-headline">
-                <span>Colaborador</span>
-                {canCreateCollaborators ? (
-                  <button type="button" className="action-inline action-inline--secondary" onClick={(event) => openCreateCollaboratorModal('enrollment', event.currentTarget)}>
-                    <UserPlus size={14} aria-hidden="true" />
-                    <span>Registrar colaborador</span>
-                  </button>
-                ) : null}
-              </div>
-              <FilterSelect
-                id="access-create-enrollment-collaborator"
-                name="access_create_enrollment_collaborator"
-                label="Colaborador"
-                variant="field"
-                showLabel={false}
-                value={createEnrollmentForm.collaborator_id}
-                options={collaboratorOptions}
-                onChange={(value) => setCreateEnrollmentForm((current) => ({ ...current, collaborator_id: value, media_assignment_id: '' }))}
-                placeholder="Selecciona un colaborador"
-                ariaDescribedBy={getFieldDescribedBy('access-create-enrollment-collaborator')}
-                invalid={Boolean(getFieldError('access-create-enrollment-collaborator'))}
-              />
-              {renderFieldError('access-create-enrollment-collaborator')}
-            </label>
-            <label className="modal-dialog__field">
-              <span>Sistema</span>
-              <FilterSelect
-                id="access-create-enrollment-system"
-                name="access_create_enrollment_system"
-                label="Sistema"
-                variant="field"
-                showLabel={false}
-                value={createEnrollmentForm.access_system_id}
-                options={enrollmentSystemOptions}
-                onChange={(value) => setCreateEnrollmentForm((current) => ({ ...current, access_system_id: value }))}
-                placeholder="Selecciona un sistema"
-                ariaDescribedBy={getFieldDescribedBy('access-create-enrollment-system')}
-                invalid={Boolean(getFieldError('access-create-enrollment-system'))}
-              />
-              {renderFieldError('access-create-enrollment-system')}
-            </label>
-            <label className="modal-dialog__field">
-              <span>Asignación ligada</span>
-              <FilterSelect
-                id="access-create-enrollment-assignment"
-                name="access_create_enrollment_assignment"
-                label="Asignación ligada"
-                variant="field"
-                showLabel={false}
-                value={createEnrollmentForm.media_assignment_id}
-                options={activeAssignmentOptionsByCollaborator}
-                onChange={(value) => setCreateEnrollmentForm((current) => ({ ...current, media_assignment_id: value }))}
-                placeholder="Opcional"
-              />
-            </label>
-            <label className="modal-dialog__field">
-              <span>Estado inicial</span>
-              <FilterSelect
-                id="access-create-enrollment-status"
-                name="access_create_enrollment_status"
-                label="Estado inicial"
-                variant="field"
-                showLabel={false}
-                value={createEnrollmentForm.status_key}
-                options={catalog.enrollment_statuses.map((status) => ({ key: status.status_key, label: status.name }))}
-                onChange={(value) => setCreateEnrollmentForm((current) => ({ ...current, status_key: value }))}
-                placeholder="Selecciona un estado"
-                ariaDescribedBy={getFieldDescribedBy('access-create-enrollment-status')}
-                invalid={Boolean(getFieldError('access-create-enrollment-status'))}
-              />
-              {renderFieldError('access-create-enrollment-status')}
-            </label>
-            <label className="modal-dialog__field modal-dialog__field--full" htmlFor="access-create-enrollment-activated-at">
-              <span>Fecha de activación</span>
-              <input
-                id="access-create-enrollment-activated-at"
-                name="access_create_enrollment_activated_at"
-                type="datetime-local"
-                value={createEnrollmentForm.activated_at}
-                onChange={(event) => setCreateEnrollmentForm((current) => ({ ...current, activated_at: event.target.value }))}
-                aria-invalid={getFieldError('access-create-enrollment-activated-at') ? 'true' : undefined}
-                aria-describedby={getFieldDescribedBy('access-create-enrollment-activated-at')}
-              />
-              {renderFieldError('access-create-enrollment-activated-at')}
-            </label>
-            <label className="modal-dialog__field modal-dialog__field--full" htmlFor="access-create-enrollment-notes">
-              <span>Notas</span>
-              <textarea
-                id="access-create-enrollment-notes"
-                name="access_create_enrollment_notes"
-                value={createEnrollmentForm.notes}
-                onChange={(event) => setCreateEnrollmentForm((current) => ({ ...current, notes: event.target.value }))}
-                placeholder="Contexto operativo del alta"
-              />
-            </label>
-          </div>
-          {modalError ? <InlineNotice tone="error">{modalError}</InlineNotice> : null}
-          <div className="modal-dialog__actions">
-            <button type="button" className="workspace-action workspace-action--ghost" onClick={closeAllModals}>Cancelar</button>
-            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmitting}>{isSubmitting ? 'Registrando...' : 'Registrar alta'}</button>
-          </div>
-        </form>
-      </ModalDialog>
+            <div className="modal-dialog__grid access-modal__compact-grid access-modal__compact-grid--single">
+              <label className="modal-dialog__field">
+                <span>Unidad de inventario</span>
+                <FilterSelect
+                  id="access-create-media-unit"
+                  name="access_create_media_unit"
+                  label="Unidad RFID"
+                  variant="field"
+                  showLabel={false}
+                  value={createMediaForm.asset_unit_id}
+                  options={registerableUnitOptions}
+                  onChange={(value) => setCreateMediaForm((current) => {
+                    const selectedUnit = inventoryUnitById.get(Number(value || 0));
+                    const nextTagCode = normalizeFieldValue(current.tag_code) ? current.tag_code : (selectedUnit?.asset_tag || '');
+                    return {
+                      ...current,
+                      asset_unit_id: value,
+                      tag_code: nextTagCode
+                    };
+                  })}
+                  placeholder="Selecciona una unidad"
+                  disabled={isLoadingUnits}
+                  ariaDescribedBy={getFieldDescribedBy('access-create-media-unit')}
+                  invalid={Boolean(getFieldError('access-create-media-unit'))}
+                />
+                {renderFieldError('access-create-media-unit')}
+                <p className="modal-dialog__field-help">Solo aparecen unidades RFID disponibles que aún no se usan en Accesos.</p>
+              </label>
 
-      <ModalDialog open={isCreateCollaboratorOpen} title="Registrar colaborador" onClose={closeCreateCollaboratorModal} returnFocusRef={createCollaboratorReturnFocusRef} size="wide">
-        <form className="modal-dialog__form" onSubmit={(event) => void handleCreateCollaboratorSubmit(event)}>
-          <div className="modal-dialog__grid">
-            <label className="modal-dialog__field" htmlFor="access-create-collaborator-employee-id">
-              <span>ID operativo</span>
-              <input
-                id="access-create-collaborator-employee-id"
-                name="access_create_collaborator_employee_id"
-                type="text"
-                inputMode="numeric"
-                value={createCollaboratorForm.employee_id}
-                onChange={(event) => setCreateCollaboratorForm((current) => ({ ...current, employee_id: event.target.value }))}
-                placeholder="Ej. 900109"
-                aria-invalid={getFieldError('access-create-collaborator-employee-id') ? 'true' : undefined}
-                aria-describedby={getFieldDescribedBy('access-create-collaborator-employee-id')}
-              />
-              {renderFieldError('access-create-collaborator-employee-id')}
-            </label>
-            <label className="modal-dialog__field" htmlFor="access-create-collaborator-first-name">
-              <span>Nombre(s)</span>
-              <input
-                id="access-create-collaborator-first-name"
-                name="access_create_collaborator_first_name"
-                type="text"
-                value={createCollaboratorForm.first_name}
-                onChange={(event) => setCreateCollaboratorForm((current) => ({ ...current, first_name: event.target.value }))}
-                placeholder="Ej. Laura"
-                aria-invalid={getFieldError('access-create-collaborator-first-name') ? 'true' : undefined}
-                aria-describedby={getFieldDescribedBy('access-create-collaborator-first-name')}
-              />
-              {renderFieldError('access-create-collaborator-first-name')}
-            </label>
-            <label className="modal-dialog__field" htmlFor="access-create-collaborator-last-name">
-              <span>Apellidos</span>
-              <input
-                id="access-create-collaborator-last-name"
-                name="access_create_collaborator_last_name"
-                type="text"
-                value={createCollaboratorForm.last_name}
-                onChange={(event) => setCreateCollaboratorForm((current) => ({ ...current, last_name: event.target.value }))}
-                placeholder="Ej. Santiago"
-                aria-invalid={getFieldError('access-create-collaborator-last-name') ? 'true' : undefined}
-                aria-describedby={getFieldDescribedBy('access-create-collaborator-last-name')}
-              />
-              {renderFieldError('access-create-collaborator-last-name')}
-            </label>
-            <label className="modal-dialog__field" htmlFor="access-create-collaborator-area-name">
-              <span>Área</span>
-              <input
-                id="access-create-collaborator-area-name"
-                name="access_create_collaborator_area_name"
-                type="text"
-                value={createCollaboratorForm.area_name}
-                onChange={(event) => setCreateCollaboratorForm((current) => ({ ...current, area_name: event.target.value }))}
-                placeholder="Ej. Producción"
-              />
-            </label>
-            <div className="modal-dialog__field modal-dialog__field--full">
-              <p className="modal-dialog__field-help">Esto agrega al colaborador al directorio operativo. No crea un usuario para entrar a Coresys.</p>
+              <label className="modal-dialog__field" htmlFor="access-create-media-tag">
+                <span>Tag o código</span>
+                <input
+                  id="access-create-media-tag"
+                  name="access_create_media_tag"
+                  type="text"
+                  value={createMediaForm.tag_code}
+                  onChange={(event) => setCreateMediaForm((current) => ({ ...current, tag_code: event.target.value.toUpperCase() }))}
+                  placeholder="Ej. 5373445"
+                  aria-invalid={getFieldError('access-create-media-tag') ? 'true' : undefined}
+                  aria-describedby={getFieldDescribedBy('access-create-media-tag')}
+                />
+                {renderFieldError('access-create-media-tag')}
+              </label>
+
+              <label className="modal-dialog__field modal-dialog__field--full" htmlFor="access-create-media-notes">
+                <span>Notas</span>
+                <textarea
+                  id="access-create-media-notes"
+                  name="access_create_media_notes"
+                  value={createMediaForm.notes}
+                  onChange={(event) => setCreateMediaForm((current) => ({ ...current, notes: event.target.value }))}
+                  placeholder="Contexto opcional"
+                />
+              </label>
             </div>
-          </div>
-          {modalError ? <InlineNotice tone="error">{modalError}</InlineNotice> : null}
+          </section>
+          {renderModalNoticeSlot(true)}
           <div className="modal-dialog__actions">
-            <button type="button" className="workspace-action workspace-action--ghost" onClick={closeCreateCollaboratorModal}>Cancelar</button>
-            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmitting}>{isSubmitting ? 'Registrando...' : 'Registrar colaborador'}</button>
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={closeCreateMediaModal}>Cancelar</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmitting}>{isSubmitting ? 'Guardando...' : 'Registrar RFID'}</button>
           </div>
         </form>
       </ModalDialog>
 
-      <ModalDialog open={isReturnModalOpen} title="Registrar devolución" onClose={closeAllModals} size="wide">
-        <form className="modal-dialog__form" onSubmit={(event) => void handleReturnSubmit(event)}>
-          <div className="modal-dialog__grid">
+      <ModalDialog
+        open={isGrantAccessOpen}
+        title={isGrantMigrationFlow ? 'Migrar acceso' : 'Dar acceso'}
+        onClose={closeAllModals}
+        returnFocusRef={grantAccessReturnFocusRef}
+        size="wide"
+      >
+        <form className="modal-dialog__form access-flow" onSubmit={(event) => void handleGrantAccessSubmit(event)}>
+          <div className="access-flow__main">
+            <section className="access-flow__card">
+              <div className="access-flow__card-head">
+                <h3 className="access-flow__title">Colaborador</h3>
+                <div className="access-flow__section-meta" aria-live="polite">
+                  {isGrantCollaboratorLocked ? (
+                    <p className="access-flow__meta-copy">Esta operación se aplicará solo a este colaborador.</p>
+                  ) : isGrantExistingCollaborator ? (
+                    <p className="access-flow__meta-copy">Selecciona al colaborador y luego define el acceso que vas a habilitar.</p>
+                  ) : (
+                    <>
+                      {suggestedEmployeeId ? <span className="access-flow__meta-chip">ID sugerido {suggestedEmployeeId}</span> : null}
+                      <p className="access-flow__meta-copy">Usa alta rápida solo cuando el colaborador aún no exista en el sistema.</p>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {isGrantCollaboratorLocked && selectedGrantCollaborator ? (
+                <div className="access-flow__summary">
+                  <span className="access-flow__summary-kicker">Colaborador fijo</span>
+                  <p className="access-flow__summary-headline">{selectedGrantCollaborator.full_name || 'Sin nombre'}</p>
+                  <dl className="access-flow__summary-list">
+                    <div>
+                      <dt>ID operativo</dt>
+                      <dd>{selectedGrantCollaborator.employee_id || 'Sin ID'}</dd>
+                    </div>
+                    <div>
+                      <dt>Área</dt>
+                      <dd>{selectedGrantCollaborator.area_name || 'Sin área registrada'}</dd>
+                    </div>
+                    <div>
+                      <dt>Acceso actual</dt>
+                      <dd>{grantActiveSystemsText || 'Sin accesos vigentes'}</dd>
+                    </div>
+                  </dl>
+                  {isGrantMigrationFlow ? (
+                    <p className="access-flow__summary-note">
+                      Se activará {grantSelectedSystemsText || 'el acceso operativo'} y se {grantAutoCloseOptions.length > 1 ? 'cerrarán' : 'cerrará'} {grantAutoCloseSystemsText}.
+                    </p>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="access-flow__inline-panel access-flow__inline-panel--compact access-flow__inline-panel--bare">
+                  <div className="access-flow__inline-actions">
+                    <button type="button" className="action-inline action-inline--secondary" onClick={toggleGrantCollaboratorMode}>
+                      <UserPlus size={14} aria-hidden="true" />
+                      <span>{isGrantExistingCollaborator ? 'Nuevo colaborador' : 'Usar colaborador existente'}</span>
+                    </button>
+                  </div>
+
+                  {isGrantExistingCollaborator ? (
+                    <div className="access-flow__inline-panel access-flow__inline-panel--compact access-flow__inline-panel--bare">
+                      <FilterSelect
+                        id="access-grant-collaborator"
+                        name="access_grant_collaborator"
+                        label="Colaborador"
+                        variant="field"
+                        showLabel={false}
+                        value={grantAccessForm.collaborator_id}
+                        options={collaboratorOptions}
+                        onChange={(value) => setGrantAccessForm((current) => ({
+                          ...current,
+                          collaborator_id: value,
+                          deactivate_enrollment_ids: []
+                        }))}
+                        placeholder="Selecciona un colaborador"
+                        ariaDescribedBy={getFieldDescribedBy('access-grant-collaborator')}
+                        invalid={Boolean(getFieldError('access-grant-collaborator'))}
+                      />
+                      {renderFieldError('access-grant-collaborator')}
+                    </div>
+                  ) : (
+                    <div className="modal-dialog__grid">
+                      <div className="modal-dialog__field">
+                        <label className="modal-dialog__field-label" htmlFor="access-grant-collaborator-employee-id">ID operativo</label>
+                        <input
+                          id="access-grant-collaborator-employee-id"
+                          name="access_grant_collaborator_employee_id"
+                          type="text"
+                          inputMode="numeric"
+                          value={grantAccessForm.collaborator_create.employee_id}
+                          onChange={(event) => setGrantAccessForm((current) => ({
+                            ...current,
+                            collaborator_create: {
+                              ...current.collaborator_create,
+                              employee_id: event.target.value
+                            }
+                          }))}
+                          placeholder={suggestedEmployeeId ? `Ej. ${suggestedEmployeeId}` : 'Ej. 36'}
+                          aria-invalid={getFieldError('access-grant-collaborator-employee-id') ? 'true' : undefined}
+                          aria-describedby={getFieldDescribedBy('access-grant-collaborator-employee-id')}
+                        />
+                        {renderFieldSupport('access-grant-collaborator-employee-id')}
+                      </div>
+                      <div className="modal-dialog__field">
+                        <label className="modal-dialog__field-label" htmlFor="access-grant-collaborator-area-name">Área</label>
+                        <input
+                          id="access-grant-collaborator-area-name"
+                          name="access_grant_collaborator_area_name"
+                          type="text"
+                          value={grantAccessForm.collaborator_create.area_name}
+                          onChange={(event) => setGrantAccessForm((current) => ({
+                            ...current,
+                            collaborator_create: {
+                              ...current.collaborator_create,
+                              area_name: event.target.value
+                            }
+                          }))}
+                          placeholder="Ej. Producción"
+                        />
+                        {renderFieldSupport()}
+                      </div>
+                      <div className="modal-dialog__field">
+                        <label className="modal-dialog__field-label" htmlFor="access-grant-collaborator-first-name">Nombre(s)</label>
+                        <input
+                          id="access-grant-collaborator-first-name"
+                          name="access_grant_collaborator_first_name"
+                          type="text"
+                          value={grantAccessForm.collaborator_create.first_name}
+                          onChange={(event) => setGrantAccessForm((current) => ({
+                            ...current,
+                            collaborator_create: {
+                              ...current.collaborator_create,
+                              first_name: event.target.value
+                            }
+                          }))}
+                          placeholder="Ej. Laura"
+                          aria-invalid={getFieldError('access-grant-collaborator-first-name') ? 'true' : undefined}
+                          aria-describedby={getFieldDescribedBy('access-grant-collaborator-first-name')}
+                        />
+                        {renderFieldSupport('access-grant-collaborator-first-name')}
+                      </div>
+                      <div className="modal-dialog__field">
+                        <label className="modal-dialog__field-label" htmlFor="access-grant-collaborator-last-name">Apellidos</label>
+                        <input
+                          id="access-grant-collaborator-last-name"
+                          name="access_grant_collaborator_last_name"
+                          type="text"
+                          value={grantAccessForm.collaborator_create.last_name}
+                          onChange={(event) => setGrantAccessForm((current) => ({
+                            ...current,
+                            collaborator_create: {
+                              ...current.collaborator_create,
+                              last_name: event.target.value
+                            }
+                          }))}
+                          placeholder="Ej. Santiago"
+                          aria-invalid={getFieldError('access-grant-collaborator-last-name') ? 'true' : undefined}
+                          aria-describedby={getFieldDescribedBy('access-grant-collaborator-last-name')}
+                        />
+                        {renderFieldSupport('access-grant-collaborator-last-name')}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+
+            <section className="access-flow__card">
+              <div className="access-flow__card-head">
+                <h3 className="access-flow__title">Sistemas</h3>
+              </div>
+
+              {isGrantMigrationFlow ? (
+                <div className="access-flow__summary">
+                  <span className="access-flow__summary-kicker">Cambio aplicado</span>
+                  <p className="access-flow__summary-headline">{grantSelectedSystemLabels.length ? grantSelectedSystemsText : 'Acceso operativo'}</p>
+                  <dl className="access-flow__summary-list">
+                    <div>
+                      <dt>Se activarán</dt>
+                      <dd>{grantSelectedSystemsText || 'Sin sistemas seleccionados'}</dd>
+                    </div>
+                    <div>
+                      <dt>Se cerrará</dt>
+                      <dd>{grantAutoCloseSystemsText || 'Sin cierres automáticos'}</dd>
+                    </div>
+                    <div>
+                      <dt>RFID requerido</dt>
+                      <dd>Sí</dd>
+                    </div>
+                  </dl>
+                </div>
+              ) : (
+                <>
+                  <div id="access-grant-systems" className="access-flow__system-grid" role="group" tabIndex={-1} aria-describedby={getFieldDescribedBy('access-grant-systems')}>
+                    {grantSystemOptions.map((system) => {
+                      const isSelected = grantAccessForm.systems.includes(system.key);
+                      const isAlreadyActive = activeSystemKeysForGrantCollaborator.includes(system.key);
+                      const willCloseOnConfirm = grantAutoCloseOptions.some((enrollment) => enrollment.access_system?.system_key === system.key);
+                      const systemState = willCloseOnConfirm
+                        ? 'closing'
+                        : isAlreadyActive
+                          ? 'active'
+                          : isSelected
+                            ? 'selected'
+                            : '';
+                      const systemStateLabel = systemState === 'closing'
+                        ? 'Se cerrará'
+                        : systemState === 'active'
+                          ? 'Vigente'
+                          : systemState === 'selected'
+                            ? 'Se activará'
+                            : '';
+                      const SystemIcon = system.icon;
+
+                      return (
+                        <button
+                          key={system.key}
+                          type="button"
+                          className={`access-flow__system-card${isSelected ? ' access-flow__system-card--selected' : ''}${isAlreadyActive ? ' access-flow__system-card--active' : ''}`}
+                          aria-pressed={isSelected}
+                          disabled={isAlreadyActive}
+                          onClick={() => toggleGrantSystem(system.key)}
+                        >
+                          <span className="access-flow__system-icon" aria-hidden="true">
+                            <SystemIcon size={16} />
+                          </span>
+                          {systemStateLabel ? (
+                            <span className={`access-flow__system-state access-flow__system-state--${systemState}`}>
+                              {systemStateLabel}
+                            </span>
+                          ) : null}
+                          <span className="access-flow__system-label">{system.label}</span>
+                          <small className="access-flow__system-helper">
+                            {willCloseOnConfirm ? 'Se cerrará al confirmar' : isAlreadyActive ? 'Ya activo' : system.helper}
+                          </small>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="access-flow__feedback-slot">
+                    {renderFieldSupport('access-grant-systems')}
+                  </div>
+                  {grantHasOfficeOnlySelection ? (
+                    <div className="access-flow__system-tools">
+                      <button
+                        type="button"
+                        className="action-inline action-inline--secondary"
+                        onClick={() => setGrantAccessForm((current) => ({
+                          ...current,
+                          requires_rfid_override: !current.requires_rfid_override,
+                          asset_unit_id: current.requires_rfid_override ? '' : current.asset_unit_id
+                        }))}
+                      >
+                        <span>{grantAccessForm.requires_rfid_override ? 'Quitar RFID' : 'Agregar RFID'}</span>
+                      </button>
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </section>
+
+            {grantRequiresRfid ? (
+              <section className="access-flow__card">
+                <div className="access-flow__card-head">
+                  <h3 className="access-flow__title">{grantHasOfficeOnlySelection ? 'RFID opcional' : 'RFID'}</h3>
+                </div>
+
+                <div className="modal-dialog__grid">
+                  {grantHasReusableActiveAssignment ? (
+                    <div className="modal-dialog__field modal-dialog__field--full">
+                      <span>RFID activo</span>
+                      <p className="access-flow__field-note">
+                        Se usará el RFID activo de este colaborador: {grantReusableMediaLabel || 'sin detalle disponible'}.
+                      </p>
+                    </div>
+                  ) : (
+                    <label className="modal-dialog__field modal-dialog__field--full">
+                      <span>Unidad RFID</span>
+                      <FilterSelect
+                        id="access-grant-media"
+                        name="access_grant_media"
+                        label="Unidad RFID"
+                        variant="field"
+                        showLabel={false}
+                        value={grantAccessForm.asset_unit_id}
+                        options={grantInventoryUnitOptions}
+                        onChange={(value) => setGrantAccessForm((current) => ({ ...current, asset_unit_id: value }))}
+                        placeholder="Selecciona un RFID"
+                        ariaDescribedBy={getFieldDescribedBy('access-grant-media')}
+                        invalid={Boolean(getFieldError('access-grant-media'))}
+                      />
+                      {renderFieldError('access-grant-media')}
+                      {!hasGrantMediaOptions ? (
+                        <p className="access-flow__field-note">No hay RFID disponible para esta entrega.</p>
+                      ) : grantHasOfficeOnlySelection ? (
+                        <p className="access-flow__field-note">Oficinas puede operar sin medio, pero aquí puedes dejar preparado el RFID para una migración futura.</p>
+                      ) : null}
+                    </label>
+                  )}
+                </div>
+              </section>
+            ) : null}
+
+            <section className="access-flow__card access-flow__card--compact">
+              <div className="modal-dialog__grid access-modal__compact-grid">
+                <label className="modal-dialog__field" htmlFor="access-grant-assigned-at">
+                  <span>Entrega</span>
+                  <input
+                    id="access-grant-assigned-at"
+                    name="access_grant_assigned_at"
+                    type="datetime-local"
+                    value={grantAccessForm.assigned_at}
+                    onChange={(event) => setGrantAccessForm((current) => ({ ...current, assigned_at: event.target.value }))}
+                    aria-invalid={getFieldError('access-grant-assigned-at') ? 'true' : undefined}
+                    aria-describedby={getFieldDescribedBy('access-grant-assigned-at')}
+                  />
+                  {renderFieldError('access-grant-assigned-at')}
+                </label>
+
+                <div className="modal-dialog__field access-modal__optional-field">
+                  <button
+                    type="button"
+                    className="action-inline action-inline--secondary"
+                    onClick={() => setIsGrantNotesOpen((current) => !current)}
+                    aria-label={isGrantNotesOpen ? 'Ocultar nota de entrega' : 'Agregar nota de entrega'}
+                  >
+                    <span>{isGrantNotesOpen ? 'Ocultar' : 'Agregar nota'}</span>
+                  </button>
+                </div>
+
+                {isGrantNotesOpen ? (
+                  <label className="modal-dialog__field modal-dialog__field--full" htmlFor="access-grant-notes">
+                    <span className="sr-only">Notas</span>
+                    <textarea
+                      id="access-grant-notes"
+                      name="access_grant_notes"
+                      value={grantAccessForm.notes}
+                      onChange={(event) => setGrantAccessForm((current) => ({ ...current, notes: event.target.value }))}
+                      placeholder="Contexto opcional"
+                      rows={3}
+                    />
+                  </label>
+                ) : null}
+              </div>
+            </section>
+          </div>
+
+          {renderModalNoticeSlot(true)}
+          <div className="modal-dialog__actions">
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={closeAllModals}>Cancelar</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmitting}>
+              {isSubmitting
+                ? isGrantMigrationFlow ? 'Aplicando...' : 'Otorgando...'
+                : isGrantMigrationFlow ? 'Aplicar migración' : 'Dar acceso'}
+            </button>
+          </div>
+        </form>
+      </ModalDialog>
+
+      <ModalDialog open={isCreateEnrollmentOpen} title="Alta avanzada" onClose={closeAllModals} returnFocusRef={createEnrollmentReturnFocusRef} size="narrow">
+        <form className="modal-dialog__form access-modal access-modal--compact" onSubmit={(event) => void handleCreateEnrollmentSubmit(event)}>
+          <section className="access-modal__panel">
+            <div className="access-modal__stack">
+              <div className="modal-dialog__field">
+                <div className="access-modal__field-headline">
+                  <span className="modal-dialog__field-label">Colaborador</span>
+                  {canCreateCollaborators ? (
+                    <button type="button" className="action-inline action-inline--secondary" onClick={toggleEnrollmentCollaboratorInline}>
+                      <UserPlus size={14} aria-hidden="true" />
+                      <span>{isEnrollmentCollaboratorInlineOpen ? 'Usar existente' : 'Nuevo colaborador'}</span>
+                    </button>
+                  ) : null}
+                </div>
+
+                {isEnrollmentCollaboratorInlineOpen ? (
+                  <section className="access-flow__inline-panel access-flow__inline-panel--compact access-flow__inline-panel--bare" onKeyDown={handleEnrollmentCollaboratorInlineKeyDown}>
+                    <div className="access-flow__section-meta access-flow__section-meta--inline" aria-live="polite">
+                      {suggestedEmployeeId ? <span className="access-flow__meta-chip">ID sugerido {suggestedEmployeeId}</span> : null}
+                      <p className="access-flow__meta-copy">{employeeIdAvailabilityLabel}</p>
+                    </div>
+                    <div className="modal-dialog__grid">
+                      <div className="modal-dialog__field">
+                        <label className="modal-dialog__field-label" htmlFor="access-create-collaborator-employee-id">ID operativo</label>
+                        <input
+                          id="access-create-collaborator-employee-id"
+                          name="access_create_collaborator_employee_id"
+                          type="text"
+                          inputMode="numeric"
+                          value={createCollaboratorForm.employee_id}
+                          onChange={(event) => setCreateCollaboratorForm((current) => ({ ...current, employee_id: event.target.value }))}
+                          placeholder={suggestedEmployeeId ? `Ej. ${suggestedEmployeeId}` : 'Ej. 36'}
+                          aria-invalid={getFieldError('access-create-collaborator-employee-id') ? 'true' : undefined}
+                          aria-describedby={getFieldDescribedBy('access-create-collaborator-employee-id')}
+                        />
+                        {renderFieldSupport('access-create-collaborator-employee-id')}
+                      </div>
+                      <div className="modal-dialog__field">
+                        <label className="modal-dialog__field-label" htmlFor="access-create-collaborator-area-name">Área</label>
+                        <input
+                          id="access-create-collaborator-area-name"
+                          name="access_create_collaborator_area_name"
+                          type="text"
+                          value={createCollaboratorForm.area_name}
+                          onChange={(event) => setCreateCollaboratorForm((current) => ({ ...current, area_name: event.target.value }))}
+                          placeholder="Ej. Producción"
+                        />
+                        {renderFieldSupport()}
+                      </div>
+                      <div className="modal-dialog__field">
+                        <label className="modal-dialog__field-label" htmlFor="access-create-collaborator-first-name">Nombre(s)</label>
+                        <input
+                          id="access-create-collaborator-first-name"
+                          name="access_create_collaborator_first_name"
+                          type="text"
+                          value={createCollaboratorForm.first_name}
+                          onChange={(event) => setCreateCollaboratorForm((current) => ({ ...current, first_name: event.target.value }))}
+                          placeholder="Ej. Laura"
+                          aria-invalid={getFieldError('access-create-collaborator-first-name') ? 'true' : undefined}
+                          aria-describedby={getFieldDescribedBy('access-create-collaborator-first-name')}
+                        />
+                        {renderFieldSupport('access-create-collaborator-first-name')}
+                      </div>
+                      <div className="modal-dialog__field">
+                        <label className="modal-dialog__field-label" htmlFor="access-create-collaborator-last-name">Apellidos</label>
+                        <input
+                          id="access-create-collaborator-last-name"
+                          name="access_create_collaborator_last_name"
+                          type="text"
+                          value={createCollaboratorForm.last_name}
+                          onChange={(event) => setCreateCollaboratorForm((current) => ({ ...current, last_name: event.target.value }))}
+                          placeholder="Ej. Santiago"
+                          aria-invalid={getFieldError('access-create-collaborator-last-name') ? 'true' : undefined}
+                          aria-describedby={getFieldDescribedBy('access-create-collaborator-last-name')}
+                        />
+                        {renderFieldSupport('access-create-collaborator-last-name')}
+                      </div>
+                    </div>
+                    <div className="access-flow__inline-actions">
+                      <button type="button" className="workspace-action workspace-action--ghost" onClick={() => void submitCreateCollaborator()} disabled={isSubmitting}>
+                        {isSubmitting ? 'Guardando...' : 'Crear colaborador'}
+                      </button>
+                    </div>
+                  </section>
+                ) : (
+                  <>
+                    <FilterSelect
+                      id="access-create-enrollment-collaborator"
+                      name="access_create_enrollment_collaborator"
+                      label="Colaborador"
+                      variant="field"
+                      showLabel={false}
+                      value={createEnrollmentForm.collaborator_id}
+                      options={collaboratorOptions}
+                      onChange={(value) => setCreateEnrollmentForm((current) => ({ ...current, collaborator_id: value, media_assignment_id: '' }))}
+                      placeholder="Selecciona un colaborador"
+                      ariaDescribedBy={getFieldDescribedBy('access-create-enrollment-collaborator')}
+                      invalid={Boolean(getFieldError('access-create-enrollment-collaborator'))}
+                    />
+                    {renderFieldError('access-create-enrollment-collaborator')}
+                  </>
+                )}
+              </div>
+
+              <div className="modal-dialog__grid access-modal__compact-grid">
+                <label className="modal-dialog__field">
+                  <span>Sistema</span>
+                  <FilterSelect
+                    id="access-create-enrollment-system"
+                    name="access_create_enrollment_system"
+                    label="Sistema"
+                    variant="field"
+                    showLabel={false}
+                    value={createEnrollmentForm.access_system_id}
+                    options={enrollmentSystemOptions}
+                    onChange={(value) => setCreateEnrollmentForm((current) => ({
+                      ...current,
+                      access_system_id: value,
+                      media_assignment_id: value === current.access_system_id ? current.media_assignment_id : ''
+                    }))}
+                    placeholder="Selecciona un sistema"
+                    ariaDescribedBy={getFieldDescribedBy('access-create-enrollment-system')}
+                    invalid={Boolean(getFieldError('access-create-enrollment-system'))}
+                  />
+                  {renderFieldError('access-create-enrollment-system')}
+                </label>
+                {enrollmentRequiresRfid ? (
+                  <label className="modal-dialog__field">
+                    <span>RFID</span>
+                    <FilterSelect
+                      id="access-create-enrollment-assignment"
+                      name="access_create_enrollment_assignment"
+                      label="RFID ligado"
+                      variant="field"
+                      showLabel={false}
+                      value={createEnrollmentForm.media_assignment_id}
+                      options={activeAssignmentOptionsByCollaborator}
+                      onChange={(value) => setCreateEnrollmentForm((current) => ({ ...current, media_assignment_id: value }))}
+                      placeholder={createEnrollmentForm.collaborator_id ? 'Selecciona un RFID activo' : 'Selecciona colaborador primero'}
+                      disabled={!createEnrollmentForm.collaborator_id}
+                      ariaDescribedBy={getFieldDescribedBy('access-create-enrollment-assignment')}
+                      invalid={Boolean(getFieldError('access-create-enrollment-assignment'))}
+                    />
+                    {renderFieldError('access-create-enrollment-assignment')}
+                    {createEnrollmentForm.collaborator_id && activeAssignmentOptionsByCollaborator.length <= 1 ? (
+                      <p className="modal-dialog__field-help">Este sistema requiere un RFID ya asignado al colaborador.</p>
+                    ) : null}
+                  </label>
+                ) : null}
+                <label className="modal-dialog__field" htmlFor="access-create-enrollment-activated-at">
+                  <span>Activación</span>
+                  <input
+                    id="access-create-enrollment-activated-at"
+                    name="access_create_enrollment_activated_at"
+                    type="datetime-local"
+                    value={createEnrollmentForm.activated_at}
+                    onChange={(event) => setCreateEnrollmentForm((current) => ({ ...current, activated_at: event.target.value }))}
+                    aria-invalid={getFieldError('access-create-enrollment-activated-at') ? 'true' : undefined}
+                    aria-describedby={getFieldDescribedBy('access-create-enrollment-activated-at')}
+                  />
+                  {renderFieldError('access-create-enrollment-activated-at')}
+                </label>
+                <div className="modal-dialog__field access-modal__optional-field">
+                  <button
+                    type="button"
+                    className="action-inline action-inline--secondary"
+                    onClick={() => setIsEnrollmentNotesOpen((current) => !current)}
+                    aria-label={isEnrollmentNotesOpen ? 'Ocultar nota' : 'Agregar nota'}
+                  >
+                      <span>{isEnrollmentNotesOpen ? 'Ocultar' : 'Agregar nota'}</span>
+                  </button>
+                </div>
+                {isEnrollmentNotesOpen ? (
+                  <label className="modal-dialog__field modal-dialog__field--full" htmlFor="access-create-enrollment-notes">
+                    <span className="sr-only">Notas</span>
+                    <textarea
+                      id="access-create-enrollment-notes"
+                      name="access_create_enrollment_notes"
+                      value={createEnrollmentForm.notes}
+                      onChange={(event) => setCreateEnrollmentForm((current) => ({ ...current, notes: event.target.value }))}
+                      placeholder="Contexto opcional"
+                      rows={3}
+                    />
+                  </label>
+                ) : null}
+              </div>
+            </div>
+          </section>
+          {renderModalNoticeSlot(true)}
+          <div className="modal-dialog__actions">
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={closeAllModals}>Cancelar</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmitting}>{isSubmitting ? 'Registrando...' : 'Guardar alta'}</button>
+          </div>
+        </form>
+      </ModalDialog>
+
+      <ModalDialog open={isReturnModalOpen} title="Registrar devolución" onClose={closeAllModals} size="narrow">
+        <form className="modal-dialog__form access-modal access-modal--compact" onSubmit={(event) => void handleReturnSubmit(event)}>
+          <section className="access-modal__panel">
+            <div className="modal-dialog__grid">
             <label className="modal-dialog__field">
               <span>Ubicación de reintegro</span>
               <FilterSelect
@@ -2578,8 +3876,9 @@ const AccessPage = () => {
                 placeholder="Condición o contexto de la devolución"
               />
             </label>
-          </div>
-          {modalError ? <InlineNotice tone="error">{modalError}</InlineNotice> : null}
+            </div>
+          </section>
+          {renderModalNoticeSlot(true)}
           <div className="modal-dialog__actions">
             <button type="button" className="workspace-action workspace-action--ghost" onClick={closeAllModals}>Cancelar</button>
             <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmitting}>{isSubmitting ? 'Procesando...' : 'Registrar devolución'}</button>
@@ -2587,9 +3886,10 @@ const AccessPage = () => {
         </form>
       </ModalDialog>
 
-      <ModalDialog open={isNotReturnedModalOpen} title="Marcar no devuelto" onClose={closeAllModals} size="wide">
-        <form className="modal-dialog__form" onSubmit={(event) => void handleNotReturnedSubmit(event)}>
-          <div className="modal-dialog__grid">
+      <ModalDialog open={isNotReturnedModalOpen} title="Marcar no devuelto" onClose={closeAllModals} size="narrow">
+        <form className="modal-dialog__form access-modal access-modal--compact" onSubmit={(event) => void handleNotReturnedSubmit(event)}>
+          <section className="access-modal__panel">
+            <div className="modal-dialog__grid">
             <label className="modal-dialog__field" htmlFor="access-not-returned-resolved-at">
               <span>Fecha de cierre</span>
               <input
@@ -2613,8 +3913,9 @@ const AccessPage = () => {
                 placeholder="Describe por qué el medio ya no fue devuelto"
               />
             </label>
-          </div>
-          {modalError ? <InlineNotice tone="error">{modalError}</InlineNotice> : null}
+            </div>
+          </section>
+          {renderModalNoticeSlot(true)}
           <div className="modal-dialog__actions">
             <button type="button" className="workspace-action workspace-action--ghost" onClick={closeAllModals}>Cancelar</button>
             <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmitting}>{isSubmitting ? 'Procesando...' : 'Confirmar no devolución'}</button>
@@ -2622,9 +3923,10 @@ const AccessPage = () => {
         </form>
       </ModalDialog>
 
-      <ModalDialog open={isEnrollmentStatusOpen} title="Cambiar estado del alta" onClose={closeAllModals} size="wide">
-        <form className="modal-dialog__form" onSubmit={(event) => void handleEnrollmentStatusSubmit(event)}>
-          <div className="modal-dialog__grid">
+      <ModalDialog open={isEnrollmentStatusOpen} title="Cambiar estado del alta" onClose={closeAllModals} size="narrow">
+        <form className="modal-dialog__form access-modal access-modal--compact" onSubmit={(event) => void handleEnrollmentStatusSubmit(event)}>
+          <section className="access-modal__panel">
+            <div className="modal-dialog__grid">
             <label className="modal-dialog__field">
               <span>Nuevo estado</span>
               <FilterSelect
@@ -2694,8 +3996,9 @@ const AccessPage = () => {
                 placeholder="Contexto del cambio de estado"
               />
             </label>
-          </div>
-          {modalError ? <InlineNotice tone="error">{modalError}</InlineNotice> : null}
+            </div>
+          </section>
+          {renderModalNoticeSlot(true)}
           <div className="modal-dialog__actions">
             <button type="button" className="workspace-action workspace-action--ghost" onClick={closeAllModals}>Cancelar</button>
             <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmitting}>{isSubmitting ? 'Actualizando...' : 'Aplicar cambio'}</button>
@@ -2703,84 +4006,104 @@ const AccessPage = () => {
         </form>
       </ModalDialog>
 
-      <ModalDialog open={isOffboardOpen} title="Dar de baja accesos" onClose={closeAllModals} size="wide">
-        <form className="modal-dialog__form" onSubmit={(event) => void handleOffboardSubmit(event)}>
-          <div className="modal-dialog__grid">
-            <label className="modal-dialog__field">
-              <span>Resolución del medio</span>
-              <FilterSelect
-                id="access-offboard-resolution"
-                name="access_offboard_resolution"
-                label="Resolución del medio"
-                variant="field"
-                showLabel={false}
-                value={offboardForm.media_resolution}
-                options={[
-                  { key: 'returned', label: 'Devuelto' },
-                  { key: 'not_returned', label: 'No devuelto' }
-                ]}
-                onChange={(value) => setOffboardForm((current) => ({ ...current, media_resolution: value }))}
-                placeholder="Selecciona una resolución"
-                disabled={!offboardHasActiveAssignments}
-                ariaDescribedBy={getFieldDescribedBy('access-offboard-resolution', 'access-offboard-resolution-help')}
-                invalid={Boolean(getFieldError('access-offboard-resolution'))}
-              />
-              <p id="access-offboard-resolution-help" className="modal-dialog__field-help">
-                {offboardHasActiveAssignments
-                  ? offboardForm.media_resolution === 'not_returned'
-                    ? 'Se cerraran las asignaciones activas como no devueltas y las altas vigentes quedaran desactivadas.'
-                    : 'Se cerraran las asignaciones activas como devueltas, las altas vigentes quedaran desactivadas y el medio volvera a la ubicacion seleccionada.'
-                  : 'Este colaborador no tiene medios activos. La baja solo desactivara altas vigentes y registrara el evento.'}
-              </p>
-              {renderFieldError('access-offboard-resolution')}
-            </label>
-            <label className="modal-dialog__field" htmlFor="access-offboarded-at">
-              <span>Fecha de baja</span>
-              <input
-                id="access-offboarded-at"
-                name="access_offboarded_at"
-                type="datetime-local"
-                value={offboardForm.offboarded_at}
-                onChange={(event) => setOffboardForm((current) => ({ ...current, offboarded_at: event.target.value }))}
-                aria-invalid={getFieldError('access-offboarded-at') ? 'true' : undefined}
-                aria-describedby={getFieldDescribedBy('access-offboarded-at')}
-              />
-              {renderFieldError('access-offboarded-at')}
-            </label>
-            {offboardForm.media_resolution === 'returned' ? (
-              <label className="modal-dialog__field modal-dialog__field--full">
-                <span>Ubicación de reintegro</span>
-                <FilterSelect
-                  id="access-offboard-location"
-                  name="access_offboard_location"
-                  label="Ubicación de reintegro"
-                  variant="field"
-                  showLabel={false}
-                  value={offboardForm.location_id}
-                  options={locationOptions}
-                  onChange={(value) => setOffboardForm((current) => ({ ...current, location_id: value }))}
-                  placeholder="Selecciona una ubicación"
-                  ariaDescribedBy={getFieldDescribedBy('access-offboard-location')}
-                  invalid={Boolean(getFieldError('access-offboard-location'))}
-                />
-                {renderFieldError('access-offboard-location')}
-              </label>
-            ) : null}
-            <label className="modal-dialog__field modal-dialog__field--full" htmlFor="access-offboard-notes">
-              <span>Notas</span>
-              <textarea
-                id="access-offboard-notes"
-                name="access_offboard_notes"
-                value={offboardForm.notes}
-                onChange={(event) => setOffboardForm((current) => ({ ...current, notes: event.target.value }))}
-                placeholder="Describe el contexto de la baja operativa"
-              />
-            </label>
-          </div>
-          {modalError ? <InlineNotice tone="error">{modalError}</InlineNotice> : null}
+      <ModalDialog open={isOffboardOpen} title="Cerrar acceso" onClose={closeAllModals} size="narrow">
+        <form className="modal-dialog__form access-modal access-modal--compact" onSubmit={(event) => void handleOffboardSubmit(event)}>
+          <section className="access-modal__panel">
+            <div className="access-modal__stack">
+              <div className="modal-dialog__field">
+                <span className="modal-dialog__field-label">RFID</span>
+                {offboardHasActiveAssignments ? (
+                  <>
+                    <FilterChipGroup
+                      label="Resolución del RFID"
+                      options={[
+                        { key: 'returned', label: 'Devuelto' },
+                        { key: 'not_returned', label: 'No devuelto' }
+                      ]}
+                      activeKey={offboardForm.media_resolution}
+                      onSelect={(value) => setOffboardForm((current) => ({ ...current, media_resolution: value }))}
+                      className="workspace-chip-group workspace-chip-group--compact access-modal__resolution-group"
+                      chipClassName="workspace-chip access-modal__resolution-chip"
+                      activeChipClassName="workspace-chip--active"
+                    />
+                    <p className="access-flow__field-note">
+                      {offboardForm.media_resolution === 'not_returned'
+                        ? 'El RFID saldrá del inventario reutilizable.'
+                        : 'El RFID volverá a inventario y quedará disponible.'}
+                    </p>
+                  </>
+                ) : (
+                  <p className="access-flow__field-note">No hay RFID activo. Solo se cerrarán las altas vigentes.</p>
+                )}
+                {renderFieldError('access-offboard-resolution')}
+              </div>
+
+              <div className="modal-dialog__grid access-modal__compact-grid">
+                <label className="modal-dialog__field" htmlFor="access-offboarded-at">
+                  <span>Cierre</span>
+                  <input
+                    id="access-offboarded-at"
+                    name="access_offboarded_at"
+                    type="datetime-local"
+                    value={offboardForm.offboarded_at}
+                    onChange={(event) => setOffboardForm((current) => ({ ...current, offboarded_at: event.target.value }))}
+                    aria-invalid={getFieldError('access-offboarded-at') ? 'true' : undefined}
+                    aria-describedby={getFieldDescribedBy('access-offboarded-at')}
+                  />
+                  {renderFieldError('access-offboarded-at')}
+                </label>
+
+                <div className="modal-dialog__field access-modal__optional-field">
+                  <button
+                    type="button"
+                    className="action-inline action-inline--secondary"
+                    onClick={() => setIsOffboardNotesOpen((current) => !current)}
+                    aria-label={isOffboardNotesOpen ? 'Ocultar nota de cierre' : 'Agregar nota de cierre'}
+                  >
+                    <span>{isOffboardNotesOpen ? 'Ocultar' : 'Agregar nota'}</span>
+                  </button>
+                </div>
+
+                {offboardForm.media_resolution === 'returned' ? (
+                  <label className="modal-dialog__field modal-dialog__field--full">
+                    <span>Ubicación de reintegro</span>
+                    <FilterSelect
+                      id="access-offboard-location"
+                      name="access_offboard_location"
+                      label="Ubicación de reintegro"
+                      variant="field"
+                      showLabel={false}
+                      value={offboardForm.location_id}
+                      options={locationOptions}
+                      onChange={(value) => setOffboardForm((current) => ({ ...current, location_id: value }))}
+                      placeholder="Selecciona una ubicación"
+                      ariaDescribedBy={getFieldDescribedBy('access-offboard-location')}
+                      invalid={Boolean(getFieldError('access-offboard-location'))}
+                    />
+                    {renderFieldError('access-offboard-location')}
+                  </label>
+                ) : null}
+
+                {isOffboardNotesOpen ? (
+                  <label className="modal-dialog__field modal-dialog__field--full" htmlFor="access-offboard-notes">
+                    <span className="sr-only">Notas</span>
+                    <textarea
+                      id="access-offboard-notes"
+                      name="access_offboard_notes"
+                      value={offboardForm.notes}
+                      onChange={(event) => setOffboardForm((current) => ({ ...current, notes: event.target.value }))}
+                      placeholder="Contexto opcional"
+                      rows={3}
+                    />
+                  </label>
+                ) : null}
+              </div>
+            </div>
+          </section>
+          {renderModalNoticeSlot(true)}
           <div className="modal-dialog__actions">
             <button type="button" className="workspace-action workspace-action--ghost" onClick={closeAllModals}>Cancelar</button>
-            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmitting}>{isSubmitting ? 'Procesando...' : 'Confirmar baja'}</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmitting}>{isSubmitting ? 'Procesando...' : 'Cerrar acceso'}</button>
           </div>
         </form>
       </ModalDialog>

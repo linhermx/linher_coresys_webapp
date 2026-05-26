@@ -80,6 +80,11 @@ export const assignAccessMedia = (payload) => requestAccessJson('/access/media-a
   body: payload
 });
 
+export const grantCollaboratorAccess = (payload) => requestAccessJson('/access/grants', {
+  method: 'POST',
+  body: payload
+});
+
 export const returnAccessMediaAssignment = (accessMediaAssignmentId, payload) => requestAccessJson(
   `/access/media-assignments/${accessMediaAssignmentId}/return`,
   {
