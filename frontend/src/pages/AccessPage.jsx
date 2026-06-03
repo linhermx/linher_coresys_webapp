@@ -418,18 +418,20 @@ const getEnrollmentStatusToneClass = (statusKey) => {
 
 const toEventLabel = (eventType) => {
   const labelMap = {
+    access_granted: 'Acceso otorgado',
     media_created: 'Medio registrado',
     media_assigned: 'Medio asignado',
     media_returned: 'Medio devuelto',
     media_marked_not_returned: 'Medio no devuelto',
     enrollment_created: 'Alta creada',
+    enrollment_pending: 'Alta pendiente',
     enrollment_activated: 'Alta activada',
     enrollment_suspended: 'Alta suspendida',
     enrollment_deactivated: 'Alta desactivada',
     collaborator_offboarded: 'Baja procesada'
   };
 
-  return labelMap[eventType] || eventType;
+  return labelMap[eventType] || 'Evento registrado';
 };
 
 const matchesSearch = (searchTerm, values) => {
@@ -2527,6 +2529,28 @@ const AccessPage = () => {
       .map((enrollment) => enrollment.access_system?.name || '')
       .filter(Boolean)
   );
+  const accessDetailSystemsSummary = accessDetailCurrentSystemsText
+    || detailContext?.enrollment?.access_system?.name
+    || detailContext?.event?.access_system_name
+    || 'Sin sistema vigente';
+  const accessDetailMediaSummary = detailContext?.media
+    ? toMediaLabel(detailContext.media)
+    : (detailContext?.event?.tag_code || 'Sin RFID ligado');
+  const accessDetailDateValue = detailContext?.assignment?.assigned_at
+    || detailContext?.enrollment?.activated_at
+    || detailContext?.event?.happened_at
+    || null;
+  const accessDetailDateLabel = detailContext?.assignment
+    ? 'Asignado'
+    : detailContext?.enrollment
+      ? 'Activo desde'
+      : detailContext?.event
+        ? 'Evento'
+        : 'Fecha';
+  const shouldShowAccessCollaboratorFact = Boolean(
+    detailContext?.collaborator?.full_name
+    && detailContext.title !== detailContext.collaborator.full_name
+  );
 
   const accessDetailToolbar = accessDetailHasActions ? (
     <div className="inventory-asset-detail__toolbar panel-detail__toolbar access-detail__toolbar" aria-label="Acciones operativas del acceso">
@@ -2686,30 +2710,29 @@ const AccessPage = () => {
               <section className="ticket-detail__section panel-detail__section inventory-asset-detail__section access-detail__section">
                 <div className="inventory-asset-detail__panel-header panel-detail__panel-header access-detail__panel-header">
                   <div>
-                    <h3 className="inventory-asset-detail__panel-title panel-detail__panel-title access-detail__panel-title">Estado operativo</h3>
-                    <p className="inventory-asset-detail__status-caption access-detail__status-caption">
-                      Consulta el estado, el medio ligado y las acciones disponibles.
-                    </p>
+                    <h3 className="inventory-asset-detail__panel-title panel-detail__panel-title access-detail__panel-title">Acceso actual</h3>
                   </div>
                   {accessDetailToolbar}
                 </div>
 
                 <dl className="ticket-detail__meta-grid panel-detail__facts inventory-asset-detail__meta-grid access-detail__meta-grid">
+                  {shouldShowAccessCollaboratorFact ? (
+                    <div className="ticket-detail__meta-item panel-detail__fact">
+                      <dt className="ticket-detail__meta-label panel-detail__fact-label">Colaborador</dt>
+                      <dd>{detailContext.collaborator.full_name}</dd>
+                    </div>
+                  ) : null}
                   <div className="ticket-detail__meta-item panel-detail__fact">
-                    <dt className="ticket-detail__meta-label panel-detail__fact-label">Colaborador</dt>
-                    <dd>{detailContext.collaborator?.full_name || 'Sin colaborador ligado'}</dd>
-                  </div>
-                  <div className="ticket-detail__meta-item panel-detail__fact">
-                    <dt className="ticket-detail__meta-label panel-detail__fact-label">ID operativo</dt>
-                    <dd>{detailContext.collaborator?.employee_id || 'Sin ID'}</dd>
+                    <dt className="ticket-detail__meta-label panel-detail__fact-label">Sistemas</dt>
+                    <dd>{accessDetailSystemsSummary}</dd>
                   </div>
                   <div className="ticket-detail__meta-item panel-detail__fact">
                     <dt className="ticket-detail__meta-label panel-detail__fact-label">RFID</dt>
-                    <dd>{detailContext.media ? toMediaLabel(detailContext.media) : 'Sin RFID ligado'}</dd>
+                    <dd>{accessDetailMediaSummary}</dd>
                   </div>
                   <div className="ticket-detail__meta-item panel-detail__fact">
-                    <dt className="ticket-detail__meta-label panel-detail__fact-label">Estado principal</dt>
-                    <dd>{accessDetailStatus ? <span className={accessDetailStatus.className}>{accessDetailStatus.label}</span> : 'Sin contexto'}</dd>
+                    <dt className="ticket-detail__meta-label panel-detail__fact-label">{accessDetailDateLabel}</dt>
+                    <dd>{accessDetailDateValue ? formatDateTime(accessDetailDateValue) : 'Sin fecha registrada'}</dd>
                   </div>
                 </dl>
               </section>
@@ -2718,33 +2741,33 @@ const AccessPage = () => {
                 <section className="ticket-detail__section panel-detail__section inventory-asset-detail__section access-detail__section access-detail__section--related">
                   <div className="ticket-detail__section-headline panel-detail__section-headline inventory-asset-detail__section-headline access-detail__section-headline">
                     <h3 className="ticket-detail__section-title panel-detail__section-title inventory-asset-detail__section-title access-detail__section-title">
-                      Contexto relacionado
+                      Detalles
                     </h3>
                   </div>
 
                   <ul className="access-detail__list inventory-asset-detail__list panel-detail__list">
                     {detailContext.assignment ? (
                       <li>
-                        <strong>Asignación vigente</strong>
+                        <strong>Entrega</strong>
                         <span>Asignado el {formatDateTime(detailContext.assignment.assigned_at)}</span>
-                        <span>{detailContext.assignment.expected_return_at ? `Retorno esperado: ${formatDateOnly(detailContext.assignment.expected_return_at)}` : 'Sin fecha de retorno comprometida'}</span>
+                        <span>{detailContext.assignment.expected_return_at ? `Retorno: ${formatDateOnly(detailContext.assignment.expected_return_at)}` : 'Sin retorno programado'}</span>
                       </li>
                     ) : null}
                     {detailContext.media ? (
                       <li>
-                        <strong>Unidad física vinculada</strong>
+                        <strong>Unidad física</strong>
                         <span>{detailContext.media.asset_unit?.asset_tag || detailContext.media.asset_unit_id}</span>
                         <span>{detailContext.media.asset_unit?.serial_number || 'Sin número de serie registrado'}</span>
                       </li>
                     ) : null}
                     {detailContext.enrollment ? (
                       <li>
-                        <strong>{detailCurrentEnrollments.length > 0 ? 'Sistemas vigentes' : 'Última alta registrada'}</strong>
+                        <strong>{detailCurrentEnrollments.length > 0 ? 'Alta operativa' : 'Última alta'}</strong>
                         <span>{accessDetailCurrentSystemsText || detailContext.enrollment.access_system?.name || 'Sin sistema'}</span>
                         <span>
                           {detailContext.enrollment.activated_at
-                            ? `Activo desde ${formatDateTime(detailContext.enrollment.activated_at)}`
-                            : 'Sin fecha de activación registrada'}
+                            ? `Desde ${formatDateTime(detailContext.enrollment.activated_at)}`
+                            : 'Sin fecha de activación'}
                         </span>
                       </li>
                     ) : null}
