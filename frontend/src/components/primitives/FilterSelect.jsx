@@ -210,8 +210,10 @@ export const FilterSelect = forwardRef(function FilterSelect(
               : `${baseId}-value`
         }
         aria-label={!showLabel && !externalLabelId ? compactAriaLabel : undefined}
-        onClick={() => {
+        onClick={(event) => {
           if (disabled) return;
+          event.preventDefault();
+          event.stopPropagation();
           if (isOpen) {
             closeMenu();
           } else {
@@ -246,7 +248,11 @@ export const FilterSelect = forwardRef(function FilterSelect(
                 aria-selected={isSelected}
                 tabIndex={focusIndex === index ? 0 : -1}
                 className={`filter-select__option${isSelected ? ' filter-select__option--selected' : ''}`}
-                onClick={() => commitValue(option.key)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  commitValue(option.key);
+                }}
                 onKeyDown={(event) => handleOptionKeyDown(event, index, option.key)}
               >
                 <span className="filter-select__option-label">{option.label}</span>
