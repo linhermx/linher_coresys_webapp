@@ -146,6 +146,52 @@ export class CollaboratorModel extends BaseModel {
     return rows[0] || null;
   }
 
+  async findAnyByEmployeeId(employeeId) {
+    const [rows] = await this.db.query(`
+      SELECT
+        id,
+        employee_id,
+        first_name,
+        last_name,
+        area_name,
+        status,
+        created_at,
+        updated_at,
+        deleted_at
+      FROM collaborators
+      WHERE employee_id = ?
+      LIMIT 1
+    `, [employeeId]);
+
+    return rows[0] || null;
+  }
+
+  async listUsedEmployeeIds({
+    minEmployeeId = 1,
+    maxEmployeeId = null
+  } = {}) {
+    let query = `
+      SELECT DISTINCT employee_id
+      FROM collaborators
+      WHERE employee_id IS NOT NULL
+        AND employee_id >= ?
+    `;
+
+    const params = [Number(minEmployeeId) || 1];
+
+    if (Number.isInteger(maxEmployeeId) && maxEmployeeId > 0) {
+      query += ' AND employee_id <= ?';
+      params.push(maxEmployeeId);
+    }
+
+    query += ' ORDER BY employee_id ASC';
+
+    const [rows] = await this.db.query(query, params);
+    return rows
+      .map((row) => Number(row.employee_id))
+      .filter((value) => Number.isInteger(value) && value > 0);
+  }
+
   async create({
     employeeId,
     firstName,

@@ -14,7 +14,7 @@ export const OperationalTable = ({
   scrollClassName = 'data-table__scroll'
 }) => {
   const toneClass = tone ? ` data-table--${tone}` : '';
-  const resolvedClassName = `data-table${toneClass}${className ? ` ${className}` : ''}`;
+  const resolvedClassName = `workspace-panel__content data-table${toneClass}${className ? ` ${className}` : ''}`;
 
   return (
     <div

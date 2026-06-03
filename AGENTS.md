@@ -708,6 +708,41 @@ Aplicación práctica:
 - para evaluación: `audit` y `critique`
 - para refinamiento: `layout`, `typeset`, `clarify`, `adapt`, `harden`, `polish`
 
+### 7.3 Contrato de anatomía para drawers operativos
+
+Aplica a `Tickets`, `Inventory`, `Access` y a cualquier panel contextual futuro montado sobre `WorkspaceSplitLayout`.
+
+Orden obligatorio de anatomía:
+- `shell` compartido
+- `hero` de identidad
+- tabs internas
+- panel inicial de `Resumen`
+- cuerpo operativo por tab
+
+Reglas obligatorias:
+- el contrato neutral del drawer es `panel-detail`; puede convivir con clases históricas como `ticket-detail`
+- el `hero` solo contiene identidad, estado, título, subtítulo y acciones globales como cerrar o editar
+- el primer tab debe ser `Resumen`
+- el primer fold del `Resumen` solo debe contener:
+  - heading operativo
+  - una acción primaria
+  - hasta dos acciones secundarias
+  - hasta cuatro facts clave
+- las acciones globales viven en el `hero`
+- las acciones operativas principales viven en el `Resumen`
+- las acciones por registro viven dentro del item correspondiente, no en el encabezado global
+- no repetir copy introductorio si el subtítulo o la metadata ya expresan lo mismo
+- no anidar cards dentro de cards; usar spacing, divisores y listas de soporte
+- la metadata clave debe salir en grid de máximo dos columnas
+- historial, actividad, comentarios, adjuntos o listas extensas van después del `Resumen` como tabs o secciones separadas
+- toda variante por módulo debe extender el contrato compartido antes de crear layout propio
+
+Objetivo visual:
+- densidad compacta
+- jerarquía obvia en 2 segundos
+- acciones previsibles entre módulos
+- sensación de herramienta operativa, no de collage de widgets
+
 ---
 
 ## 8. CSS, nomenclatura y densidad

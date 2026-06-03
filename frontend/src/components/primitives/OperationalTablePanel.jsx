@@ -27,7 +27,7 @@ export const OperationalTablePanel = ({
   emptyAriaAtomic,
   emptyAriaBusy,
   emptyHidden,
-  emptyClassName = 'tickets-empty-state',
+  emptyClassName = 'workspace-empty-state',
   emptyActions = null,
   loadingTitle = 'Cargando información',
   loadingCopy = 'Estamos preparando esta vista. Esto puede tardar unos segundos.',
@@ -39,7 +39,7 @@ export const OperationalTablePanel = ({
   loadingAriaAtomic = true,
   loadingAriaBusy = true,
   loadingHidden,
-  loadingClassName = 'tickets-empty-state',
+  loadingClassName = 'workspace-empty-state',
   preserveShell = false
 }) => {
   if (preserveShell) {

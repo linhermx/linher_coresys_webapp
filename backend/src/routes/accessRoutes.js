@@ -15,6 +15,13 @@ router.post('/media', requireAuth, requirePermission('access.create'), AccessCon
 router.get('/media-assignments', requireAuth, requirePermission('access.view'), AccessController.listMediaAssignments);
 router.post('/media-assignments', requireAuth, requirePermission('access.assign'), AccessController.assignMedia);
 router.post(
+  '/grants',
+  requireAuth,
+  requirePermission('access.assign'),
+  requirePermission('access.create'),
+  AccessController.grantAccess
+);
+router.post(
   '/media-assignments/:accessMediaAssignmentId/return',
   requireAuth,
   requirePermission('access.assign'),

@@ -8,9 +8,9 @@ export const SegmentedControl = ({
   activeKey,
   onActivate,
   onKeyDown,
-  className = 'tickets-page__segmented',
-  buttonClassName = 'tickets-page__segmented-button',
-  activeButtonClassName = 'tickets-page__segmented-button--active',
+  className = 'workspace-segmented',
+  buttonClassName = 'workspace-segmented__button',
+  activeButtonClassName = 'workspace-segmented__button--active',
   idPrefix = 'segmented-tab',
   panelIdByKey = () => undefined
 }) => {

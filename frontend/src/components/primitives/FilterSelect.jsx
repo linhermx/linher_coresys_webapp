@@ -31,7 +31,9 @@ export const FilterSelect = forwardRef(function FilterSelect(
     variant = 'filter',
     labelId: externalLabelId,
     placeholder = '',
-    disabled = false
+    disabled = false,
+    ariaDescribedBy = '',
+    invalid = false
   },
   forwardedRef
 ) {
@@ -198,6 +200,8 @@ export const FilterSelect = forwardRef(function FilterSelect(
         aria-expanded={isOpen}
         aria-haspopup="listbox"
         aria-controls={listboxId}
+        aria-describedby={ariaDescribedBy || undefined}
+        aria-invalid={invalid || undefined}
         aria-labelledby={
           showLabel
             ? `${resolvedLabelId} ${baseId}-value`
@@ -206,8 +210,10 @@ export const FilterSelect = forwardRef(function FilterSelect(
               : `${baseId}-value`
         }
         aria-label={!showLabel && !externalLabelId ? compactAriaLabel : undefined}
-        onClick={() => {
+        onClick={(event) => {
           if (disabled) return;
+          event.preventDefault();
+          event.stopPropagation();
           if (isOpen) {
             closeMenu();
           } else {
@@ -242,7 +248,11 @@ export const FilterSelect = forwardRef(function FilterSelect(
                 aria-selected={isSelected}
                 tabIndex={focusIndex === index ? 0 : -1}
                 className={`filter-select__option${isSelected ? ' filter-select__option--selected' : ''}`}
-                onClick={() => commitValue(option.key)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  commitValue(option.key);
+                }}
                 onKeyDown={(event) => handleOptionKeyDown(event, index, option.key)}
               >
                 <span className="filter-select__option-label">{option.label}</span>
@@ -273,5 +283,7 @@ FilterSelect.propTypes = {
   variant: PropTypes.oneOf(['filter', 'field']),
   labelId: PropTypes.string,
   placeholder: PropTypes.string,
-  disabled: PropTypes.bool
+  disabled: PropTypes.bool,
+  ariaDescribedBy: PropTypes.string,
+  invalid: PropTypes.bool
 };

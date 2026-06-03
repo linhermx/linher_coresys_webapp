@@ -113,6 +113,24 @@ export const AccessController = {
     }
   },
 
+  async grantAccess(req, res, next) {
+    try {
+      const data = await AccessService.grantCollaboratorAccess({
+        payload: req.body,
+        authUser: req.authUser,
+        requestContext: AuditService.buildRequestContext(req)
+      });
+
+      res.success({
+        statusCode: 201,
+        message: 'Acceso otorgado correctamente.',
+        data
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   async returnMediaAssignment(req, res, next) {
     try {
       const data = await AccessService.returnAccessMediaAssignment({

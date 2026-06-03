@@ -15,6 +15,12 @@ const RETURNED_ASSIGNMENT_STATUS_KEY = 'returned';
 const NOT_RETURNED_ASSIGNMENT_STATUS_KEY = 'not_returned';
 const ACTIVE_ENROLLMENT_STATUS_KEY = 'active';
 const ALLOWED_ENROLLMENT_STATUS_KEYS = new Set(['pending', 'active', 'suspended', 'deactivated']);
+const GRANTABLE_ACCESS_SYSTEM_KEYS = ['production', 'offices', 'bathroom'];
+const GRANTABLE_ACCESS_SYSTEM_KEY_SET = new Set(GRANTABLE_ACCESS_SYSTEM_KEYS);
+const RFID_REQUIRED_ACCESS_SYSTEM_KEY_SET = new Set(['production', 'bathroom']);
+const EMPLOYEE_ID_MIN = 1;
+const EMPLOYEE_ID_MAX = 20000;
+const EMPLOYEE_ID_PREVIEW_RANGE_LIMIT = 3;
 
 const normalizeText = (value) => String(value || '').trim();
 
@@ -60,6 +66,134 @@ const assertRequiredText = (value, message, code = 'INVALID_ACCESS_FIELD') => {
   }
 
   return normalized;
+};
+
+const normalizeUniqueKeyArray = (values) => {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  const uniqueValues = [];
+  for (const entry of values) {
+    const normalized = normalizeStatusKey(entry);
+    if (!normalized || uniqueValues.includes(normalized)) {
+      continue;
+    }
+    uniqueValues.push(normalized);
+  }
+
+  return uniqueValues;
+};
+
+const normalizeUniqueIdArray = (values) => {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  const uniqueValues = [];
+  for (const entry of values) {
+    const normalized = normalizeId(entry);
+    if (!normalized || uniqueValues.includes(normalized)) {
+      continue;
+    }
+
+    uniqueValues.push(normalized);
+  }
+
+  return uniqueValues;
+};
+
+const normalizeCollaboratorCreatePayload = (payload) => {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return null;
+  }
+
+  const employeeId = normalizeId(payload.employee_id);
+  const firstName = assertRequiredText(
+    payload.first_name,
+    'Debes capturar el nombre del colaborador.',
+    'INVALID_GRANT_COLLABORATOR_FIRST_NAME'
+  );
+  const lastName = assertRequiredText(
+    payload.last_name,
+    'Debes capturar los apellidos del colaborador.',
+    'INVALID_GRANT_COLLABORATOR_LAST_NAME'
+  );
+
+  if (!employeeId) {
+    throw new AppError('Debes capturar un ID operativo valido para el colaborador.', {
+      statusCode: 400,
+      code: 'INVALID_GRANT_COLLABORATOR_EMPLOYEE_ID'
+    });
+  }
+
+  if (employeeId < EMPLOYEE_ID_MIN || employeeId > EMPLOYEE_ID_MAX) {
+    throw new AppError(`El ID operativo debe estar entre ${EMPLOYEE_ID_MIN} y ${EMPLOYEE_ID_MAX}.`, {
+      statusCode: 400,
+      code: 'INVALID_GRANT_COLLABORATOR_EMPLOYEE_ID_RANGE'
+    });
+  }
+
+  return {
+    employee_id: employeeId,
+    first_name: firstName,
+    last_name: lastName,
+    area_name: normalizeText(payload.area_name) || null
+  };
+};
+
+const buildEmployeeIdAvailability = (usedEmployeeIds = []) => {
+  const normalizedUsedIds = Array.from(new Set(
+    usedEmployeeIds
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value >= EMPLOYEE_ID_MIN && value <= EMPLOYEE_ID_MAX)
+  )).sort((left, right) => left - right);
+
+  const usedIdSet = new Set(normalizedUsedIds);
+  let nextAvailableId = null;
+  const availableRanges = [];
+  let currentRangeStart = null;
+
+  for (let employeeId = EMPLOYEE_ID_MIN; employeeId <= EMPLOYEE_ID_MAX; employeeId += 1) {
+    if (!usedIdSet.has(employeeId)) {
+      if (!nextAvailableId) {
+        nextAvailableId = employeeId;
+      }
+
+      if (currentRangeStart === null) {
+        currentRangeStart = employeeId;
+      }
+
+      continue;
+    }
+
+    if (currentRangeStart !== null) {
+      availableRanges.push({
+        start: currentRangeStart,
+        end: employeeId - 1,
+        count: employeeId - currentRangeStart
+      });
+      currentRangeStart = null;
+    }
+  }
+
+  if (currentRangeStart !== null) {
+    availableRanges.push({
+      start: currentRangeStart,
+      end: EMPLOYEE_ID_MAX,
+      count: EMPLOYEE_ID_MAX - currentRangeStart + 1
+    });
+  }
+
+  return {
+    min_employee_id: EMPLOYEE_ID_MIN,
+    max_employee_id: EMPLOYEE_ID_MAX,
+    next_available_id: nextAvailableId,
+    used_count: normalizedUsedIds.length,
+    available_count: EMPLOYEE_ID_MAX - normalizedUsedIds.length,
+    preview_ranges: availableRanges.slice(0, EMPLOYEE_ID_PREVIEW_RANGE_LIMIT),
+    has_more_ranges: availableRanges.length > EMPLOYEE_ID_PREVIEW_RANGE_LIMIT
+  };
 };
 
 const toCollaboratorSummary = (collaborator) => {
@@ -113,13 +247,15 @@ const toInventoryUnitSummary = (assetUnit, asset = null) => {
   };
 };
 
-const buildAccessMediaResponse = ({
-  media,
-  assetUnit = null,
-  asset = null,
-  activeAssignment = null,
-  collaborator = null
-}) => {
+const buildAccessMediaResponse = (context) => {
+  const {
+    media,
+    assetUnit = null,
+    asset = null,
+    activeAssignment = null,
+    collaborator = null
+  } = context ?? {};
+
   if (!media) {
     return null;
   }
@@ -149,13 +285,15 @@ const buildAccessMediaResponse = ({
   };
 };
 
-const buildAccessMediaAssignmentResponse = ({
-  assignment,
-  media = null,
-  collaborator = null,
-  assetUnit = null,
-  asset = null
-}) => {
+const buildAccessMediaAssignmentResponse = (context) => {
+  const {
+    assignment,
+    media = null,
+    collaborator = null,
+    assetUnit = null,
+    asset = null
+  } = context ?? {};
+
   if (!assignment) {
     return null;
   }
@@ -185,15 +323,17 @@ const buildAccessMediaAssignmentResponse = ({
   };
 };
 
-const buildAccessEnrollmentResponse = ({
-  enrollment,
-  collaborator = null,
-  accessSystem = null,
-  mediaAssignment = null,
-  media = null,
-  assetUnit = null,
-  asset = null
-}) => {
+const buildAccessEnrollmentResponse = (context) => {
+  const {
+    enrollment,
+    collaborator = null,
+    accessSystem = null,
+    mediaAssignment = null,
+    media = null,
+    assetUnit = null,
+    asset = null
+  } = context ?? {};
+
   if (!enrollment) {
     return null;
   }
@@ -488,6 +628,90 @@ const assertRfidInventoryUnit = async (assetUnitId) => {
   };
 };
 
+const inferAccessMediumTypeKeyFromInventory = ({ asset = null, assetUnit = null }) => {
+  const fingerprint = [
+    asset?.asset_name,
+    asset?.brand,
+    asset?.model,
+    assetUnit?.notes,
+    assetUnit?.serial_number,
+    assetUnit?.asset_tag
+  ]
+    .map((value) => normalizeText(value).toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+
+  return fingerprint.includes('chip') ? 'chip' : 'card';
+};
+
+const registerAccessMediaFromInventoryUnit = async ({
+  connection,
+  txAccessModel,
+  txInventoryModel,
+  assetUnit,
+  asset,
+  authUser = null,
+  notes = null
+}) => {
+  const normalizedAssetUnitId = Number(assetUnit.id);
+  const existingMedia = await txAccessModel.getAccessMediaByAssetUnitId(normalizedAssetUnitId);
+  if (existingMedia) {
+    return {
+      media: existingMedia,
+      created: false
+    };
+  }
+
+  const [mediumType, availableStatus] = await Promise.all([
+    txAccessModel.getMediumTypeByKey(inferAccessMediumTypeKeyFromInventory({ asset, assetUnit })),
+    txAccessModel.getMediaStatusByKey('available')
+  ]);
+
+  if (!mediumType || !availableStatus) {
+    throw new AppError('El catálogo base de medios RFID no está configurado correctamente.', {
+      statusCode: 500,
+      code: 'ACCESS_BASE_CATALOG_MISSING'
+    });
+  }
+
+  const tagCode = normalizeTagCode(assetUnit.asset_tag);
+  const accessMediaId = await txAccessModel.createAccessMedia(connection, {
+    mediumTypeId: Number(mediumType.id),
+    statusId: Number(availableStatus.id),
+    assetUnitId: normalizedAssetUnitId,
+    tagCode,
+    notes: notes || `Registrado automáticamente desde Inventario (${assetUnit.asset_tag}).`
+  });
+
+  await txAccessModel.createAccessEvent(connection, {
+    eventType: 'media_created',
+    operatorId: authUser?.id || null,
+    accessMediaId,
+    notes: notes || `RFID ${tagCode} registrado automáticamente desde Inventario.`
+  });
+
+  await txInventoryModel.createAssetEvent(connection, {
+    assetId: Number(asset.id),
+    assetUnitId: normalizedAssetUnitId,
+    operatorId: authUser?.id || null,
+    actionKey: 'access_media_linked',
+    entityType: 'access_media',
+    entityId: accessMediaId,
+    reason: notes || 'Unidad ligada automáticamente al dominio de accesos.',
+    beforeSnapshot: null,
+    afterSnapshot: {
+      access_media_id: accessMediaId,
+      tag_code: tagCode,
+      medium_type_key: mediumType.type_key
+    }
+  });
+
+  return {
+    media: await txAccessModel.getAccessMediaById(accessMediaId),
+    created: true
+  };
+};
+
 const syncInventoryForAccessLifecycle = async ({
   txInventoryModel,
   accessMedia,
@@ -752,6 +976,7 @@ export const AccessService = {
         ]
       },
       key_actions: [
+        'grant_access',
         'register_media',
         'assign_media',
         'return_media',
@@ -776,16 +1001,22 @@ export const AccessService = {
   },
 
   async getCatalog() {
-    const [systems, mediumTypes, mediaStatuses, assignmentStatuses, enrollmentStatuses] = await Promise.all([
+    const [systems, mediumTypes, mediaStatuses, assignmentStatuses, enrollmentStatuses, usedEmployeeIds] = await Promise.all([
       accessModel.listAccessSystems(),
       accessModel.listMediumTypes(),
       accessModel.listMediaStatuses(),
       accessModel.listAssignmentStatuses(),
-      accessModel.listEnrollmentStatuses()
+      accessModel.listEnrollmentStatuses(),
+      collaboratorModel.listUsedEmployeeIds({
+        minEmployeeId: EMPLOYEE_ID_MIN,
+        maxEmployeeId: EMPLOYEE_ID_MAX
+      })
     ]);
 
     return {
-      systems: systems.map(toAccessSystemResponse),
+      systems: systems
+        .filter((system) => GRANTABLE_ACCESS_SYSTEM_KEY_SET.has(system.system_key))
+        .map(toAccessSystemResponse),
       medium_types: mediumTypes.map((row) => ({
         id: Number(row.id),
         type_key: row.type_key,
@@ -812,7 +1043,8 @@ export const AccessService = {
         name: row.name,
         description: row.description || null,
         is_terminal: Boolean(row.is_terminal)
-      }))
+      })),
+      employee_id_availability: buildEmployeeIdAvailability(usedEmployeeIds)
     };
   },
 
@@ -1232,6 +1464,551 @@ export const AccessService = {
     }
   },
 
+  async grantCollaboratorAccess({ payload, authUser = null, requestContext = {} }) {
+    const collaboratorId = normalizeId(payload?.collaborator_id);
+    const hasCollaboratorCreatePayload = payload?.collaborator_create !== undefined && payload?.collaborator_create !== null;
+
+    if ((!collaboratorId && !hasCollaboratorCreatePayload) || (collaboratorId && hasCollaboratorCreatePayload)) {
+      throw new AppError('Debes indicar exactamente un colaborador existente o un colaborador nuevo para otorgar el acceso.', {
+        statusCode: 400,
+        code: 'INVALID_ACCESS_GRANT_COLLABORATOR_INPUT'
+      });
+    }
+
+    const requestedSystems = Array.isArray(payload?.systems) ? payload.systems : [];
+    const normalizedSystemKeys = normalizeUniqueKeyArray(requestedSystems);
+    const hasInvalidSystemSelection = (
+      requestedSystems.length === 0
+      || normalizedSystemKeys.length !== requestedSystems.length
+      || normalizedSystemKeys.some((systemKey) => !GRANTABLE_ACCESS_SYSTEM_KEY_SET.has(systemKey))
+    );
+
+    if (hasInvalidSystemSelection) {
+      throw new AppError('Debes seleccionar uno o más sistemas válidos: Producción, Oficinas o Baño.', {
+        statusCode: 400,
+        code: 'INVALID_ACCESS_GRANT_SYSTEMS'
+      });
+    }
+
+    const requestedAccessMediaId = normalizeId(payload?.access_media_id);
+    const requestedAssetUnitId = normalizeId(payload?.asset_unit_id);
+    const deactivationEnrollmentIds = normalizeUniqueIdArray(payload?.deactivate_enrollment_ids);
+    const requiresRfidOverride = (
+      payload?.requires_rfid_override === true
+      || payload?.requires_rfid_override === 'true'
+      || payload?.requires_rfid_override === 1
+      || payload?.requires_rfid_override === '1'
+    );
+    const systemsRequireRfid = normalizedSystemKeys.some((systemKey) => RFID_REQUIRED_ACCESS_SYSTEM_KEY_SET.has(systemKey));
+    const requiresAccessMedia = (
+      systemsRequireRfid
+      || requiresRfidOverride
+      || Boolean(requestedAssetUnitId)
+      || Boolean(requestedAccessMediaId)
+    );
+
+    if (hasCollaboratorCreatePayload && deactivationEnrollmentIds.length > 0) {
+      throw new AppError('Solo puedes cerrar altas vigentes cuando otorgas acceso a un colaborador existente.', {
+        statusCode: 400,
+        code: 'INVALID_ACCESS_GRANT_DEACTIVATIONS'
+      });
+    }
+
+    if (requiresAccessMedia && !requestedAccessMediaId && !requestedAssetUnitId && !collaboratorId) {
+      throw new AppError('Selecciona una unidad RFID disponible para continuar.', {
+        statusCode: 400,
+        code: 'INVALID_ACCESS_GRANT_MEDIA'
+      });
+    }
+
+    const assignedAt = assertDateTime(
+      payload?.assigned_at,
+      'La fecha de entrega del acceso no tiene un formato válido.',
+      'INVALID_ACCESS_GRANT_ASSIGNED_AT'
+    ) || toCurrentDateTimeSql();
+    const notes = normalizeText(payload?.notes) || null;
+
+    const collaboratorCreate = hasCollaboratorCreatePayload
+      ? normalizeCollaboratorCreatePayload(payload.collaborator_create)
+      : null;
+
+    const enrollmentStatus = await accessModel.getEnrollmentStatusByKey(ACTIVE_ENROLLMENT_STATUS_KEY);
+    if (!enrollmentStatus) {
+      throw new AppError('El catálogo base de Access no está configurado correctamente para otorgar accesos.', {
+        statusCode: 500,
+        code: 'ACCESS_BASE_CATALOG_MISSING'
+      });
+    }
+
+    let media = requestedAccessMediaId ? await assertAccessMediaExists(requestedAccessMediaId) : null;
+    let assetUnit = null;
+    let asset = null;
+
+    if (requestedAssetUnitId) {
+      const inventoryContext = await assertRfidInventoryUnit(requestedAssetUnitId);
+      assetUnit = inventoryContext.assetUnit;
+      asset = inventoryContext.asset;
+
+      if (media && Number(media.asset_unit_id) !== Number(requestedAssetUnitId)) {
+        throw new AppError('La unidad RFID elegida no coincide con el medio operativo indicado.', {
+          statusCode: 409,
+          code: 'ACCESS_GRANT_MEDIA_UNIT_MISMATCH'
+        });
+      }
+
+      if (!media) {
+        media = await accessModel.getAccessMediaByAssetUnitId(Number(requestedAssetUnitId));
+      }
+    }
+
+    if (media && !assetUnit) {
+      const inventoryContext = await assertRfidInventoryUnit(Number(media.asset_unit_id));
+      assetUnit = inventoryContext.assetUnit;
+      asset = inventoryContext.asset;
+    }
+
+    const [activeMediaAssignment, assignmentStatus, mediaAssignedStatus] = await Promise.all([
+      media ? accessModel.findActiveAccessMediaAssignmentByMediaId(Number(media.id)) : Promise.resolve(null),
+      requiresAccessMedia ? accessModel.getAssignmentStatusByKey(ACTIVE_ASSIGNMENT_STATUS_KEY) : Promise.resolve(null),
+      requiresAccessMedia ? accessModel.getMediaStatusByKey('assigned') : Promise.resolve(null)
+    ]);
+
+    if (requiresAccessMedia && !assignmentStatus) {
+      throw new AppError('El catálogo base de Access no está configurado correctamente para otorgar accesos.', {
+        statusCode: 500,
+        code: 'ACCESS_BASE_CATALOG_MISSING'
+      });
+    }
+
+    if (requiresAccessMedia && !mediaAssignedStatus) {
+      throw new AppError('El catálogo base de Access no está configurado correctamente para otorgar accesos.', {
+        statusCode: 500,
+        code: 'ACCESS_BASE_CATALOG_MISSING'
+      });
+    }
+
+    if (media && activeMediaAssignment) {
+      throw new AppError('La unidad RFID seleccionada ya cuenta con una asignación activa.', {
+        statusCode: 409,
+        code: 'ACCESS_GRANT_MEDIA_ALREADY_ASSIGNED'
+      });
+    }
+
+    if (media && TERMINAL_MEDIA_STATUS_KEYS.has(media.status_key)) {
+      throw new AppError('El medio RFID seleccionado ya se encuentra fuera del ciclo operativo reutilizable.', {
+        statusCode: 409,
+        code: 'ACCESS_GRANT_MEDIA_TERMINAL_STATUS'
+      });
+    }
+
+    if (media && media.status_key !== 'available') {
+      throw new AppError('Solo puedes otorgar acceso con medios RFID disponibles.', {
+        statusCode: 409,
+        code: 'ACCESS_GRANT_MEDIA_NOT_AVAILABLE'
+      });
+    }
+
+    if (assetUnit && assetUnit.status_key === 'retired') {
+      throw new AppError('La unidad física del RFID ya está en baja y no puede asignarse.', {
+        statusCode: 409,
+        code: 'ACCESS_GRANT_UNIT_RETIRED'
+      });
+    }
+
+    if (assetUnit && assetUnit.status_key !== 'available') {
+      throw new AppError('La unidad física del RFID no está disponible para asignación.', {
+        statusCode: 409,
+        code: 'ACCESS_GRANT_UNIT_NOT_AVAILABLE'
+      });
+    }
+
+    const inventoryAssignment = assetUnit
+      ? await inventoryModel.getActiveAssetAssignmentByUnitId(Number(assetUnit.id))
+      : null;
+    if (inventoryAssignment) {
+      throw new AppError('La unidad física seleccionada ya cuenta con un resguardo activo en Inventario.', {
+        statusCode: 409,
+        code: 'ACCESS_GRANT_UNIT_ALREADY_ASSIGNED_IN_INVENTORY'
+      });
+    }
+
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+      const txAccessModel = new AccessModel(connection);
+      const txInventoryModel = new InventoryModel(connection);
+      const txCollaboratorModel = new CollaboratorModel(connection);
+
+      let collaborator = null;
+      let finalCollaboratorId = collaboratorId;
+      let collaboratorCreated = false;
+
+      if (finalCollaboratorId) {
+        collaborator = await txCollaboratorModel.findById(finalCollaboratorId);
+      } else if (collaboratorCreate) {
+        const existingCollaborator = await txCollaboratorModel.findAnyByEmployeeId(collaboratorCreate.employee_id);
+        if (existingCollaborator) {
+          throw new AppError('Ya existe un colaborador registrado con ese ID operativo.', {
+            statusCode: 409,
+            code: 'COLLABORATOR_EMPLOYEE_ID_ALREADY_EXISTS'
+          });
+        }
+
+        finalCollaboratorId = await txCollaboratorModel.create({
+          employeeId: collaboratorCreate.employee_id,
+          firstName: collaboratorCreate.first_name,
+          lastName: collaboratorCreate.last_name,
+          areaName: collaboratorCreate.area_name,
+          status: 'active'
+        });
+        collaborator = await txCollaboratorModel.findById(finalCollaboratorId);
+        collaboratorCreated = true;
+      }
+
+      if (!collaborator) {
+        throw new AppError('El colaborador seleccionado no existe.', {
+          statusCode: 404,
+          code: 'COLLABORATOR_NOT_FOUND'
+        });
+      }
+
+      if (collaborator.status !== 'active') {
+        throw new AppError('Solo puedes otorgar acceso a colaboradores activos.', {
+          statusCode: 409,
+          code: 'COLLABORATOR_INACTIVE'
+        });
+      }
+
+      let resolvedAccessMedia = media;
+      let resolvedAccessMediaId = media ? Number(media.id) : null;
+      let activeAssignmentsForCollaborator = [];
+      let existingActiveAssignment = null;
+      if (requiresAccessMedia) {
+        activeAssignmentsForCollaborator = await txAccessModel.listAccessMediaAssignments({
+          collaboratorId: Number(collaborator.id),
+          statusKey: ACTIVE_ASSIGNMENT_STATUS_KEY,
+          limit: 10
+        });
+
+        if (activeAssignmentsForCollaborator.length > 1) {
+          throw new AppError('El colaborador ya cuenta con un medio activo. Para otro medio debes usar el flujo de reposición o baja correspondiente.', {
+            statusCode: 409,
+            code: 'ACCESS_GRANT_COLLABORATOR_ALREADY_HAS_ACTIVE_MEDIA'
+          });
+        }
+
+        existingActiveAssignment = activeAssignmentsForCollaborator[0] || null;
+
+        if (existingActiveAssignment && requestedAccessMediaId && Number(existingActiveAssignment.access_media_id) !== Number(requestedAccessMediaId)) {
+          throw new AppError('El colaborador ya cuenta con un RFID activo distinto. Usa el flujo de reposición o baja antes de cambiarlo.', {
+            statusCode: 409,
+            code: 'ACCESS_GRANT_COLLABORATOR_ALREADY_HAS_ACTIVE_MEDIA'
+          });
+        }
+
+        if (existingActiveAssignment && requestedAssetUnitId) {
+          throw new AppError('El colaborador ya cuenta con un RFID activo. No puedes asignar otra unidad en el mismo paso.', {
+            statusCode: 409,
+            code: 'ACCESS_GRANT_COLLABORATOR_ALREADY_HAS_ACTIVE_MEDIA'
+          });
+        }
+
+        if (!existingActiveAssignment && !requestedAccessMediaId && !requestedAssetUnitId) {
+          throw new AppError('Selecciona una unidad RFID disponible para continuar.', {
+            statusCode: 400,
+            code: 'INVALID_ACCESS_GRANT_MEDIA'
+          });
+        }
+
+        if (existingActiveAssignment && !resolvedAccessMedia) {
+          resolvedAccessMedia = await txAccessModel.getAccessMediaById(Number(existingActiveAssignment.access_media_id));
+          resolvedAccessMediaId = resolvedAccessMedia ? Number(resolvedAccessMedia.id) : null;
+        }
+
+        if (resolvedAccessMedia && !assetUnit) {
+          const inventoryContext = await assertRfidInventoryUnit(Number(resolvedAccessMedia.asset_unit_id));
+          assetUnit = inventoryContext.assetUnit;
+          asset = inventoryContext.asset;
+        }
+      }
+
+      const resolvedSystems = [];
+      for (const systemKey of normalizedSystemKeys) {
+        const accessSystem = await txAccessModel.getAccessSystemByKey(systemKey);
+        if (!accessSystem || !GRANTABLE_ACCESS_SYSTEM_KEY_SET.has(accessSystem.system_key)) {
+          throw new AppError('Uno o más sistemas seleccionados no son válidos para este flujo.', {
+            statusCode: 409,
+            code: 'ACCESS_GRANT_SYSTEM_NOT_ALLOWED'
+          });
+        }
+
+        const existingActiveEnrollment = await txAccessModel.findActiveAccessEnrollment({
+          collaboratorId: Number(collaborator.id),
+          accessSystemId: Number(accessSystem.id)
+        });
+
+        if (existingActiveEnrollment) {
+          throw new AppError(`El colaborador ya cuenta con un acceso activo en ${accessSystem.name}.`, {
+            statusCode: 409,
+            code: 'ACCESS_GRANT_ENROLLMENT_ALREADY_ACTIVE'
+          });
+        }
+
+        resolvedSystems.push(accessSystem);
+      }
+
+      const enrollmentsToDeactivate = [];
+      for (const enrollmentId of deactivationEnrollmentIds) {
+        const enrollmentToDeactivate = await txAccessModel.getAccessEnrollmentById(Number(enrollmentId));
+        if (!enrollmentToDeactivate) {
+          throw new AppError('Una de las altas a cerrar ya no existe.', {
+            statusCode: 404,
+            code: 'ACCESS_ENROLLMENT_NOT_FOUND'
+          });
+        }
+
+        if (Number(enrollmentToDeactivate.collaborator_id) !== Number(collaborator.id)) {
+          throw new AppError('Solo puedes cerrar altas del mismo colaborador al que otorgas el acceso.', {
+            statusCode: 409,
+            code: 'ACCESS_GRANT_DEACTIVATION_COLLABORATOR_MISMATCH'
+          });
+        }
+
+        if (enrollmentToDeactivate.status_key === 'deactivated') {
+          throw new AppError('Una de las altas seleccionadas ya estaba desactivada.', {
+            statusCode: 409,
+            code: 'ACCESS_GRANT_DEACTIVATION_ALREADY_CLOSED'
+          });
+        }
+
+        const deactivationSystem = await txAccessModel.getAccessSystemById(Number(enrollmentToDeactivate.access_system_id));
+        if (!deactivationSystem) {
+          throw new AppError('No fue posible resolver el sistema de una alta a cerrar.', {
+            statusCode: 404,
+            code: 'ACCESS_SYSTEM_NOT_FOUND'
+          });
+        }
+
+        if (normalizedSystemKeys.includes(deactivationSystem.system_key)) {
+          throw new AppError(`No puedes cerrar ${deactivationSystem.name} y volver a otorgarlo en la misma operación.`, {
+            statusCode: 409,
+            code: 'ACCESS_GRANT_DEACTIVATION_SYSTEM_CONFLICT'
+          });
+        }
+
+        enrollmentsToDeactivate.push(enrollmentToDeactivate);
+      }
+
+      let accessMediaAssignmentId = existingActiveAssignment ? Number(existingActiveAssignment.id) : null;
+      const createdEventTypes = [];
+      let inventoryEffect = null;
+
+      if (requiresAccessMedia && !existingActiveAssignment) {
+        if (!resolvedAccessMedia) {
+          const registration = await registerAccessMediaFromInventoryUnit({
+            connection,
+            txAccessModel,
+            txInventoryModel,
+            assetUnit,
+            asset,
+            authUser,
+            notes
+          });
+          resolvedAccessMedia = registration.media;
+          resolvedAccessMediaId = Number(registration.media.id);
+          if (registration.created) {
+            createdEventTypes.push('media_created');
+          }
+        }
+
+        accessMediaAssignmentId = await txAccessModel.createAccessMediaAssignment(connection, {
+          accessMediaId: Number(resolvedAccessMedia.id),
+          collaboratorId: Number(collaborator.id),
+          statusId: Number(assignmentStatus.id),
+          assignedByUserId: authUser?.id || null,
+          assignedAt,
+          expectedReturnAt: null,
+          assignmentNote: notes
+        });
+
+        await txAccessModel.updateAccessMediaStatus(connection, {
+          accessMediaId: Number(resolvedAccessMedia.id),
+          statusId: Number(mediaAssignedStatus.id),
+          notes
+        });
+
+        const nextLocationId = assetUnit.current_location_id ? Number(assetUnit.current_location_id) : null;
+        const inventoryReason = notes || `Entrega operativa de ${resolvedAccessMedia.tag_code} a ${collaborator.full_name}.`;
+
+        await syncInventoryForAccessLifecycle({
+          txInventoryModel,
+          accessMedia: resolvedAccessMedia,
+          assetUnit,
+          asset,
+          operatorId: authUser?.id || null,
+          requestReason: inventoryReason,
+          movementTypeKey: 'assignment_out',
+          targetUnitStatusKey: 'assigned',
+          referenceId: accessMediaAssignmentId,
+          happenedAt: assignedAt,
+          nextLocationId,
+          eventActionKey: 'access_media_assigned',
+          beforeSnapshot: {
+            status_key: assetUnit.status_key,
+            current_location_id: assetUnit.current_location_id
+          },
+          afterSnapshot: {
+            status_key: 'assigned',
+            current_location_id: nextLocationId,
+            collaborator_id: Number(collaborator.id),
+            access_media_assignment_id: accessMediaAssignmentId
+          }
+        });
+
+        await txAccessModel.createAccessEvent(connection, {
+          eventType: 'media_assigned',
+          operatorId: authUser?.id || null,
+          collaboratorId: Number(collaborator.id),
+          accessMediaId: Number(resolvedAccessMedia.id),
+          accessMediaAssignmentId,
+          notes: inventoryReason,
+          happenedAt: assignedAt
+        });
+        createdEventTypes.push('media_assigned');
+
+        inventoryEffect = {
+          asset_unit_id: Number(assetUnit.id),
+          previous_status_key: assetUnit.status_key,
+          next_status_key: 'assigned',
+          current_location_id: nextLocationId
+        };
+      } else if (requiresAccessMedia && existingActiveAssignment) {
+        accessMediaAssignmentId = Number(existingActiveAssignment.id);
+      }
+
+      const accessEnrollmentIds = [];
+      for (const accessSystem of resolvedSystems) {
+        const accessEnrollmentId = await txAccessModel.createAccessEnrollment(connection, {
+          collaboratorId: Number(collaborator.id),
+          accessSystemId: Number(accessSystem.id),
+          mediaAssignmentId: accessMediaAssignmentId || null,
+          statusId: Number(enrollmentStatus.id),
+          activatedAt: assignedAt,
+          notes
+        });
+
+        accessEnrollmentIds.push(accessEnrollmentId);
+
+        await txAccessModel.createAccessEvent(connection, {
+          eventType: 'enrollment_created',
+          operatorId: authUser?.id || null,
+          collaboratorId: Number(collaborator.id),
+          accessSystemId: Number(accessSystem.id),
+          accessMediaAssignmentId,
+          accessEnrollmentId,
+          notes: notes || `Alta creada para ${accessSystem.name}.`,
+          happenedAt: assignedAt
+        });
+        createdEventTypes.push('enrollment_created');
+
+        await txAccessModel.createAccessEvent(connection, {
+          eventType: 'enrollment_activated',
+          operatorId: authUser?.id || null,
+          collaboratorId: Number(collaborator.id),
+          accessSystemId: Number(accessSystem.id),
+          accessMediaAssignmentId,
+          accessEnrollmentId,
+          notes: notes || `Alta activada para ${accessSystem.name}.`,
+          happenedAt: assignedAt
+        });
+        createdEventTypes.push('enrollment_activated');
+      }
+
+      const deactivatedEnrollmentIds = [];
+      for (const enrollmentToDeactivate of enrollmentsToDeactivate) {
+        const deactivatedEnrollmentId = await deactivateEnrollmentInTransaction({
+          connection,
+          txAccessModel,
+          currentEnrollment: enrollmentToDeactivate,
+          operatorId: authUser?.id || null,
+          deactivatedAt: assignedAt,
+          notes: notes || 'Alta desactivada por migración operativa de acceso.'
+        });
+        deactivatedEnrollmentIds.push(deactivatedEnrollmentId);
+        createdEventTypes.push('enrollment_deactivated');
+      }
+
+      await txAccessModel.createAccessEvent(connection, {
+        eventType: 'access_granted',
+        operatorId: authUser?.id || null,
+        collaboratorId: Number(collaborator.id),
+        accessMediaId: resolvedAccessMediaId,
+        accessMediaAssignmentId,
+        notes: notes || `Acceso otorgado en ${resolvedSystems.map((system) => system.name).join(', ')}.`,
+        happenedAt: assignedAt
+      });
+      createdEventTypes.push('access_granted');
+
+      await connection.commit();
+
+      const [persistedCollaborator, assignmentContext, enrollmentContexts] = await Promise.all([
+        collaboratorModel.findById(Number(collaborator.id)),
+        loadAssignmentContext(accessMediaAssignmentId),
+        Promise.all(accessEnrollmentIds.map((accessEnrollmentId) => loadEnrollmentContext(accessEnrollmentId)))
+      ]);
+
+      await AuditService.record({
+        operatorId: authUser?.id || null,
+        action: 'access.grant_access',
+        entityType: 'collaborators',
+        entityId: Number(collaborator.id),
+        beforeSnapshot: {
+          collaborator_created: false,
+          active_assignment_ids: [],
+          active_enrollment_ids: []
+        },
+        afterSnapshot: {
+          collaborator_created: collaboratorCreated,
+          access_media_assignment_id: accessMediaAssignmentId || null,
+          access_enrollment_ids: accessEnrollmentIds,
+          deactivated_enrollment_ids: deactivatedEnrollmentIds,
+          systems: normalizedSystemKeys,
+          uses_rfid: requiresAccessMedia
+        },
+        details: {
+          access_media_id: resolvedAccessMediaId || null,
+          asset_unit_id: assetUnit ? Number(assetUnit.id) : null,
+          collaborator_id: Number(collaborator.id),
+          systems: normalizedSystemKeys,
+          deactivated_enrollment_ids: deactivatedEnrollmentIds,
+          requires_rfid_override: requiresRfidOverride
+        },
+        requestContext
+      });
+
+      return {
+        collaborator: toCollaboratorSummary(persistedCollaborator || collaborator),
+        collaborator_created: collaboratorCreated,
+        media_assignment: buildAccessMediaAssignmentResponse(assignmentContext),
+        enrollments: enrollmentContexts
+          .filter(Boolean)
+          .map((context) => buildAccessEnrollmentResponse(context)),
+        deactivated_enrollment_ids: deactivatedEnrollmentIds,
+        inventory_effect: inventoryEffect,
+        events_created: {
+          total: createdEventTypes.length,
+          event_types: createdEventTypes
+        }
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  },
+
   async returnAccessMediaAssignment({ accessMediaAssignmentId, payload, authUser = null, requestContext = {} }) {
     const normalizedAssignmentId = normalizeId(accessMediaAssignmentId);
     if (!normalizedAssignmentId) {
@@ -1556,6 +2333,7 @@ export const AccessService = {
       });
     }
 
+    const requiresAccessMedia = RFID_REQUIRED_ACCESS_SYSTEM_KEY_SET.has(accessSystem.system_key);
     let mediaAssignment = null;
     const mediaAssignmentId = normalizeId(payload?.media_assignment_id);
     if (mediaAssignmentId) {
@@ -1573,6 +2351,13 @@ export const AccessService = {
           code: 'ACCESS_ENROLLMENT_REQUIRES_ACTIVE_MEDIA_ASSIGNMENT'
         });
       }
+    }
+
+    if (statusKey === ACTIVE_ENROLLMENT_STATUS_KEY && requiresAccessMedia && !mediaAssignmentId) {
+      throw new AppError(`El sistema ${accessSystem.name} requiere un RFID activo ligado al colaborador.`, {
+        statusCode: 409,
+        code: 'ACCESS_ENROLLMENT_MEDIA_REQUIRED'
+      });
     }
 
     const existingActiveEnrollment = await accessModel.findActiveAccessEnrollment({
@@ -1713,6 +2498,7 @@ export const AccessService = {
       accessSystemId: currentEnrollment.access_system_id
     });
 
+    const requiresAccessMedia = RFID_REQUIRED_ACCESS_SYSTEM_KEY_SET.has(accessSystem.system_key);
     let mediaAssignmentId;
     if (payload?.media_assignment_id !== undefined) {
       mediaAssignmentId = normalizeId(payload.media_assignment_id);
@@ -1744,6 +2530,14 @@ export const AccessService = {
         throw new AppError('Ya existe otro enrollment activo para ese colaborador y sistema.', {
           statusCode: 409,
           code: 'ACCESS_ENROLLMENT_ALREADY_ACTIVE'
+        });
+      }
+
+      const resolvedMediaAssignmentId = mediaAssignmentId ?? currentEnrollment.media_assignment_id ?? null;
+      if (requiresAccessMedia && !resolvedMediaAssignmentId) {
+        throw new AppError(`El sistema ${accessSystem.name} requiere un RFID activo ligado al colaborador.`, {
+          statusCode: 409,
+          code: 'ACCESS_ENROLLMENT_MEDIA_REQUIRED'
         });
       }
     }

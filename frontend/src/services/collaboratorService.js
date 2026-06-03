@@ -30,3 +30,8 @@ export const listCollaborators = ({ search = '', status = 'active', linked = '' 
   const suffix = query.toString() ? `?${query.toString()}` : '';
   return requestCollaboratorJson(`/collaborators${suffix}`);
 };
+
+export const createCollaborator = (payload) => requestCollaboratorJson('/collaborators', {
+  method: 'POST',
+  body: payload
+});

@@ -23,6 +23,7 @@ export const InlineNotice = ({
   tone = 'info',
   title = '',
   children,
+  actions = null,
   className = '',
   role = '',
   live = ''
@@ -45,6 +46,7 @@ export const InlineNotice = ({
         {title ? <strong className="inline-notice__title">{title}</strong> : null}
         <div className="inline-notice__message">{children}</div>
       </div>
+      {actions ? <div className="inline-notice__actions">{actions}</div> : null}
     </div>
   );
 };
@@ -53,6 +55,7 @@ InlineNotice.propTypes = {
   tone: PropTypes.oneOf(['error', 'success', 'info']),
   title: PropTypes.string,
   children: PropTypes.node.isRequired,
+  actions: PropTypes.node,
   className: PropTypes.string,
   role: PropTypes.string,
   live: PropTypes.oneOf(['off', 'polite', 'assertive', ''])

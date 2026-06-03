@@ -98,7 +98,7 @@ export const getAssetDetail = (assetId, { movementLimit = 60 } = {}) => requestI
 
 export const listAssetUnits = (assetId) => requestInventoryJson(`/inventory/assets/${assetId}/units`);
 
-export const listInventoryAssetUnits = ({ status = '', assetId = '', search = '' } = {}) => {
+export const listInventoryAssetUnits = ({ status = '', assetId = '', search = '', assetTypeKey = '' } = {}) => {
   const query = new URLSearchParams();
 
   if (String(status || '').trim()) {
@@ -111,6 +111,10 @@ export const listInventoryAssetUnits = ({ status = '', assetId = '', search = ''
 
   if (String(search || '').trim()) {
     query.set('search', String(search || '').trim());
+  }
+
+  if (String(assetTypeKey || '').trim()) {
+    query.set('asset_type_key', String(assetTypeKey || '').trim());
   }
 
   const suffix = query.toString() ? `?${query.toString()}` : '';

@@ -25,16 +25,26 @@ import { FieldLabel } from '../components/primitives/FieldLabel.jsx';
 import { FilterChipGroup } from '../components/primitives/FilterChipGroup.jsx';
 import { FilterSelect } from '../components/primitives/FilterSelect.jsx';
 import { DrawerTabs } from '../components/primitives/DrawerTabs.jsx';
+import { InlineNotice } from '../components/primitives/InlineNotice.jsx';
 import { OperationalPanel } from '../components/primitives/OperationalPanel.jsx';
 import { OperationalTable } from '../components/primitives/OperationalTable.jsx';
 import { PaginationBar } from '../components/primitives/PaginationBar.jsx';
 import { SegmentedControl } from '../components/primitives/SegmentedControl.jsx';
 import { ToolbarSearchField } from '../components/primitives/ToolbarSearchField.jsx';
+import { WorkspaceActionMenu } from '../components/primitives/WorkspaceActionMenu.jsx';
+import { WorkspaceNoticeRail } from '../components/primitives/WorkspaceNoticeRail.jsx';
 import { WorkspaceSplitLayout } from '../components/primitives/WorkspaceSplitLayout.jsx';
 import { ModalDialog } from '../components/primitives/ModalDialog.jsx';
 import { useAuth } from '../hooks/useAuth.js';
 import { hasPermission } from '../utils/accessControl.js';
+import { getVisibleAssetDescription, stripSeedMarkerCopy } from '../utils/detailCopy.js';
 import { getNextHorizontalTabIndex } from '../utils/tabNavigation.js';
+import {
+  createWorkspaceErrorTitle,
+  createWorkspaceLoadingState,
+  createWorkspaceNoRecordsState,
+  createWorkspaceNoResultsState
+} from '../utils/workspaceStateCopy.js';
 import {
   closeAssetAssignment,
   createAssetAssignment,
@@ -72,6 +82,16 @@ const inventoryViewOptions = [
   { key: 'assignments', label: 'Resguardos', icon: ShieldCheck },
   { key: 'locations', label: 'Ubicaciones', icon: MapPin }
 ];
+
+const inventoryLoadingState = createWorkspaceLoadingState('inventario');
+const inventoryLoadErrorTitle = createWorkspaceErrorTitle('el inventario');
+const inventoryAssetsNoResultsState = createWorkspaceNoResultsState('activos');
+const inventoryMovementsNoRecordsState = createWorkspaceNoRecordsState(
+  'movimientos',
+  'Registra el primer movimiento para iniciar la trazabilidad del inventario.'
+);
+const inventoryAssignmentsNoResultsState = createWorkspaceNoResultsState('resguardos');
+const inventoryLocationsNoResultsState = createWorkspaceNoResultsState('ubicaciones');
 
 const validInventoryViewKeys = new Set(inventoryViewOptions.map((option) => option.key));
 
@@ -467,8 +487,10 @@ const InventoryPage = () => {
   const [catalogLocationTypeQuery, setCatalogLocationTypeQuery] = useState('');
   const createAssetTriggerRef = useRef(null);
   const createMovementTriggerRef = useRef(null);
+  const createMovementReturnFocusRef = useRef(null);
   const createLocationTriggerRef = useRef(null);
-  const catalogTriggerRef = useRef(null);
+  const inventoryOverflowTriggerRef = useRef(null);
+  const catalogReturnFocusRef = useRef(null);
   const catalogAssetTabRef = useRef(null);
   const catalogLocationTabRef = useRef(null);
   const createAssetTypeSelectRef = useRef(null);
@@ -611,7 +633,7 @@ const InventoryPage = () => {
       setCatalogLocationTypes(Array.isArray(locationTypesData) ? locationTypesData : []);
     } catch (error) {
       if (applyAuthFallback(error)) return;
-      setScreenError(normalizeErrorMessage(error, 'No fue posible cargar el inventario.'));
+      setScreenError(normalizeErrorMessage(error, `${inventoryLoadErrorTitle}.`));
     } finally {
       setIsLoadingScreen(false);
     }
@@ -889,7 +911,7 @@ const InventoryPage = () => {
       code: normalizePotentialMojibake(location.code),
       location_type_name: normalizePotentialMojibake(location.location_type_name),
       parent_location_name: normalizePotentialMojibake(location.parent_location_name),
-      description: normalizePotentialMojibake(location.description)
+      description: stripSeedMarkerCopy(normalizePotentialMojibake(location.description))
     }))
   ), [locations]);
 
@@ -1104,12 +1126,13 @@ const InventoryPage = () => {
     return resolvedAssignments;
   };
 
-  const openCatalogModal = () => {
+  const openCatalogModal = (triggerElement = null) => {
     if (!canManageCatalog) {
       return;
     }
 
     resetActionFeedback();
+    catalogReturnFocusRef.current = triggerElement || inventoryOverflowTriggerRef.current;
     setActiveCatalogTab('asset_types');
     setCatalogAssetTypeQuery('');
     setCatalogLocationTypeQuery('');
@@ -1118,6 +1141,22 @@ const InventoryPage = () => {
     setAssetTypeForm(defaultCatalogAssetTypeForm);
     setLocationTypeForm(defaultCatalogLocationTypeForm);
     setIsCatalogModalOpen(true);
+  };
+
+  const openCreateMovementModal = (triggerElement = null) => {
+    if (!canUpdateInventory) {
+      return;
+    }
+
+    resetActionFeedback();
+    createMovementReturnFocusRef.current = triggerElement || createMovementTriggerRef.current;
+    setMovementForm((currentForm) => ({
+      ...currentForm,
+      lines: currentForm.lines.length > 0
+        ? currentForm.lines
+        : [{ ...defaultMovementLine, asset_id: selectedAssetId ? String(selectedAssetId) : '' }]
+    }));
+    setIsCreateMovementOpen(true);
   };
 
   const scheduleCatalogEditorFocus = (tabKey, selectContent = false) => {
@@ -1818,8 +1857,31 @@ const InventoryPage = () => {
   const hasAvailableAssetUnits = selectedAssetUnits.some((unit) => unit.status_key === 'available');
   const hasAssignedAssetUnits = selectedAssetUnits.some((unit) => unit.status_key === 'assigned');
   const hasRepairingAssetUnits = selectedAssetUnits.some((unit) => unit.status_key === 'in_repair');
+  const hasActionNotice = Boolean(actionError || actionSuccess);
+  const workspaceNotices = useMemo(() => {
+    const notices = [];
+
+    if (actionSuccess) {
+      notices.push({
+        key: 'inventory-success',
+        tone: 'success',
+        message: actionSuccess
+      });
+    }
+
+    if (actionError) {
+      notices.push({
+        key: 'inventory-error',
+        tone: 'error',
+        message: actionError
+      });
+    }
+
+    return notices;
+  }, [actionError, actionSuccess]);
   const recentSummaryMovements = selectedAssetMovements.slice(0, 3);
   const isAssetDetailPanelOpen = activeView === 'assets' && Boolean(detailAsset);
+  const visibleAssetDescription = getVisibleAssetDescription(detailAsset?.description);
   const detailExistenceLabel = detailAsset
     ? (
       detailAsset.tracking_mode_key === 'stock'
@@ -1944,47 +2006,30 @@ const InventoryPage = () => {
   }, [actionSuccess, actionError]);
 
   return (
-    <section className="inventory-page" aria-label="Área de trabajo de inventario">
-      <header className="tickets-page__header">
-        <div className="tickets-page__heading">
-          <h1 className="tickets-page__title">Inventario</h1>
+    <section className="workspace-page inventory-page" aria-label="Área de trabajo de inventario">
+      <header className="workspace-page__header">
+        <div className="workspace-page__heading">
+          <h1 className="workspace-page__title">Inventario</h1>
         </div>
-        <div className="tickets-page__header-actions">
+        <div className="workspace-page__header-actions">
           {canManageCatalog ? (
-            <button
-              type="button"
-              className="tickets-page__ghost-action"
-              ref={catalogTriggerRef}
-              onClick={openCatalogModal}
-            >
-              <Settings2 size={16} aria-hidden="true" />
-              <span>Configurar catálogos</span>
-            </button>
-          ) : null}
-          {canUpdateInventory ? (
-            <button
-              type="button"
-              className="tickets-page__ghost-action"
-              ref={createMovementTriggerRef}
-              onClick={() => {
-                resetActionFeedback();
-                setMovementForm((currentForm) => ({
-                  ...currentForm,
-                  lines: currentForm.lines.length > 0
-                    ? currentForm.lines
-                    : [{ ...defaultMovementLine, asset_id: selectedAssetId ? String(selectedAssetId) : '' }]
-                }));
-                setIsCreateMovementOpen(true);
-              }}
-            >
-              <ArrowRightLeft size={16} aria-hidden="true" />
-              <span>Registrar movimiento</span>
-            </button>
+            <WorkspaceActionMenu
+              label="Más acciones"
+              items={[{
+                key: 'manage-catalogs',
+                label: 'Configurar catálogos',
+                icon: Settings2,
+                onSelect: () => openCatalogModal(inventoryOverflowTriggerRef.current)
+              }]}
+              className="workspace-page__header-menu"
+              triggerClassName="workspace-action workspace-action--ghost"
+              triggerRef={inventoryOverflowTriggerRef}
+            />
           ) : null}
           {canCreateInventory ? (
             <button
               type="button"
-              className="tickets-page__primary-action"
+              className="workspace-action workspace-action--primary"
               ref={createAssetTriggerRef}
               onClick={() => {
                 resetActionFeedback();
@@ -1998,24 +2043,26 @@ const InventoryPage = () => {
         </div>
       </header>
 
-      <section className="tickets-page__surface inventory-page__surface">
-        <div className="tickets-page__toolbar inventory-page__toolbar">
+      <section className="workspace-page__surface workspace-page__surface--operational">
+        <div className="workspace-page__toolbar workspace-page__toolbar--operational">
           <SegmentedControl
             label="Vista operativa de inventario"
             options={inventoryViewOptions}
             activeKey={activeView}
             onActivate={handleViewChange}
-            className="tickets-page__segmented inventory-page__view-segmented"
-            buttonClassName="tickets-page__segmented-button"
-            activeButtonClassName="tickets-page__segmented-button--active"
+            className="workspace-segmented workspace-page__view-segmented"
+            buttonClassName="workspace-segmented__button"
+            activeButtonClassName="workspace-segmented__button--active"
             idPrefix="inventory-view"
             panelIdByKey={(key) => `inventory-panel-${key}`}
           />
         </div>
 
+        {hasActionNotice ? <WorkspaceNoticeRail notices={workspaceNotices} /> : null}
+
         {screenError ? (
-          <EmptyState title="No fue posible cargar el inventario" copy={screenError} id="inventory-state-error" role="region">
-            <button type="button" className="tickets-page__primary-action" onClick={() => void loadCoreData()}>
+          <EmptyState title={inventoryLoadErrorTitle} copy={screenError} id="inventory-state-error" role="region">
+            <button type="button" className="workspace-action workspace-action--primary" onClick={() => void loadCoreData()}>
               Reintentar
             </button>
           </EmptyState>
@@ -2026,19 +2073,19 @@ const InventoryPage = () => {
             id={`inventory-panel-${activeView}`}
             role="tabpanel"
             aria-labelledby={`inventory-view-${activeView}`}
-            className="inventory-panel"
+            className="workspace-panel"
           >
-            <div className="inventory-panel__workspace inventory-panel__workspace--fixed">
+            <div className="workspace-panel__viewport workspace-panel__viewport--fixed">
               <OperationalPanel
                 isLoading
                 hasData={false}
                 tone="neutral"
-                loadingTitle="Cargando inventario"
-                loadingCopy="Estamos preparando la vista operativa del módulo."
+                loadingTitle={inventoryLoadingState.title}
+                loadingCopy={inventoryLoadingState.copy}
                 loadingRole="status"
                 loadingAriaLive="polite"
                 loadingAriaAtomic
-                className={`inventory-panel__workspace inventory-panel__workspace--${activeView === 'locations' ? 'locations' : activeView === 'assets' ? 'assets' : 'table'}`}
+                className="workspace-panel__viewport workspace-panel__viewport--flush"
                 content={null}
                 emptyTitle=""
                 emptyCopy=""
@@ -2049,8 +2096,8 @@ const InventoryPage = () => {
 
         {!isLoadingScreen && !screenError ? (
           <>
-            <section id="inventory-panel-assets" role="tabpanel" aria-labelledby="inventory-view-assets" hidden={activeView !== 'assets'} className="inventory-panel">
-              <div className="tickets-page__control-row inventory-assets__control-row">
+            <section id="inventory-panel-assets" role="tabpanel" aria-labelledby="inventory-view-assets" hidden={activeView !== 'assets'} className="workspace-panel">
+              <div className="workspace-page__control-row workspace-page__control-row--operational">
                 <ToolbarSearchField
                   id="inventory-search"
                   name="inventory-search"
@@ -2058,17 +2105,17 @@ const InventoryPage = () => {
                   onChange={setSearchTerm}
                   placeholder="Buscar por activo, código, tipo o marca..."
                   srLabel="Buscar activos"
-                  className="inventory-assets__search"
+                  className="workspace-search--operational"
                 />
-                <div className="tickets-page__filters inventory-assets__filters">
+                <div className="workspace-page__filters workspace-page__filters--operational">
                   <FilterChipGroup
                     label="Filtro por estado"
                     options={assetStatusOptions}
                     activeKey={assetStatusFilter}
                     onSelect={setAssetStatusFilter}
-                    className="tickets-page__chip-group inventory-assets__chip-group"
-                    chipClassName="tickets-page__chip inventory-assets__chip"
-                    activeChipClassName="tickets-page__chip--active inventory-assets__chip--active"
+                    className="workspace-chip-group workspace-chip-group--compact"
+                    chipClassName="workspace-chip"
+                    activeChipClassName="workspace-chip--active"
                   />
                   <FilterSelect
                     id="inventory-tracking-mode"
@@ -2078,7 +2125,7 @@ const InventoryPage = () => {
                     value={trackingModeFilter}
                     options={trackingModeOptions}
                     onChange={setTrackingModeFilter}
-                    className="filter-select inventory-assets__tracking-select"
+                    className="filter-select filter-select--operational"
                   />
                 </div>
               </div>
@@ -2092,11 +2139,11 @@ const InventoryPage = () => {
                 detailAriaLabel="Panel contextual de detalle"
                 detailAriaLabelledBy={INVENTORY_ASSET_DETAIL_TITLE_ID}
                 main={(
-                  <div className="inventory-panel__workspace inventory-panel__workspace--assets inventory-panel__workspace--fixed">
+                  <div className="workspace-panel__viewport workspace-panel__viewport--flush workspace-panel__viewport--fixed">
                     {filteredAssets.length === 0 ? (
-                      <EmptyState title="No encontramos activos con estos filtros" copy="Ajusta la búsqueda, el estado o el modo para recuperar resultados." id="inventory-assets-empty" role="region">
+                      <EmptyState title={inventoryAssetsNoResultsState.title} copy={inventoryAssetsNoResultsState.copy} id="inventory-assets-empty" role="region">
                         {canCreateInventory ? (
-                          <button type="button" className="tickets-page__primary-action" onClick={() => setIsCreateAssetOpen(true)}>
+                          <button type="button" className="workspace-action workspace-action--primary" onClick={() => setIsCreateAssetOpen(true)}>
                             Nuevo activo
                           </button>
                         ) : null}
@@ -2105,7 +2152,7 @@ const InventoryPage = () => {
                       <OperationalTable
                         className="inventory-assets-list"
                         ariaLabel="Listado de activos"
-                        scrollClassName="ticket-list__scroll inventory-table-wrap inventory-table-wrap--workspace"
+                        scrollClassName="data-table__scroll workspace-scroll-wrap--fill"
                         pagination={(
                           <PaginationBar
                             ariaLabel="Paginación de activos"
@@ -2127,7 +2174,7 @@ const InventoryPage = () => {
                           />
                         )}
                       >
-                        <table className="ticket-list__table inventory-table">
+                        <table className="data-table__table inventory-table">
                           <thead>
                             <tr>
                               <th scope="col">Activo</th>
@@ -2149,10 +2196,10 @@ const InventoryPage = () => {
                                 <tr
                                   key={asset.id}
                                   className={isSelected
-                                    ? 'ticket-list__row inventory-table__row ticket-list__row--active inventory-table__row--active'
-                                    : 'ticket-list__row inventory-table__row'}
+                                    ? 'data-table__row inventory-table__row data-table__row--active inventory-table__row--active'
+                                    : 'data-table__row inventory-table__row'}
                                 >
-                                  <td className="ticket-list__cell">
+                                  <td className="data-table__cell">
                                     <button
                                       type="button"
                                       className="data-table__row-action"
@@ -2170,14 +2217,14 @@ const InventoryPage = () => {
                                       <span className="data-table__item-meta">{asset.type_name} / {asset.category_name}</span>
                                     </button>
                                   </td>
-                                  <td className="ticket-list__cell">{asset.tracking_mode_name}</td>
-                                  <td className="ticket-list__cell">
+                                  <td className="data-table__cell">{asset.tracking_mode_name}</td>
+                                  <td className="data-table__cell">
                                     <span className={`inventory-status-chip inventory-status-chip--${toOperationalStatusTone(asset.operational_status_key)}`}>
                                       {asset.operational_status_name || toOperationalStatusLabel(asset.operational_status_key)}
                                     </span>
                                   </td>
-                                  <td className="ticket-list__cell">{stockLabel}</td>
-                                  <td className="ticket-list__cell">{formatDateTime(asset.updated_at)}</td>
+                                  <td className="data-table__cell">{stockLabel}</td>
+                                  <td className="data-table__cell">{formatDateTime(asset.updated_at)}</td>
                                 </tr>
                               );
                             })}
@@ -2189,7 +2236,7 @@ const InventoryPage = () => {
                 )}
                 detail={detailAsset ? (
                   <div
-                    className="ticket-detail ticket-detail--tone-primary inventory-asset-detail"
+                    className="ticket-detail panel-detail ticket-detail--tone-primary inventory-asset-detail"
                     onKeyDownCapture={(event) => {
                       if (event.key !== 'Escape') {
                         return;
@@ -2200,9 +2247,9 @@ const InventoryPage = () => {
                       closeAssetDetail();
                     }}
                   >
-                    <header className="ticket-detail__header inventory-asset-detail__header">
-                      <div className="ticket-detail__header-top">
-                        <div className="ticket-detail__header-id inventory-asset-detail__header-id">
+                    <header className="ticket-detail__header panel-detail__header inventory-asset-detail__header">
+                      <div className="ticket-detail__header-top panel-detail__header-top">
+                        <div className="ticket-detail__header-id panel-detail__header-id inventory-asset-detail__header-id">
                           <span className="ticket-detail__ticket-id">
                             {detailAsset.internal_code || `AST-${String(detailAsset.id).padStart(6, '0')}`}
                           </span>
@@ -2210,7 +2257,7 @@ const InventoryPage = () => {
                             {detailAsset.operational_status_name || toOperationalStatusLabel(detailAsset.operational_status_key)}
                           </span>
                         </div>
-                        <div className="ticket-detail__header-actions inventory-asset-detail__header-actions">
+                        <div className="ticket-detail__header-actions panel-detail__header-actions inventory-asset-detail__header-actions">
                           {isLoadingAssetDetail ? (
                             <span
                               className="inventory-asset-detail__loading"
@@ -2245,21 +2292,21 @@ const InventoryPage = () => {
                       </div>
                       <h2
                         id={INVENTORY_ASSET_DETAIL_TITLE_ID}
-                        className="ticket-detail__title inventory-asset-detail__title"
+                        className="ticket-detail__title panel-detail__title inventory-asset-detail__title"
                       >
                         {detailAsset.asset_name}
                       </h2>
-                      <p className="ticket-detail__summary inventory-asset-detail__summary-copy">
+                      <p className="ticket-detail__summary panel-detail__summary-copy inventory-asset-detail__summary-copy">
                         {detailAsset.type_name} / {detailAsset.category_name} / {detailAsset.tracking_mode_name}
                       </p>
                     </header>
 
-                    <section className="ticket-detail__section ticket-detail__section--log inventory-asset-detail__log">
+                    <section className="ticket-detail__section ticket-detail__section--log panel-detail__section panel-detail__section--log inventory-asset-detail__log">
                       <DrawerTabs
                         label="Secciones de detalle del activo"
                         activeKey={activeDetailTab}
                         onChange={setActiveDetailTab}
-                        className="ticket-detail__tabs inventory-asset-detail__tabs-rail"
+                        className="ticket-detail__tabs panel-detail__tabs inventory-asset-detail__tabs-rail"
                         tabs={detailTabOptions.map((tabOption) => ({
                           key: tabOption.key,
                           label: tabOption.label,
@@ -2273,48 +2320,48 @@ const InventoryPage = () => {
                         }))}
                       />
 
-                      <div className="inventory-asset-detail__content">
+                      <div className="inventory-asset-detail__content panel-detail__content">
                         <section
                           id="inventory-detail-panel-summary"
                           role="tabpanel"
                           aria-labelledby="inventory-detail-tab-summary"
                           hidden={activeDetailTab !== 'summary'}
-                          className="ticket-detail__tab-panel inventory-asset-detail__panel inventory-asset-detail__summary"
+                          className="ticket-detail__tab-panel panel-detail__tab-panel inventory-asset-detail__panel inventory-asset-detail__summary"
                         >
-                          <section className="ticket-detail__section inventory-asset-detail__section">
-                            <div className="ticket-detail__section-headline inventory-asset-detail__section-headline">
-                              <h3 className="ticket-detail__section-title inventory-asset-detail__section-title">Estado operativo</h3>
+                          <section className="ticket-detail__section panel-detail__section inventory-asset-detail__section">
+                            <div className="ticket-detail__section-headline panel-detail__section-headline inventory-asset-detail__section-headline">
+                              <h3 className="ticket-detail__section-title panel-detail__section-title inventory-asset-detail__section-title">Estado operativo</h3>
                             </div>
-                            <dl className="ticket-detail__meta-grid inventory-asset-detail__meta-grid inventory-asset-detail__meta-grid--status">
-                              <div className="ticket-detail__meta-item">
-                                <dt className="ticket-detail__meta-label">Estado</dt>
+                            <dl className="ticket-detail__meta-grid panel-detail__facts inventory-asset-detail__meta-grid inventory-asset-detail__meta-grid--status">
+                              <div className="ticket-detail__meta-item panel-detail__fact">
+                                <dt className="ticket-detail__meta-label panel-detail__fact-label">Estado</dt>
                                 <dd>
                                   <span className={`inventory-status-chip inventory-status-chip--${toOperationalStatusTone(detailAsset.operational_status_key)}`}>
                                     {detailAsset.operational_status_name || toOperationalStatusLabel(detailAsset.operational_status_key)}
                                   </span>
                                 </dd>
                               </div>
-                              <div className="ticket-detail__meta-item">
-                                <dt className="ticket-detail__meta-label">Existencia actual</dt>
+                              <div className="ticket-detail__meta-item panel-detail__fact">
+                                <dt className="ticket-detail__meta-label panel-detail__fact-label">Existencia actual</dt>
                                 <dd>{detailExistenceLabel}</dd>
                               </div>
                               {detailAsset.tracking_mode_key === 'stock' ? (
-                                <div className="ticket-detail__meta-item">
-                                  <dt className="ticket-detail__meta-label">Stock mínimo</dt>
+                                <div className="ticket-detail__meta-item panel-detail__fact">
+                                  <dt className="ticket-detail__meta-label panel-detail__fact-label">Stock mínimo</dt>
                                   <dd>{detailAsset.min_quantity}</dd>
                                 </div>
                               ) : null}
-                              <div className="ticket-detail__meta-item">
-                                <dt className="ticket-detail__meta-label">Última actualización</dt>
+                              <div className="ticket-detail__meta-item panel-detail__fact">
+                                <dt className="ticket-detail__meta-label panel-detail__fact-label">Última actualización</dt>
                                 <dd>{formatDateTime(detailAsset.updated_at)}</dd>
                               </div>
                             </dl>
                           </section>
 
                           {recentSummaryMovements.length > 0 ? (
-                            <section className="ticket-detail__section inventory-asset-detail__section inventory-asset-detail__summary-activity" aria-label="Actividad reciente del activo">
-                              <div className="ticket-detail__section-headline inventory-asset-detail__section-headline">
-                                <h3 className="ticket-detail__section-title inventory-asset-detail__section-title">Actividad reciente</h3>
+                            <section className="ticket-detail__section panel-detail__section inventory-asset-detail__section inventory-asset-detail__summary-activity" aria-label="Actividad reciente del activo">
+                              <div className="ticket-detail__section-headline panel-detail__section-headline inventory-asset-detail__section-headline">
+                                <h3 className="ticket-detail__section-title panel-detail__section-title inventory-asset-detail__section-title">Actividad reciente</h3>
                                 <span className="ticket-detail__comment-history-count inventory-asset-detail__activity-count" aria-hidden="true">
                                   {selectedAssetMovements.length}
                                 </span>
@@ -2337,20 +2384,20 @@ const InventoryPage = () => {
                             </section>
                           ) : null}
 
-                          <section className="ticket-detail__section inventory-asset-detail__section">
-                            <div className="ticket-detail__section-headline inventory-asset-detail__section-headline">
-                              <h3 className="ticket-detail__section-title inventory-asset-detail__section-title">Ficha técnica</h3>
+                          <section className="ticket-detail__section panel-detail__section inventory-asset-detail__section">
+                            <div className="ticket-detail__section-headline panel-detail__section-headline inventory-asset-detail__section-headline">
+                              <h3 className="ticket-detail__section-title panel-detail__section-title inventory-asset-detail__section-title">Ficha técnica</h3>
                             </div>
-                            {detailAsset.description ? (
-                              <p className="inventory-asset-detail__section-copy">{detailAsset.description}</p>
+                            {visibleAssetDescription ? (
+                              <p className="inventory-asset-detail__section-copy">{visibleAssetDescription}</p>
                             ) : null}
-                            <dl className="ticket-detail__meta-grid inventory-asset-detail__meta-grid">
-                              <div className="ticket-detail__meta-item">
-                                <dt className="ticket-detail__meta-label">Código interno</dt>
+                            <dl className="ticket-detail__meta-grid panel-detail__facts inventory-asset-detail__meta-grid">
+                              <div className="ticket-detail__meta-item panel-detail__fact">
+                                <dt className="ticket-detail__meta-label panel-detail__fact-label">Código interno</dt>
                                 <dd>{detailAsset.internal_code || 'Sin código'}</dd>
                               </div>
-                              <div className="ticket-detail__meta-item">
-                                <dt className="ticket-detail__meta-label">Marca / Modelo</dt>
+                              <div className="ticket-detail__meta-item panel-detail__fact">
+                                <dt className="ticket-detail__meta-label panel-detail__fact-label">Marca / Modelo</dt>
                                 <dd>{[detailAsset.brand, detailAsset.model].filter(Boolean).join(' / ') || 'No registrado'}</dd>
                               </div>
                             </dl>
@@ -2362,24 +2409,24 @@ const InventoryPage = () => {
                           role="tabpanel"
                           aria-labelledby="inventory-detail-tab-units"
                           hidden={activeDetailTab !== 'units'}
-                          className="ticket-detail__tab-panel inventory-asset-detail__panel"
+                          className="ticket-detail__tab-panel panel-detail__tab-panel inventory-asset-detail__panel"
                         >
                           {detailAsset.tracking_mode_key === 'unit' ? (
-                            <div className="inventory-asset-detail__panel-header inventory-asset-detail__panel-header--units">
-                              <h3 className="inventory-asset-detail__panel-title">Unidades registradas</h3>
-                              <div className="inventory-asset-detail__toolbar">
+                            <div className="inventory-asset-detail__panel-header panel-detail__panel-header inventory-asset-detail__panel-header--units">
+                              <h3 className="inventory-asset-detail__panel-title panel-detail__panel-title">Unidades registradas</h3>
+                              <div className="inventory-asset-detail__toolbar panel-detail__toolbar">
                                 {canCreateInventory ? (
-                                  <button type="button" className="tickets-page__primary-action" onClick={openCreateUnitsModal}>
+                                  <button type="button" className="workspace-action workspace-action--primary" onClick={openCreateUnitsModal}>
                                     <Tags size={14} aria-hidden="true" />
                                     <span>Registrar unidades</span>
                                   </button>
                                 ) : null}
                                 {selectedAssetUnits.length > 0 && (hasAvailableAssetUnits || hasAssignedAssetUnits) ? (
-                                  <div className="inventory-asset-detail__toolbar-secondary">
+                                  <div className="inventory-asset-detail__toolbar-secondary panel-detail__toolbar-secondary">
                                     {hasAvailableAssetUnits && canAssignInventory ? (
                                       <button
                                         type="button"
-                                        className="inventory-asset-detail__toolbar-action"
+                                        className="inventory-asset-detail__toolbar-action panel-detail__toolbar-action"
                                         onClick={(event) => openCreateAssignmentModal(null, { triggerElement: event.currentTarget })}
                                       >
                                         <ShieldCheck size={14} aria-hidden="true" />
@@ -2389,7 +2436,7 @@ const InventoryPage = () => {
                                     {hasAssignedAssetUnits && canAssignInventory ? (
                                       <button
                                         type="button"
-                                        className="inventory-asset-detail__toolbar-action"
+                                        className="inventory-asset-detail__toolbar-action panel-detail__toolbar-action"
                                         onClick={() => void openCloseAssignmentModal()}
                                       >
                                         <Undo2 size={14} aria-hidden="true" />
@@ -2404,83 +2451,83 @@ const InventoryPage = () => {
                           {selectedAssetUnits.length === 0 ? (
                             <p className="inventory-asset-detail__empty-copy">Este activo no tiene unidades serializadas registradas.</p>
                           ) : (
-                            <ul className="inventory-asset-detail__list">
+                            <ul className="inventory-asset-detail__list panel-detail__list">
                               {selectedAssetUnits.map((unit) => {
                                 const canShowUnitSecondaryActions = canUpdateInventory
                                   && (unit.status_key === 'available' || unit.status_key === 'in_repair');
 
                                 return (
-                                <li key={unit.id} className="inventory-asset-detail__unit-item">
-                                  <div className="inventory-asset-detail__unit-head">
-                                    <div className="inventory-asset-detail__unit-identity">
-                                      <strong>{unit.asset_tag}</strong>
-                                      <span className={`inventory-status-chip inventory-status-chip--${toUnitStatusTone(unit.status_key)}`}>
-                                        {unit.status_name}
-                                      </span>
+                                  <li key={unit.id} className="inventory-asset-detail__unit-item">
+                                    <div className="inventory-asset-detail__unit-head">
+                                      <div className="inventory-asset-detail__unit-identity">
+                                        <strong>{unit.asset_tag}</strong>
+                                        <span className={`inventory-status-chip inventory-status-chip--${toUnitStatusTone(unit.status_key)}`}>
+                                          {unit.status_name}
+                                        </span>
+                                      </div>
                                     </div>
-                                  </div>
-                                  <div className="inventory-asset-detail__unit-meta">
-                                    <span className="inventory-asset-detail__unit-location">{unit.current_location_name || 'Sin ubicación'}</span>
-                                    {unit.active_assignment?.collaborator_name || unit.serial_number ? (
-                                      <div className="inventory-asset-detail__unit-detail-row">
-                                        {unit.active_assignment?.collaborator_name ? (
-                                          <span className="inventory-asset-detail__unit-serial">
-                                            Resguardo activo: {unit.active_assignment.collaborator_name}
-                                          </span>
+                                    <div className="inventory-asset-detail__unit-meta">
+                                      <span className="inventory-asset-detail__unit-location">{unit.current_location_name || 'Sin ubicación'}</span>
+                                      {unit.active_assignment?.collaborator_name || unit.serial_number ? (
+                                        <div className="inventory-asset-detail__unit-detail-row">
+                                          {unit.active_assignment?.collaborator_name ? (
+                                            <span className="inventory-asset-detail__unit-serial">
+                                              Resguardo activo: {unit.active_assignment.collaborator_name}
+                                            </span>
+                                          ) : null}
+                                          {unit.serial_number ? <span className="inventory-asset-detail__unit-serial">Serie: {unit.serial_number}</span> : null}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                    {canShowUnitSecondaryActions ? (
+                                      <div className="inventory-asset-detail__unit-actions">
+                                        {unit.status_key === 'available' ? (
+                                          <>
+                                            <button
+                                              type="button"
+                                              className="action-inline action-inline--secondary"
+                                              onClick={() => openUnitStatusModal(unit, 'in_repair')}
+                                              aria-label={`Enviar ${unit.asset_tag} a reparación`}
+                                            >
+                                              <Wrench size={14} aria-hidden="true" />
+                                              <span>En reparación</span>
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="action-inline action-inline--secondary"
+                                              onClick={() => openUnitStatusModal(unit, 'retired')}
+                                              aria-label={`Dar de baja ${unit.asset_tag}`}
+                                            >
+                                              <Archive size={14} aria-hidden="true" />
+                                              <span>Baja</span>
+                                            </button>
+                                          </>
                                         ) : null}
-                                        {unit.serial_number ? <span className="inventory-asset-detail__unit-serial">Serie: {unit.serial_number}</span> : null}
+                                        {unit.status_key === 'in_repair' ? (
+                                          <>
+                                            <button
+                                              type="button"
+                                              className="action-inline action-inline--secondary"
+                                              onClick={() => openUnitStatusModal(unit, 'available')}
+                                              aria-label={`Marcar ${unit.asset_tag} como disponible`}
+                                            >
+                                              <Check size={14} aria-hidden="true" />
+                                              <span>Marcar disponible</span>
+                                            </button>
+                                            <button
+                                              type="button"
+                                              className="action-inline action-inline--secondary"
+                                              onClick={() => openUnitStatusModal(unit, 'retired')}
+                                              aria-label={`Dar de baja ${unit.asset_tag}`}
+                                            >
+                                              <CircleOff size={14} aria-hidden="true" />
+                                              <span>Baja</span>
+                                            </button>
+                                          </>
+                                        ) : null}
                                       </div>
                                     ) : null}
-                                  </div>
-                                  {canShowUnitSecondaryActions ? (
-                                    <div className="inventory-asset-detail__unit-actions">
-                                      {unit.status_key === 'available' ? (
-                                        <>
-                                          <button
-                                            type="button"
-                                            className="action-inline action-inline--secondary"
-                                            onClick={() => openUnitStatusModal(unit, 'in_repair')}
-                                            aria-label={`Enviar ${unit.asset_tag} a reparación`}
-                                          >
-                                            <Wrench size={14} aria-hidden="true" />
-                                            <span>En reparación</span>
-                                          </button>
-                                          <button
-                                            type="button"
-                                            className="action-inline action-inline--secondary"
-                                            onClick={() => openUnitStatusModal(unit, 'retired')}
-                                            aria-label={`Dar de baja ${unit.asset_tag}`}
-                                          >
-                                            <Archive size={14} aria-hidden="true" />
-                                            <span>Baja</span>
-                                          </button>
-                                        </>
-                                      ) : null}
-                                      {unit.status_key === 'in_repair' ? (
-                                        <>
-                                          <button
-                                            type="button"
-                                            className="action-inline action-inline--secondary"
-                                            onClick={() => openUnitStatusModal(unit, 'available')}
-                                            aria-label={`Marcar ${unit.asset_tag} como disponible`}
-                                          >
-                                            <Check size={14} aria-hidden="true" />
-                                            <span>Marcar disponible</span>
-                                          </button>
-                                          <button
-                                            type="button"
-                                            className="action-inline action-inline--secondary"
-                                            onClick={() => openUnitStatusModal(unit, 'retired')}
-                                            aria-label={`Dar de baja ${unit.asset_tag}`}
-                                          >
-                                            <CircleOff size={14} aria-hidden="true" />
-                                            <span>Baja</span>
-                                          </button>
-                                        </>
-                                      ) : null}
-                                    </div>
-                                  ) : null}
-                                </li>
+                                  </li>
                                 );
                               })}
                             </ul>
@@ -2492,7 +2539,7 @@ const InventoryPage = () => {
                           role="tabpanel"
                           aria-labelledby="inventory-detail-tab-movements"
                           hidden={activeDetailTab !== 'movements'}
-                          className="ticket-detail__tab-panel inventory-asset-detail__panel"
+                          className="ticket-detail__tab-panel panel-detail__tab-panel inventory-asset-detail__panel"
                         >
                           {selectedAssetMovements.length === 0 ? (
                             <p className="inventory-asset-detail__empty-copy">Este activo aún no tiene movimientos registrados.</p>
@@ -2532,8 +2579,8 @@ const InventoryPage = () => {
               />
             </section>
 
-            <section id="inventory-panel-movements" role="tabpanel" aria-labelledby="inventory-view-movements" hidden={activeView !== 'movements'} className="inventory-panel">
-              <div className="tickets-page__control-row inventory-assets__control-row">
+            <section id="inventory-panel-movements" role="tabpanel" aria-labelledby="inventory-view-movements" hidden={activeView !== 'movements'} className="workspace-panel">
+              <div className="workspace-page__control-row workspace-page__control-row--operational">
                 <ToolbarSearchField
                   id="inventory-movements-search"
                   name="inventory-movements-search"
@@ -2541,21 +2588,34 @@ const InventoryPage = () => {
                   onChange={setMovementsSearchTerm}
                   placeholder="Buscar por activo, tipo, dirección o motivo..."
                   srLabel="Buscar movimientos"
-                  className="inventory-assets__search"
+                  className="workspace-search--operational"
                 />
+                <div className="workspace-page__actions">
+                  {canUpdateInventory ? (
+                    <button
+                      type="button"
+                      className="workspace-action workspace-action--ghost"
+                      ref={createMovementTriggerRef}
+                      onClick={(event) => openCreateMovementModal(event.currentTarget)}
+                    >
+                      <ArrowRightLeft size={16} aria-hidden="true" />
+                      <span>Registrar movimiento</span>
+                    </button>
+                  ) : null}
+                </div>
               </div>
-              <div className="inventory-panel__workspace inventory-panel__workspace--table inventory-panel__workspace--fixed">
+              <div className="workspace-panel__viewport workspace-panel__viewport--flush workspace-panel__viewport--fixed">
                 {filteredMovements.length === 0 ? (
-                  <EmptyState title="Aún no hay movimientos registrados" copy="Registra el primer movimiento para iniciar la trazabilidad del inventario." id="inventory-movements-empty" role="region">
+                  <EmptyState title={inventoryMovementsNoRecordsState.title} copy={inventoryMovementsNoRecordsState.copy} id="inventory-movements-empty" role="region">
                     {canUpdateInventory ? (
-                      <button type="button" className="tickets-page__primary-action" onClick={() => setIsCreateMovementOpen(true)}>Registrar movimiento</button>
+                      <button type="button" className="workspace-action workspace-action--primary" onClick={(event) => openCreateMovementModal(event.currentTarget)}>Registrar movimiento</button>
                     ) : null}
                   </EmptyState>
                 ) : (
                   <OperationalTable
                     className="inventory-movements-list"
                     ariaLabel="Listado de movimientos de inventario"
-                    scrollClassName="ticket-list__scroll inventory-table-wrap inventory-table-wrap--workspace"
+                    scrollClassName="data-table__scroll workspace-scroll-wrap--fill"
                     pagination={(
                       <PaginationBar
                         ariaLabel="Paginación de movimientos"
@@ -2577,7 +2637,7 @@ const InventoryPage = () => {
                       />
                     )}
                   >
-                    <table className="ticket-list__table inventory-table inventory-table--movements">
+                    <table className="data-table__table inventory-table inventory-table--movements">
                       <thead>
                         <tr>
                           <th scope="col">Fecha</th>
@@ -2591,14 +2651,14 @@ const InventoryPage = () => {
                       </thead>
                       <tbody>
                         {paginatedMovements.map((movement) => (
-                          <tr key={`${movement.id}-${movement.movement_line_id}`} className="ticket-list__row inventory-table__row">
-                            <td className="ticket-list__cell">{formatDateTime(movement.happened_at)}</td>
-                            <td className="ticket-list__cell">{movement.asset_name || 'Sin activo'}</td>
-                            <td className="ticket-list__cell">{movement.movement_type_name}</td>
-                            <td className="ticket-list__cell">{toMovementDirectionLabel(movement.direction)}</td>
-                            <td className="ticket-list__cell">{movement.quantity}</td>
-                            <td className="ticket-list__cell">{movement.reason}</td>
-                            <td className="ticket-list__cell">{movement.operator_name || 'Sistema'}</td>
+                          <tr key={`${movement.id}-${movement.movement_line_id}`} className="data-table__row inventory-table__row">
+                            <td className="data-table__cell">{formatDateTime(movement.happened_at)}</td>
+                            <td className="data-table__cell">{movement.asset_name || 'Sin activo'}</td>
+                            <td className="data-table__cell">{movement.movement_type_name}</td>
+                            <td className="data-table__cell">{toMovementDirectionLabel(movement.direction)}</td>
+                            <td className="data-table__cell">{movement.quantity}</td>
+                            <td className="data-table__cell">{movement.reason}</td>
+                            <td className="data-table__cell">{movement.operator_name || 'Sistema'}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -2608,8 +2668,8 @@ const InventoryPage = () => {
               </div>
             </section>
 
-            <section id="inventory-panel-assignments" role="tabpanel" aria-labelledby="inventory-view-assignments" hidden={activeView !== 'assignments'} className="inventory-panel">
-              <div className="tickets-page__control-row inventory-assets__control-row">
+            <section id="inventory-panel-assignments" role="tabpanel" aria-labelledby="inventory-view-assignments" hidden={activeView !== 'assignments'} className="workspace-panel">
+              <div className="workspace-page__control-row workspace-page__control-row--operational">
                 <ToolbarSearchField
                   id="inventory-assignments-search"
                   name="inventory-assignments-search"
@@ -2617,17 +2677,17 @@ const InventoryPage = () => {
                   onChange={setAssignmentsSearchTerm}
                   placeholder="Buscar por activo, unidad, colaborador o ubicación..."
                   srLabel="Buscar resguardos"
-                  className="inventory-assets__search"
+                  className="workspace-search--operational"
                 />
-                <div className="tickets-page__filters inventory-assets__filters">
+                <div className="workspace-page__filters workspace-page__filters--operational">
                   <FilterChipGroup
                     label="Filtro por estado de resguardo"
                     options={assignmentStatusOptions}
                     activeKey={assignmentStatusFilter}
                     onSelect={setAssignmentStatusFilter}
-                    className="tickets-page__chip-group inventory-assets__chip-group"
-                    chipClassName="tickets-page__chip inventory-assets__chip"
-                    activeChipClassName="tickets-page__chip--active inventory-assets__chip--active"
+                    className="workspace-chip-group workspace-chip-group--compact"
+                    chipClassName="workspace-chip"
+                    activeChipClassName="workspace-chip--active"
                   />
                   <FilterSelect
                     id="inventory-assignment-collaborator-filter"
@@ -2637,14 +2697,14 @@ const InventoryPage = () => {
                     value={assignmentCollaboratorFilter}
                     options={collaboratorFilterOptions}
                     onChange={setAssignmentCollaboratorFilter}
-                    className="filter-select inventory-assets__tracking-select"
+                    className="filter-select filter-select--operational"
                   />
                 </div>
-                <div className="inventory-assets__actions">
+                <div className="workspace-page__actions">
                   {canAssignInventory ? (
                     <button
                       type="button"
-                      className="tickets-page__ghost-action"
+                      className="workspace-action workspace-action--ghost"
                       ref={createAssignmentTriggerRef}
                       onClick={(event) => openCreateAssignmentModal(null, { useGlobal: true, triggerElement: event.currentTarget })}
                     >
@@ -2654,13 +2714,13 @@ const InventoryPage = () => {
                   ) : null}
                 </div>
               </div>
-              <div className="inventory-panel__workspace inventory-panel__workspace--table inventory-panel__workspace--fixed">
+              <div className="workspace-panel__viewport workspace-panel__viewport--flush workspace-panel__viewport--fixed">
                 {filteredAssignments.length === 0 ? (
-                  <EmptyState title="No encontramos resguardos con estos filtros" copy="Ajusta la búsqueda o los filtros para revisar asignaciones activas e historial." id="inventory-assignments-empty" role="region">
+                  <EmptyState title={inventoryAssignmentsNoResultsState.title} copy={inventoryAssignmentsNoResultsState.copy} id="inventory-assignments-empty" role="region">
                     {canAssignInventory ? (
                       <button
                         type="button"
-                        className="tickets-page__primary-action"
+                        className="workspace-action workspace-action--primary"
                         onClick={(event) => openCreateAssignmentModal(null, { useGlobal: true, triggerElement: event.currentTarget })}
                       >
                         <ShieldCheck size={14} aria-hidden="true" />
@@ -2672,7 +2732,7 @@ const InventoryPage = () => {
                   <OperationalTable
                     className="inventory-assignments-list"
                     ariaLabel="Listado de resguardos"
-                    scrollClassName="ticket-list__scroll inventory-table-wrap inventory-table-wrap--workspace"
+                    scrollClassName="data-table__scroll workspace-scroll-wrap--fill"
                     pagination={(
                       <PaginationBar
                         ariaLabel="Paginación de resguardos"
@@ -2694,7 +2754,7 @@ const InventoryPage = () => {
                       />
                     )}
                   >
-                    <table className="ticket-list__table inventory-table inventory-table--assignments">
+                    <table className="data-table__table inventory-table inventory-table--assignments">
                       <thead>
                         <tr>
                           <th scope="col">Colaborador</th>
@@ -2709,36 +2769,36 @@ const InventoryPage = () => {
                       </thead>
                       <tbody>
                         {paginatedAssignments.map((assignment) => (
-                          <tr key={assignment.id} className="ticket-list__row inventory-table__row">
-                            <td className="ticket-list__cell">
+                          <tr key={assignment.id} className="data-table__row inventory-table__row">
+                            <td className="data-table__cell">
                               <span className="data-table__item-title">{assignment.collaborator?.full_name || 'Sin colaborador'}</span>
                               <span className="data-table__item-meta inventory-assignments__meta">{assignment.collaborator?.employee_id ? `ID ${assignment.collaborator.employee_id}` : 'Sin ID'}</span>
                             </td>
-                            <td className="ticket-list__cell">
+                            <td className="data-table__cell">
                               <span className="data-table__item-title">{assignment.asset?.asset_name || 'Sin activo'}</span>
                               <span className="data-table__item-meta inventory-assignments__meta">{assignment.asset?.internal_code || 'Sin código'}</span>
                             </td>
-                            <td className="ticket-list__cell">
+                            <td className="data-table__cell">
                               <span className="data-table__item-title">{assignment.asset_unit?.asset_tag || 'Sin unidad'}</span>
                               {assignment.asset_unit?.serial_number ? (
                                 <span className="data-table__item-meta inventory-assignments__meta">{assignment.asset_unit.serial_number}</span>
                               ) : null}
                             </td>
-                            <td className="ticket-list__cell">
+                            <td className="data-table__cell">
                               <span className="inventory-assignments__supporting">{assignment.location?.name || 'Sin ubicación'}</span>
                             </td>
-                            <td className="ticket-list__cell">
+                            <td className="data-table__cell">
                               <span className={`inventory-status-chip inventory-status-chip--${assignment.status === 'active' ? 'accent' : 'neutral'}`}>
                                 {assignment.status === 'active' ? 'Activo' : 'Cerrado'}
                               </span>
                             </td>
-                            <td className="ticket-list__cell">
+                            <td className="data-table__cell">
                               <span className="inventory-assignments__supporting">{formatDateTime(assignment.assigned_at)}</span>
                             </td>
-                            <td className="ticket-list__cell">
+                            <td className="data-table__cell">
                               <span className="inventory-assignments__supporting">{assignment.expected_return_at ? formatDateTime(assignment.expected_return_at) : 'Sin fecha'}</span>
                             </td>
-                            <td className="ticket-list__cell">
+                            <td className="data-table__cell">
                               <div className="inventory-table__actions inventory-table__actions--assignments">
                                 {assignment.status === 'active' && canAssignInventory ? (
                                   <button
@@ -2770,8 +2830,8 @@ const InventoryPage = () => {
               </div>
             </section>
 
-            <section id="inventory-panel-locations" role="tabpanel" aria-labelledby="inventory-view-locations" hidden={activeView !== 'locations'} className="inventory-panel">
-              <div className="tickets-page__control-row inventory-assets__control-row">
+            <section id="inventory-panel-locations" role="tabpanel" aria-labelledby="inventory-view-locations" hidden={activeView !== 'locations'} className="workspace-panel">
+              <div className="workspace-page__control-row workspace-page__control-row--operational">
                 <ToolbarSearchField
                   id="inventory-locations-search"
                   name="inventory-locations-search"
@@ -2779,18 +2839,18 @@ const InventoryPage = () => {
                   onChange={setLocationsSearchTerm}
                   placeholder="Buscar por nombre, código o tipo de ubicación..."
                   srLabel="Buscar ubicaciones"
-                  className="inventory-assets__search"
+                  className="workspace-search--operational"
                 />
-                <div className="tickets-page__filters inventory-assets__filters">
+                <div className="workspace-page__actions">
                   {canCreateInventory ? (
-                    <button type="button" className="tickets-page__ghost-action" ref={createLocationTriggerRef} onClick={openLocationCreate}>
+                    <button type="button" className="workspace-action workspace-action--ghost" ref={createLocationTriggerRef} onClick={openLocationCreate}>
                       <Building2 size={16} aria-hidden="true" />
                       <span>Nueva ubicación</span>
                     </button>
                   ) : null}
                 </div>
               </div>
-              <div className="inventory-panel__workspace inventory-panel__workspace--locations inventory-panel__workspace--fixed">
+              <div className="workspace-panel__viewport workspace-panel__viewport--flush workspace-panel__viewport--fixed">
                 <OperationalPanel
                   hasData={filteredLocations.length > 0}
                   tone="neutral"
@@ -2881,12 +2941,12 @@ const InventoryPage = () => {
                       </tbody>
                     </table>
                   )}
-                  emptyTitle="No encontramos ubicaciones con estos filtros"
-                  emptyCopy="Ajusta la búsqueda o registra una nueva ubicación para continuar."
+                  emptyTitle={inventoryLocationsNoResultsState.title}
+                  emptyCopy={inventoryLocationsNoResultsState.copy}
                   emptyId="inventory-locations-empty"
                   emptyRole="region"
                   emptyActions={canCreateInventory ? (
-                    <button type="button" className="tickets-page__primary-action" onClick={openLocationCreate}>Nueva ubicación</button>
+                    <button type="button" className="workspace-action workspace-action--primary" onClick={openLocationCreate}>Nueva ubicación</button>
                   ) : null}
                 />
               </div>
@@ -2960,8 +3020,8 @@ const InventoryPage = () => {
             </label>
           </div>
           <footer className="modal-dialog__actions">
-            <button type="button" className="tickets-page__ghost-action" onClick={() => setIsCreateAssetOpen(false)}>Cancelar</button>
-            <button type="submit" className="tickets-page__primary-action" disabled={isSubmittingAsset}>{isSubmittingAsset ? 'Guardando...' : 'Crear activo'}</button>
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={() => setIsCreateAssetOpen(false)}>Cancelar</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmittingAsset}>{isSubmittingAsset ? 'Guardando...' : 'Crear activo'}</button>
           </footer>
         </form>
       </ModalDialog>
@@ -2970,7 +3030,7 @@ const InventoryPage = () => {
         open={isCreateMovementOpen}
         title="Registrar movimiento"
         onClose={() => setIsCreateMovementOpen(false)}
-        returnFocusRef={createMovementTriggerRef}
+        returnFocusRef={createMovementReturnFocusRef}
         initialFocusRef={movementReasonTemplateFirstRef}
         size="wide"
       >
@@ -3030,7 +3090,7 @@ const InventoryPage = () => {
               <h3>Partidas</h3>
               <button
                 type="button"
-                className="tickets-page__ghost-action"
+                className="workspace-action workspace-action--ghost"
                 onClick={() => setMovementForm((current) => ({
                   ...current,
                   lines: [...current.lines, { ...defaultMovementLine, asset_id: selectedAssetId ? String(selectedAssetId) : '' }]
@@ -3154,8 +3214,8 @@ const InventoryPage = () => {
           </section>
 
           <footer className="modal-dialog__actions">
-            <button type="button" className="tickets-page__ghost-action" onClick={() => setIsCreateMovementOpen(false)}>Cancelar</button>
-            <button type="submit" className="tickets-page__primary-action" disabled={isSubmittingMovement}>{isSubmittingMovement ? 'Guardando...' : 'Registrar movimiento'}</button>
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={() => setIsCreateMovementOpen(false)}>Cancelar</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmittingMovement}>{isSubmittingMovement ? 'Guardando...' : 'Registrar movimiento'}</button>
           </footer>
         </form>
       </ModalDialog>
@@ -3239,8 +3299,8 @@ const InventoryPage = () => {
             </label>
           </div>
           <footer className="modal-dialog__actions">
-            <button type="button" className="tickets-page__ghost-action" onClick={() => setIsEditAssetOpen(false)}>Cancelar</button>
-            <button type="submit" className="tickets-page__primary-action" disabled={isSubmittingAssetEdit}>
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={() => setIsEditAssetOpen(false)}>Cancelar</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmittingAssetEdit}>
               {isSubmittingAssetEdit ? 'Guardando...' : 'Guardar cambios'}
             </button>
           </footer>
@@ -3257,7 +3317,7 @@ const InventoryPage = () => {
           setEditingAssetTypeId(null);
           setEditingLocationTypeId(null);
         }}
-        returnFocusRef={catalogTriggerRef}
+        returnFocusRef={catalogReturnFocusRef}
         initialFocusRef={activeCatalogTab === 'location_types' ? catalogLocationTabRef : catalogAssetTabRef}
         size="wide"
       >
@@ -3298,7 +3358,7 @@ const InventoryPage = () => {
                   </div>
                   <div className="inventory-catalog__section-actions">
                     {editingAssetTypeId ? (
-                      <button type="button" className="tickets-page__ghost-action" onClick={resetAssetTypeEditor}>
+                      <button type="button" className="workspace-action workspace-action--ghost" onClick={resetAssetTypeEditor}>
                         Crear nuevo tipo
                       </button>
                     ) : null}
@@ -3364,11 +3424,11 @@ const InventoryPage = () => {
                     <textarea id="inventory-catalog-asset-type-description" name="inventory_catalog_asset_type_description" rows="3" value={assetTypeForm.description} onChange={(event) => setAssetTypeForm((current) => ({ ...current, description: event.target.value }))} />
                   </label>
                   <div className="modal-dialog__field modal-dialog__field--full inventory-catalog__actions">
-                    <button type="submit" className="tickets-page__primary-action" disabled={isSubmittingCatalogAssetType}>
+                    <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmittingCatalogAssetType}>
                       {isSubmittingCatalogAssetType ? 'Guardando...' : (editingAssetTypeId ? 'Guardar cambios' : 'Crear tipo de activo')}
                     </button>
                     {editingAssetTypeId ? (
-                      <button type="button" className="tickets-page__ghost-action" onClick={resetAssetTypeEditor}>
+                      <button type="button" className="workspace-action workspace-action--ghost" onClick={resetAssetTypeEditor}>
                         Cancelar edición
                       </button>
                     ) : null}
@@ -3456,7 +3516,7 @@ const InventoryPage = () => {
                         <div className="inventory-catalog__existing-actions">
                           <button
                             type="button"
-                            className="tickets-page__ghost-action inventory-catalog__existing-state"
+                            className="workspace-action workspace-action--ghost inventory-catalog__existing-state"
                             onClick={() => void handleToggleAssetTypeActive(assetType)}
                             aria-label={`${assetType.is_active ? 'Desactivar' : 'Reactivar'} ${assetType.name}`}
                           >
@@ -3495,7 +3555,7 @@ const InventoryPage = () => {
                   </div>
                   <div className="inventory-catalog__section-actions">
                     {editingLocationTypeId ? (
-                      <button type="button" className="tickets-page__ghost-action" onClick={resetLocationTypeEditor}>
+                      <button type="button" className="workspace-action workspace-action--ghost" onClick={resetLocationTypeEditor}>
                         Crear nuevo tipo
                       </button>
                     ) : null}
@@ -3533,11 +3593,11 @@ const InventoryPage = () => {
                     <textarea id="inventory-catalog-location-type-description" name="inventory_catalog_location_type_description" rows="3" value={locationTypeForm.description} onChange={(event) => setLocationTypeForm((current) => ({ ...current, description: event.target.value }))} />
                   </label>
                   <div className="modal-dialog__field modal-dialog__field--full inventory-catalog__actions">
-                    <button type="submit" className="tickets-page__primary-action" disabled={isSubmittingCatalogLocationType}>
+                    <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmittingCatalogLocationType}>
                       {isSubmittingCatalogLocationType ? 'Guardando...' : (editingLocationTypeId ? 'Guardar cambios' : 'Crear tipo de ubicación')}
                     </button>
                     {editingLocationTypeId ? (
-                      <button type="button" className="tickets-page__ghost-action" onClick={resetLocationTypeEditor}>
+                      <button type="button" className="workspace-action workspace-action--ghost" onClick={resetLocationTypeEditor}>
                         Cancelar edición
                       </button>
                     ) : null}
@@ -3624,7 +3684,7 @@ const InventoryPage = () => {
                         <div className="inventory-catalog__existing-actions">
                           <button
                             type="button"
-                            className="tickets-page__ghost-action inventory-catalog__existing-state"
+                            className="workspace-action workspace-action--ghost inventory-catalog__existing-state"
                             onClick={() => void handleToggleLocationTypeActive(locationType)}
                             aria-label={`${locationType.is_active ? 'Desactivar' : 'Reactivar'} ${locationType.name}`}
                           >
@@ -3726,11 +3786,11 @@ const InventoryPage = () => {
             </label>
           </div>
           <footer className="modal-dialog__actions">
-            <button type="button" className="tickets-page__ghost-action" onClick={() => {
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={() => {
               setIsCreateLocationOpen(false);
               setEditingLocationId(null);
             }}>Cancelar</button>
-            <button type="submit" className="tickets-page__primary-action" disabled={isSubmittingLocation}>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmittingLocation}>
               {isSubmittingLocation ? 'Guardando...' : (editingLocationId ? 'Guardar cambios' : 'Registrar ubicación')}
             </button>
           </footer>
@@ -3751,7 +3811,7 @@ const InventoryPage = () => {
               <h3>Unidades</h3>
               <button
                 type="button"
-                className="tickets-page__ghost-action"
+                className="workspace-action workspace-action--ghost"
                 onClick={() => setUnitLines((current) => ([
                   ...current,
                   {
@@ -3822,8 +3882,8 @@ const InventoryPage = () => {
             </div>
           </section>
           <footer className="modal-dialog__actions">
-            <button type="button" className="tickets-page__ghost-action" onClick={() => setIsCreateUnitsOpen(false)}>Cancelar</button>
-            <button type="submit" className="tickets-page__primary-action" disabled={isSubmittingUnits}>
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={() => setIsCreateUnitsOpen(false)}>Cancelar</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmittingUnits}>
               {isSubmittingUnits ? 'Guardando...' : 'Registrar unidades'}
             </button>
           </footer>
@@ -3909,8 +3969,8 @@ const InventoryPage = () => {
             </label>
           </div>
           <footer className="modal-dialog__actions">
-            <button type="button" className="tickets-page__ghost-action" onClick={() => setIsCreateAssignmentOpen(false)}>Cancelar</button>
-            <button type="submit" className="tickets-page__primary-action" disabled={isSubmittingAssignment}>
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={() => setIsCreateAssignmentOpen(false)}>Cancelar</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmittingAssignment}>
               {isSubmittingAssignment ? 'Guardando...' : 'Crear resguardo'}
             </button>
           </footer>
@@ -3977,8 +4037,8 @@ const InventoryPage = () => {
             </label>
           </div>
           <footer className="modal-dialog__actions">
-            <button type="button" className="tickets-page__ghost-action" onClick={() => setIsCloseAssignmentOpen(false)}>Cancelar</button>
-            <button type="submit" className="tickets-page__primary-action" disabled={isSubmittingAssignmentClose}>
+            <button type="button" className="workspace-action workspace-action--ghost" onClick={() => setIsCloseAssignmentOpen(false)}>Cancelar</button>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmittingAssignmentClose}>
               {isSubmittingAssignmentClose ? 'Guardando...' : 'Cerrar resguardo'}
             </button>
           </footer>
@@ -4062,7 +4122,7 @@ const InventoryPage = () => {
           <footer className="modal-dialog__actions">
             <button
               type="button"
-              className="tickets-page__ghost-action"
+              className="workspace-action workspace-action--ghost"
               onClick={() => {
                 setIsUnitStatusOpen(false);
                 setUnitStatusForm(defaultUnitStatusForm);
@@ -4070,25 +4130,13 @@ const InventoryPage = () => {
             >
               Cancelar
             </button>
-            <button type="submit" className="tickets-page__primary-action" disabled={isSubmittingUnitStatus}>
+            <button type="submit" className="workspace-action workspace-action--primary" disabled={isSubmittingUnitStatus}>
               {isSubmittingUnitStatus ? 'Guardando...' : 'Aplicar cambio'}
             </button>
           </footer>
         </form>
       </ModalDialog>
 
-      {actionError ? (
-        <div className="inventory-toast inventory-toast--error" role="alert">
-          <X size={14} aria-hidden="true" />
-          <span>{actionError}</span>
-        </div>
-      ) : null}
-      {actionSuccess ? (
-        <div className="inventory-toast inventory-toast--success" role="status" aria-live="polite">
-          <Check size={14} aria-hidden="true" />
-          <span>{actionSuccess}</span>
-        </div>
-      ) : null}
     </section>
   );
 };
