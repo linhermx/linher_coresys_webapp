@@ -18,6 +18,12 @@ import {
 } from 'lucide-react';
 
 import { EmptyState } from '../components/primitives/EmptyState.jsx';
+import {
+  DetailDrawer,
+  DetailDrawerFact,
+  DetailDrawerFactGrid,
+  DetailDrawerHero
+} from '../components/primitives/DetailDrawer.jsx';
 import { DrawerTabs } from '../components/primitives/DrawerTabs.jsx';
 import { FilterChipGroup } from '../components/primitives/FilterChipGroup.jsx';
 import { FilterSelect } from '../components/primitives/FilterSelect.jsx';
@@ -2647,8 +2653,10 @@ const AccessPage = () => {
   ];
 
   const accessDetailPanel = detailContext ? (
-    <div
-      className="ticket-detail panel-detail ticket-detail--tone-primary inventory-asset-detail access-detail"
+    <DetailDrawer
+      as="aside"
+      tone="primary"
+      className="ticket-detail inventory-asset-detail access-detail"
       onKeyDownCapture={(event) => {
         if (event.key !== 'Escape') {
           return;
@@ -2659,36 +2667,38 @@ const AccessPage = () => {
         closeAccessDetail();
       }}
     >
-      <header className="ticket-detail__header panel-detail__header inventory-asset-detail__header access-detail__header">
-        <div className="ticket-detail__header-top panel-detail__header-top">
-          <div className="ticket-detail__header-id panel-detail__header-id inventory-asset-detail__header-id access-detail__header-id">
-            <span className="ticket-detail__ticket-id">{accessDetailIdentifier}</span>
-            {accessDetailStatus ? (
-              <span className={accessDetailStatus.className}>{accessDetailStatus.label}</span>
-            ) : null}
-          </div>
-          <div className="ticket-detail__header-actions panel-detail__header-actions inventory-asset-detail__header-actions access-detail__header-actions">
+      <DetailDrawerHero
+        className="ticket-detail__header inventory-asset-detail__header access-detail__header"
+        eyebrow={accessDetailIdentifier}
+        status={accessDetailStatus ? (
+          <span className={accessDetailStatus.className}>{accessDetailStatus.label}</span>
+        ) : null}
+        title={detailContext.title}
+        titleId={ACCESS_DETAIL_TITLE_ID}
+        subtitle={detailContext.subtitle}
+        titleClassName="ticket-detail__title inventory-asset-detail__title"
+        subtitleClassName="ticket-detail__summary inventory-asset-detail__summary-copy access-detail__summary-copy"
+        actions={(
+          <>
             <button
               type="button"
-              className="ticket-detail__close access-detail__close"
+              className="drawer-hero__close ticket-detail__close access-detail__close"
               ref={accessDetailCloseButtonRef}
               onClick={() => closeAccessDetail()}
               aria-label="Cerrar detalle de accesos"
             >
               <X size={16} aria-hidden="true" />
             </button>
-          </div>
-        </div>
-        <h2 id={ACCESS_DETAIL_TITLE_ID} className="ticket-detail__title panel-detail__title inventory-asset-detail__title">{detailContext.title}</h2>
-        <p className="ticket-detail__summary panel-detail__summary-copy inventory-asset-detail__summary-copy access-detail__summary-copy">{detailContext.subtitle}</p>
-      </header>
+          </>
+        )}
+      />
 
       <section className="ticket-detail__section ticket-detail__section--log panel-detail__section panel-detail__section--log inventory-asset-detail__log access-detail__log">
         <DrawerTabs
           label="Secciones del detalle de acceso"
           activeKey={activeAccessDetailTab}
           onChange={setActiveAccessDetailTab}
-          className="ticket-detail__tabs panel-detail__tabs inventory-asset-detail__tabs-rail access-detail__tabs-rail"
+          className="drawer-tabs ticket-detail__tabs panel-detail__tabs inventory-asset-detail__tabs-rail access-detail__tabs-rail"
           tabs={accessDetailTabOptions.map((tabOption) => ({
             key: tabOption.key,
             label: tabOption.label,
@@ -2704,7 +2714,7 @@ const AccessPage = () => {
             role="tabpanel"
             aria-labelledby="access-detail-tab-summary"
             hidden={activeAccessDetailTab !== 'summary'}
-            className="ticket-detail__tab-panel panel-detail__tab-panel inventory-asset-detail__panel access-detail__panel"
+            className="ticket-detail__tab-panel panel-detail__tab-panel inventory-asset-detail__panel access-detail__panel access-detail__panel--summary"
           >
             <div className="panel-detail__summary-layout access-detail__summary-layout">
               <section className="ticket-detail__section panel-detail__section inventory-asset-detail__section access-detail__section">
@@ -2715,33 +2725,29 @@ const AccessPage = () => {
                   {accessDetailToolbar}
                 </div>
 
-                <dl className="ticket-detail__meta-grid panel-detail__facts inventory-asset-detail__meta-grid access-detail__meta-grid">
+                <DetailDrawerFactGrid className="ticket-detail__meta-grid inventory-asset-detail__meta-grid access-detail__meta-grid">
                   {shouldShowAccessCollaboratorFact ? (
-                    <div className="ticket-detail__meta-item panel-detail__fact">
-                      <dt className="ticket-detail__meta-label panel-detail__fact-label">Colaborador</dt>
-                      <dd>{detailContext.collaborator.full_name}</dd>
-                    </div>
+                    <DetailDrawerFact label="Colaborador" className="ticket-detail__meta-item">
+                      {detailContext.collaborator.full_name}
+                    </DetailDrawerFact>
                   ) : null}
-                  <div className="ticket-detail__meta-item panel-detail__fact">
-                    <dt className="ticket-detail__meta-label panel-detail__fact-label">Sistemas</dt>
-                    <dd>{accessDetailSystemsSummary}</dd>
-                  </div>
-                  <div className="ticket-detail__meta-item panel-detail__fact">
-                    <dt className="ticket-detail__meta-label panel-detail__fact-label">RFID</dt>
-                    <dd>{accessDetailMediaSummary}</dd>
-                  </div>
-                  <div className="ticket-detail__meta-item panel-detail__fact">
-                    <dt className="ticket-detail__meta-label panel-detail__fact-label">{accessDetailDateLabel}</dt>
-                    <dd>{accessDetailDateValue ? formatDateTime(accessDetailDateValue) : 'Sin fecha registrada'}</dd>
-                  </div>
-                </dl>
+                  <DetailDrawerFact label="Sistemas" className="ticket-detail__meta-item">
+                    {accessDetailSystemsSummary}
+                  </DetailDrawerFact>
+                  <DetailDrawerFact label="RFID" className="ticket-detail__meta-item">
+                    {accessDetailMediaSummary}
+                  </DetailDrawerFact>
+                  <DetailDrawerFact label={accessDetailDateLabel} className="ticket-detail__meta-item">
+                    {accessDetailDateValue ? formatDateTime(accessDetailDateValue) : 'Sin fecha registrada'}
+                  </DetailDrawerFact>
+                </DetailDrawerFactGrid>
               </section>
 
               {hasAccessRelatedContext ? (
                 <section className="ticket-detail__section panel-detail__section inventory-asset-detail__section access-detail__section access-detail__section--related">
                   <div className="ticket-detail__section-headline panel-detail__section-headline inventory-asset-detail__section-headline access-detail__section-headline">
                     <h3 className="ticket-detail__section-title panel-detail__section-title inventory-asset-detail__section-title access-detail__section-title">
-                      Detalles
+                      Contexto operativo
                     </h3>
                   </div>
 
@@ -2789,7 +2795,7 @@ const AccessPage = () => {
             role="tabpanel"
             aria-labelledby="access-detail-tab-enrollments"
             hidden={activeAccessDetailTab !== 'enrollments'}
-            className="ticket-detail__tab-panel panel-detail__tab-panel inventory-asset-detail__panel access-detail__panel"
+            className="ticket-detail__tab-panel panel-detail__tab-panel inventory-asset-detail__panel access-detail__panel access-detail__panel--enrollments"
           >
             <section className="ticket-detail__section panel-detail__section inventory-asset-detail__section access-detail__section">
               <div className="ticket-detail__section-headline panel-detail__section-headline inventory-asset-detail__section-headline">
@@ -2824,11 +2830,14 @@ const AccessPage = () => {
             role="tabpanel"
             aria-labelledby="access-detail-tab-history"
             hidden={activeAccessDetailTab !== 'history'}
-            className="ticket-detail__tab-panel panel-detail__tab-panel inventory-asset-detail__panel access-detail__panel"
+            className="ticket-detail__tab-panel panel-detail__tab-panel inventory-asset-detail__panel access-detail__panel access-detail__panel--history"
           >
             <section className="ticket-detail__section ticket-detail__section--activity panel-detail__section inventory-asset-detail__section access-detail__section">
-              <div className="ticket-detail__section-headline panel-detail__section-headline inventory-asset-detail__section-headline">
-                <h3 className="ticket-detail__section-title panel-detail__section-title inventory-asset-detail__section-title">Historial reciente</h3>
+              <div className="ticket-detail__comment-history-headline access-detail__history-headline">
+                <h3 className="ticket-detail__section-title panel-detail__section-title inventory-asset-detail__section-title access-detail__section-title">Historial reciente</h3>
+                <span aria-label={`${detailContext.events?.length || 0} eventos registrados`}>
+                  {detailContext.events?.length || 0}
+                </span>
               </div>
               {detailContext.events?.length ? (
                 <ul className="ticket-activity inventory-asset-detail__activity-list access-detail__activity-list" aria-label="Historial reciente de accesos">
@@ -2856,7 +2865,7 @@ const AccessPage = () => {
           </section>
         </div>
       </section>
-    </div>
+    </DetailDrawer>
   ) : null;
 
   return (
