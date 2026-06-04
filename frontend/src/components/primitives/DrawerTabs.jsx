@@ -5,7 +5,7 @@ export const DrawerTabs = ({
   tabs,
   activeKey,
   onChange,
-  className = 'ticket-detail__tabs'
+  className = 'drawer-tabs panel-detail__tabs'
 }) => {
   const handleTabKeyDown = (event, currentKey, customOnKeyDown) => {
     const currentIndex = tabs.findIndex((tab) => tab.key === currentKey);
@@ -44,7 +44,7 @@ export const DrawerTabs = ({
             aria-selected={isActive}
             aria-controls={tab.controls}
             tabIndex={0}
-            className={`ticket-detail__tab ${isActive ? 'ticket-detail__tab--active' : ''}`}
+            className={`drawer-tabs__tab panel-detail__tab ${isActive ? 'drawer-tabs__tab--active panel-detail__tab--active' : ''}`}
             onClick={() => onChange(tab.key)}
             onKeyDown={(event) => handleTabKeyDown(event, tab.key, tab.onKeyDown)}
             ref={tab.ref}
