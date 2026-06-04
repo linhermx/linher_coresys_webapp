@@ -6,6 +6,7 @@ import {
   List,
   MessageSquareMore,
   Paperclip,
+  PencilLine,
   Plus,
   SlidersHorizontal,
   Upload,
@@ -14,6 +15,13 @@ import {
 
 import { EmptyState } from '../components/primitives/EmptyState.jsx';
 import { FilterChipGroup } from '../components/primitives/FilterChipGroup.jsx';
+import {
+  DetailDrawer,
+  DetailDrawerFact,
+  DetailDrawerFactGrid,
+  DetailDrawerHero,
+  DetailDrawerSection
+} from '../components/primitives/DetailDrawer.jsx';
 import { DrawerTabs } from '../components/primitives/DrawerTabs.jsx';
 import { FilterSelect } from '../components/primitives/FilterSelect.jsx';
 import { ModalDialog } from '../components/primitives/ModalDialog.jsx';
@@ -47,6 +55,21 @@ const statusMeta = {
   en_espera: { label: 'En espera', tone: 'warning' },
   resuelto: { label: 'Resuelto', tone: 'success' },
   cerrado: { label: 'Cerrado', tone: 'neutral' }
+};
+
+const getTicketHeaderStatusTone = (statusKey) => {
+  switch (statusKey) {
+    case 'resuelto':
+      return 'success';
+    case 'en_espera':
+      return 'warning';
+    case 'cerrado':
+      return 'neutral';
+    case 'nuevo':
+    case 'en_proceso':
+    default:
+      return 'accent';
+  }
 };
 
 const priorityMeta = {
@@ -708,6 +731,7 @@ const TicketDetailPanel = ({
   const isStatusUnchanged = nextStatus === ticket.status;
   const ticketDomId = String(ticket.id || 'ticket').toLowerCase().replace(/[^a-z0-9_-]+/g, '-');
   const visibleTicketSummary = getVisibleTicketSummary(ticket.summary);
+  const ticketDetailSubtitle = `${typeMeta[ticket.type]?.label || 'Ticket'} · ${categoryLabels[ticket.category] || 'Sin categoría'}`;
   const getDetailTabId = (tabKey) => `ticket-detail-tab-${ticketDomId}-${tabKey}`;
   const getDetailPanelId = (tabKey) => `ticket-detail-panel-${ticketDomId}-${tabKey}`;
 
@@ -790,40 +814,48 @@ const TicketDetailPanel = ({
   ];
 
   return (
-    <aside
-      className={`ticket-detail panel-detail ticket-detail--tone-${statusMeta[ticket.status]?.tone || 'neutral'}`}
+    <DetailDrawer
+      as="aside"
+      tone={statusMeta[ticket.status]?.tone || 'neutral'}
+      className="ticket-detail ticket-detail--tickets"
       aria-label={`Detalle de ${ticket.id}`}
     >
-      <div className="ticket-detail__header panel-detail__header">
-        <div className="ticket-detail__header-top panel-detail__header-top">
-          <div className="ticket-detail__header-id panel-detail__header-id">
-            <span className="ticket-detail__ticket-id">{ticket.id}</span>
-            <TicketBadge label={statusMeta[ticket.status].label} tone={statusMeta[ticket.status].tone} />
-          </div>
-          <div className="ticket-detail__header-actions panel-detail__header-actions">
+      <DetailDrawerHero
+        className="ticket-detail__header"
+        eyebrow={ticket.id}
+        status={(
+          <span className={`inventory-status-chip inventory-status-chip--${getTicketHeaderStatusTone(ticket.status)}`}>
+            {statusMeta[ticket.status].label}
+          </span>
+        )}
+        title={ticket.title}
+        subtitle={ticketDetailSubtitle}
+        summary={visibleTicketSummary}
+        titleClassName="ticket-detail__title"
+        subtitleClassName="ticket-detail__summary ticket-detail__subtitle"
+        actions={(
+          <>
             <button
               type="button"
-              className="ticket-detail__edit"
+              className="action-inline"
               onClick={(event) => onEdit(event.currentTarget)}
+              aria-label={`Editar ticket ${ticket.id}`}
             >
-              Editar
+              <PencilLine size={14} aria-hidden="true" />
+              <span>Editar ticket</span>
             </button>
             <button
               type="button"
-              className="ticket-detail__close"
+              className="drawer-hero__close ticket-detail__close"
               ref={closeButtonRef}
               onClick={onClose}
               aria-label="Cerrar detalle"
             >
               <X size={16} aria-hidden="true" />
             </button>
-          </div>
-        </div>
-        <h2 className="ticket-detail__title panel-detail__title">{ticket.title}</h2>
-        {visibleTicketSummary ? (
-          <p className="ticket-detail__summary panel-detail__summary-copy">{visibleTicketSummary}</p>
-        ) : null}
-      </div>
+          </>
+        )}
+      />
 
       {false ? (
         <section className="ticket-detail__section ticket-detail__section--status">
@@ -887,7 +919,7 @@ const TicketDetailPanel = ({
           tabs={detailTabsConfig}
           activeKey={detailTab}
           onChange={setDetailTab}
-          className="ticket-detail__tabs panel-detail__tabs"
+          className="drawer-tabs ticket-detail__tabs panel-detail__tabs"
         />
 
         {detailTab === 'summary' ? (
@@ -898,33 +930,28 @@ const TicketDetailPanel = ({
             aria-labelledby={getDetailTabId('summary')}
             tabIndex={0}
           >
-            <div className="panel-detail__summary-layout">
-              <div className="ticket-detail__meta-grid panel-detail__facts">
-                <div className="ticket-detail__meta-item panel-detail__fact">
-                  <span className="ticket-detail__meta-label panel-detail__fact-label">Solicitante</span>
-                  <strong>{ticket.requester}</strong>
-                </div>
-                <div className="ticket-detail__meta-item panel-detail__fact">
-                  <span className="ticket-detail__meta-label panel-detail__fact-label">Responsable</span>
-                  <strong>{ticket.assignee}</strong>
-                </div>
-                <div className="ticket-detail__meta-item panel-detail__fact">
-                  <span className="ticket-detail__meta-label panel-detail__fact-label">Tipo</span>
-                  <strong>{typeMeta[ticket.type].label}</strong>
-                </div>
-                <div className="ticket-detail__meta-item panel-detail__fact">
-                  <span className="ticket-detail__meta-label panel-detail__fact-label">Prioridad</span>
-                  <strong>{priorityMeta[ticket.priority].label}</strong>
-                </div>
-              </div>
+            <div className="panel-detail__summary-layout ticket-detail__summary-layout">
+              <DetailDrawerFactGrid className="ticket-detail__meta-grid ticket-detail__facts">
+                <DetailDrawerFact label="Solicitante" className="ticket-detail__meta-item">
+                  {ticket.requester}
+                </DetailDrawerFact>
+                <DetailDrawerFact label="Responsable" className="ticket-detail__meta-item">
+                  {ticket.assignee}
+                </DetailDrawerFact>
+                <DetailDrawerFact label="Tipo" className="ticket-detail__meta-item">
+                  {typeMeta[ticket.type].label}
+                </DetailDrawerFact>
+                <DetailDrawerFact label="Prioridad" className="ticket-detail__meta-item">
+                  {priorityMeta[ticket.priority].label}
+                </DetailDrawerFact>
+              </DetailDrawerFactGrid>
 
-              <section className="ticket-detail__section ticket-detail__section--status panel-detail__section">
-                <div className="ticket-detail__section-headline panel-detail__section-headline">
-                  <div className="ticket-detail__section-title panel-detail__section-title">
-                    <ArrowRightLeft size={16} aria-hidden="true" />
-                    <span>Estado operativo</span>
-                  </div>
-                </div>
+              <DetailDrawerSection
+                className="ticket-detail__section ticket-detail__section--status ticket-detail__status-panel"
+                title="Cambiar estado"
+                titleIcon={<ArrowRightLeft size={16} aria-hidden="true" />}
+                titleClassName="ticket-detail__section-title"
+              >
                 <form
                   className="ticket-detail__status-controls"
                   onSubmit={(event) => {
@@ -970,7 +997,7 @@ const TicketDetailPanel = ({
                 {statusChangeError ? (
                   <p className="ticket-detail__attach-error" role="alert">{statusChangeError}</p>
                 ) : null}
-              </section>
+              </DetailDrawerSection>
             </div>
           </div>
         ) : null}
@@ -1031,7 +1058,6 @@ const TicketDetailPanel = ({
                     <span>Historial de comentarios</span>
                     <span>{ticket.comments.length}</span>
                   </div>
-                  <p className="ticket-detail__comment-history-caption">Más recientes primero</p>
                   <ul className="ticket-activity ticket-activity--comments" aria-label="Historial de comentarios">
                     {ticket.comments.map((comment) => (
                       <li key={comment.id} className="ticket-activity__item">
@@ -1062,6 +1088,10 @@ const TicketDetailPanel = ({
             tabIndex={0}
           >
             <section className="ticket-detail__section ticket-detail__section--activity panel-detail__section">
+              <div className="ticket-detail__comment-history-headline" aria-hidden="true">
+                <span>Actividad reciente</span>
+                <span>{ticket.activity.length}</span>
+              </div>
               <ul className="ticket-activity">
                 {ticket.activity.map((event) => (
                   <li key={event.id} className="ticket-activity__item">
@@ -1092,6 +1122,8 @@ const TicketDetailPanel = ({
                   type="file"
                   accept={ATTACHMENT_ACCEPT}
                   className="ticket-detail__attach-input"
+                  aria-hidden="true"
+                  tabIndex={-1}
                   onChange={(event) => {
                     const nextFile = event.target.files?.[0];
                     if (nextFile) {
@@ -1113,7 +1145,7 @@ const TicketDetailPanel = ({
               </div>
 
               <p className="ticket-detail__attach-help">
-                Puedes subir JPG, PNG, WEBP, PDF o TXT (máx. 5 MB).
+                JPG, PNG, WEBP, PDF o TXT · máx. 5 MB.
               </p>
 
               {attachmentError ? (
@@ -1149,7 +1181,7 @@ const TicketDetailPanel = ({
           </div>
         ) : null}
       </section>
-    </aside>
+    </DetailDrawer>
   );
 };
 

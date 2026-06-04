@@ -21,6 +21,12 @@ import {
 } from 'lucide-react';
 
 import { EmptyState } from '../components/primitives/EmptyState.jsx';
+import {
+  DetailDrawer,
+  DetailDrawerFact,
+  DetailDrawerFactGrid,
+  DetailDrawerHero
+} from '../components/primitives/DetailDrawer.jsx';
 import { FieldLabel } from '../components/primitives/FieldLabel.jsx';
 import { FilterChipGroup } from '../components/primitives/FilterChipGroup.jsx';
 import { FilterSelect } from '../components/primitives/FilterSelect.jsx';
@@ -1889,6 +1895,9 @@ const InventoryPage = () => {
         : `${detailAsset.units_count} unidades`
     )
     : '0 unidades';
+  const detailAssetSubtitle = detailAsset
+    ? [detailAsset.type_name, detailAsset.category_name, detailAsset.tracking_mode_name].filter(Boolean).join(' · ')
+    : '';
   const availableAssetUnitFieldOptions = useMemo(() => ([
     { key: '', label: 'Seleccionar' },
     ...selectedAssetUnits
@@ -2235,8 +2244,10 @@ const InventoryPage = () => {
                   </div>
                 )}
                 detail={detailAsset ? (
-                  <div
-                    className="ticket-detail panel-detail ticket-detail--tone-primary inventory-asset-detail"
+                  <DetailDrawer
+                    as="aside"
+                    tone="primary"
+                    className="ticket-detail inventory-asset-detail"
                     onKeyDownCapture={(event) => {
                       if (event.key !== 'Escape') {
                         return;
@@ -2247,17 +2258,21 @@ const InventoryPage = () => {
                       closeAssetDetail();
                     }}
                   >
-                    <header className="ticket-detail__header panel-detail__header inventory-asset-detail__header">
-                      <div className="ticket-detail__header-top panel-detail__header-top">
-                        <div className="ticket-detail__header-id panel-detail__header-id inventory-asset-detail__header-id">
-                          <span className="ticket-detail__ticket-id">
-                            {detailAsset.internal_code || `AST-${String(detailAsset.id).padStart(6, '0')}`}
-                          </span>
-                          <span className={`inventory-status-chip inventory-status-chip--${toOperationalStatusTone(detailAsset.operational_status_key)}`}>
-                            {detailAsset.operational_status_name || toOperationalStatusLabel(detailAsset.operational_status_key)}
-                          </span>
-                        </div>
-                        <div className="ticket-detail__header-actions panel-detail__header-actions inventory-asset-detail__header-actions">
+                    <DetailDrawerHero
+                      className="ticket-detail__header inventory-asset-detail__header"
+                      eyebrow={detailAsset.internal_code || `AST-${String(detailAsset.id).padStart(6, '0')}`}
+                      status={(
+                        <span className={`inventory-status-chip inventory-status-chip--${toOperationalStatusTone(detailAsset.operational_status_key)}`}>
+                          {detailAsset.operational_status_name || toOperationalStatusLabel(detailAsset.operational_status_key)}
+                        </span>
+                      )}
+                      title={detailAsset.asset_name}
+                      titleId={INVENTORY_ASSET_DETAIL_TITLE_ID}
+                      subtitle={detailAssetSubtitle}
+                      titleClassName="ticket-detail__title inventory-asset-detail__title"
+                      subtitleClassName="ticket-detail__summary inventory-asset-detail__summary-copy"
+                      actions={(
+                        <>
                           {isLoadingAssetDetail ? (
                             <span
                               className="inventory-asset-detail__loading"
@@ -2281,32 +2296,23 @@ const InventoryPage = () => {
                           ) : null}
                           <button
                             type="button"
-                            className="ticket-detail__close"
+                            className="drawer-hero__close ticket-detail__close"
                             ref={assetDetailCloseButtonRef}
                             onClick={() => closeAssetDetail()}
                             aria-label="Cerrar detalle de activo"
                           >
                             <X size={16} aria-hidden="true" />
                           </button>
-                        </div>
-                      </div>
-                      <h2
-                        id={INVENTORY_ASSET_DETAIL_TITLE_ID}
-                        className="ticket-detail__title panel-detail__title inventory-asset-detail__title"
-                      >
-                        {detailAsset.asset_name}
-                      </h2>
-                      <p className="ticket-detail__summary panel-detail__summary-copy inventory-asset-detail__summary-copy">
-                        {detailAsset.type_name} / {detailAsset.category_name} / {detailAsset.tracking_mode_name}
-                      </p>
-                    </header>
+                        </>
+                      )}
+                    />
 
                     <section className="ticket-detail__section ticket-detail__section--log panel-detail__section panel-detail__section--log inventory-asset-detail__log">
                       <DrawerTabs
                         label="Secciones de detalle del activo"
                         activeKey={activeDetailTab}
                         onChange={setActiveDetailTab}
-                        className="ticket-detail__tabs panel-detail__tabs inventory-asset-detail__tabs-rail"
+                        className="drawer-tabs ticket-detail__tabs panel-detail__tabs inventory-asset-detail__tabs-rail"
                         tabs={detailTabOptions.map((tabOption) => ({
                           key: tabOption.key,
                           label: tabOption.label,
@@ -2332,30 +2338,24 @@ const InventoryPage = () => {
                             <div className="ticket-detail__section-headline panel-detail__section-headline inventory-asset-detail__section-headline">
                               <h3 className="ticket-detail__section-title panel-detail__section-title inventory-asset-detail__section-title">Estado operativo</h3>
                             </div>
-                            <dl className="ticket-detail__meta-grid panel-detail__facts inventory-asset-detail__meta-grid inventory-asset-detail__meta-grid--status">
-                              <div className="ticket-detail__meta-item panel-detail__fact">
-                                <dt className="ticket-detail__meta-label panel-detail__fact-label">Estado</dt>
-                                <dd>
+                            <DetailDrawerFactGrid className="ticket-detail__meta-grid inventory-asset-detail__meta-grid inventory-asset-detail__meta-grid--status">
+                              <DetailDrawerFact label="Estado" className="ticket-detail__meta-item">
                                   <span className={`inventory-status-chip inventory-status-chip--${toOperationalStatusTone(detailAsset.operational_status_key)}`}>
                                     {detailAsset.operational_status_name || toOperationalStatusLabel(detailAsset.operational_status_key)}
                                   </span>
-                                </dd>
-                              </div>
-                              <div className="ticket-detail__meta-item panel-detail__fact">
-                                <dt className="ticket-detail__meta-label panel-detail__fact-label">Existencia actual</dt>
-                                <dd>{detailExistenceLabel}</dd>
-                              </div>
+                              </DetailDrawerFact>
+                              <DetailDrawerFact label="Existencia actual" className="ticket-detail__meta-item">
+                                {detailExistenceLabel}
+                              </DetailDrawerFact>
                               {detailAsset.tracking_mode_key === 'stock' ? (
-                                <div className="ticket-detail__meta-item panel-detail__fact">
-                                  <dt className="ticket-detail__meta-label panel-detail__fact-label">Stock mínimo</dt>
-                                  <dd>{detailAsset.min_quantity}</dd>
-                                </div>
+                                <DetailDrawerFact label="Stock mínimo" className="ticket-detail__meta-item">
+                                  {detailAsset.min_quantity}
+                                </DetailDrawerFact>
                               ) : null}
-                              <div className="ticket-detail__meta-item panel-detail__fact">
-                                <dt className="ticket-detail__meta-label panel-detail__fact-label">Última actualización</dt>
-                                <dd>{formatDateTime(detailAsset.updated_at)}</dd>
-                              </div>
-                            </dl>
+                              <DetailDrawerFact label="Última actualización" className="ticket-detail__meta-item">
+                                {formatDateTime(detailAsset.updated_at)}
+                              </DetailDrawerFact>
+                            </DetailDrawerFactGrid>
                           </section>
 
                           {recentSummaryMovements.length > 0 ? (
@@ -2366,7 +2366,6 @@ const InventoryPage = () => {
                                   {selectedAssetMovements.length}
                                 </span>
                               </div>
-                              <p className="ticket-detail__comment-history-caption">Más recientes primero</p>
                               <ul className="ticket-activity inventory-asset-detail__activity-list">
                                 {recentSummaryMovements.map((movement) => (
                                   <li key={`summary-${movement.id}-${movement.movement_line_id}`} className="ticket-activity__item">
@@ -2391,16 +2390,14 @@ const InventoryPage = () => {
                             {visibleAssetDescription ? (
                               <p className="inventory-asset-detail__section-copy">{visibleAssetDescription}</p>
                             ) : null}
-                            <dl className="ticket-detail__meta-grid panel-detail__facts inventory-asset-detail__meta-grid">
-                              <div className="ticket-detail__meta-item panel-detail__fact">
-                                <dt className="ticket-detail__meta-label panel-detail__fact-label">Código interno</dt>
-                                <dd>{detailAsset.internal_code || 'Sin código'}</dd>
-                              </div>
-                              <div className="ticket-detail__meta-item panel-detail__fact">
-                                <dt className="ticket-detail__meta-label panel-detail__fact-label">Marca / Modelo</dt>
-                                <dd>{[detailAsset.brand, detailAsset.model].filter(Boolean).join(' / ') || 'No registrado'}</dd>
-                              </div>
-                            </dl>
+                            <DetailDrawerFactGrid className="ticket-detail__meta-grid inventory-asset-detail__meta-grid">
+                              <DetailDrawerFact label="Código interno" className="ticket-detail__meta-item">
+                                {detailAsset.internal_code || 'Sin código'}
+                              </DetailDrawerFact>
+                              <DetailDrawerFact label="Marca / Modelo" className="ticket-detail__meta-item">
+                                {[detailAsset.brand, detailAsset.model].filter(Boolean).join(' / ') || 'No registrado'}
+                              </DetailDrawerFact>
+                            </DetailDrawerFactGrid>
                           </section>
                         </section>
 
@@ -2409,7 +2406,7 @@ const InventoryPage = () => {
                           role="tabpanel"
                           aria-labelledby="inventory-detail-tab-units"
                           hidden={activeDetailTab !== 'units'}
-                          className="ticket-detail__tab-panel panel-detail__tab-panel inventory-asset-detail__panel"
+                          className="ticket-detail__tab-panel panel-detail__tab-panel inventory-asset-detail__panel inventory-asset-detail__panel--units"
                         >
                           {detailAsset.tracking_mode_key === 'unit' ? (
                             <div className="inventory-asset-detail__panel-header panel-detail__panel-header inventory-asset-detail__panel-header--units">
@@ -2539,17 +2536,18 @@ const InventoryPage = () => {
                           role="tabpanel"
                           aria-labelledby="inventory-detail-tab-movements"
                           hidden={activeDetailTab !== 'movements'}
-                          className="ticket-detail__tab-panel panel-detail__tab-panel inventory-asset-detail__panel"
+                          className="ticket-detail__tab-panel panel-detail__tab-panel inventory-asset-detail__panel inventory-asset-detail__panel--movements"
                         >
                           {selectedAssetMovements.length === 0 ? (
                             <p className="inventory-asset-detail__empty-copy">Este activo aún no tiene movimientos registrados.</p>
                           ) : (
                             <>
-                              <div className="ticket-detail__comment-history-headline" aria-hidden="true">
-                                <span>Historial de actividad</span>
-                                <span>{selectedAssetMovements.length}</span>
+                              <div className="ticket-detail__comment-history-headline inventory-asset-detail__movement-headline">
+                                <h3 className="ticket-detail__section-title panel-detail__section-title inventory-asset-detail__section-title">
+                                  Historial de actividad
+                                </h3>
+                                <span aria-label={`${selectedAssetMovements.length} movimientos registrados`}>{selectedAssetMovements.length}</span>
                               </div>
-                              <p className="ticket-detail__comment-history-caption">Más recientes primero</p>
                               <ul className="ticket-activity inventory-asset-detail__activity-list" aria-label="Historial de movimientos del activo">
                                 {selectedAssetMovements.map((movement) => (
                                   <li key={`${movement.id}-${movement.movement_line_id}`} className="ticket-activity__item">
@@ -2574,7 +2572,7 @@ const InventoryPage = () => {
                         </section>
                       </div>
                     </section>
-                  </div>
+                  </DetailDrawer>
                 ) : null}
               />
             </section>
@@ -3326,7 +3324,7 @@ const InventoryPage = () => {
             label="Secciones de configuración"
             activeKey={activeCatalogTab}
             onChange={handleCatalogTabChange}
-            className="ticket-detail__tabs inventory-catalog__tabs"
+            className="drawer-tabs ticket-detail__tabs inventory-catalog__tabs"
             tabs={catalogTabOptions.map((tabOption) => ({
               key: tabOption.key,
               label: tabOption.label,
